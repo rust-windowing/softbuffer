@@ -1,0 +1,11 @@
+[package]
+name = "softbuffer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+raw-window-handle = "0.4.2"
+x11-dl = "2.19.1"
+
+[dev-dependencies]
+winit = "0.26.1"
