@@ -1,4 +1,3 @@
-use std::time::Instant;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -20,10 +19,7 @@ fn main() {
                 };
                 let buffer = vec![0x00FF00FF; (width * height) as usize];
 
-                let start = Instant::now();
                 graphics_context.set_buffer(&buffer, width as u16, height as u16);
-                let elapsed = Instant::now()-start;
-                println!("Set in: {}ms", elapsed.as_millis());
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

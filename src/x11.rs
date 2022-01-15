@@ -34,9 +34,6 @@ impl X11Impl {
 impl GraphicsContextImpl for X11Impl {
 
     unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        let mut owned_buffer = vec![0; (width as usize)*(height as usize)];
-        owned_buffer.copy_from_slice(buffer);
-
         //create image
         let image = (self.lib.XCreateImage)(
             self.handle.display as *mut Display,
@@ -44,7 +41,7 @@ impl GraphicsContextImpl for X11Impl {
             self.depth as u32,
             ZPixmap,
             0,
-            Box::leak(owned_buffer.into_boxed_slice()).as_mut_ptr() as *mut c_char,
+            (buffer.as_ptr()) as *mut c_char,
             width as u32,
             height as u32,
             32,
@@ -69,6 +66,7 @@ impl GraphicsContextImpl for X11Impl {
             height as c_uint
         );
 
+        (*image).data = std::ptr::null_mut();
         (self.lib.XDestroyImage)(image);
     }
 
