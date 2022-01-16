@@ -1,7 +1,9 @@
 [package]
 name = "softbuffer"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+authors = ["David Johnson <john01dav@gmail.com>"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 raw-window-handle = "0.4.2"
