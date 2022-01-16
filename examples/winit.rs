@@ -17,7 +17,17 @@ fn main() {
                     let size = graphics_context.window().inner_size();
                     (size.width, size.height)
                 };
-                let buffer = vec![0x00FF00FF; (width * height) as usize];
+                let buffer = (0..((width*height) as usize)).map(|index|{
+                    let y = index / (width as usize);
+                    let x = index % (width as usize);
+                    let red = x % 255;
+                    let green = y % 255;
+                    let blue = (x*y) % 255;
+
+                    let color = blue | (green << 8) | (red << 16);
+
+                    color as u32
+                }).collect::<Vec<_>>();
 
                 graphics_context.set_buffer(&buffer, width as u16, height as u16);
             }

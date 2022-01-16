@@ -1,7 +1,9 @@
+#[cfg(target_os = "linux")]
 mod x11;
+#[cfg(target_os = "windows")]
+mod win32;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
-use crate::x11::X11Impl;
 
 pub struct GraphicsContext<W: HasRawWindowHandle>{
     window: W,
@@ -13,7 +15,10 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
     pub unsafe fn new(window: W) -> Self{
         let raw_handle = window.raw_window_handle();
         let imple = match raw_handle{
-            RawWindowHandle::Xlib(xlib_handle) => Box::new(X11Impl::new(xlib_handle)),
+            #[cfg(target_os = "linux")]
+            RawWindowHandle::Xlib(xlib_handle) => Box::new(x11::X11Impl::new(xlib_handle)),
+            #[cfg(target_os = "windows")]
+            RawWindowHandle::Win32(win32_handle) => Box::new(win32::Win32Impl::new(&win32_handle)),
             unimplemented_handle_type => unimplemented!("Unsupported window handle type: {}.", window_handle_type_name(&unimplemented_handle_type))
         };
 
