@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 authors = ["David Johnson <john01dav@gmail.com>"]
 license = "MIT OR Apache-2.0"
+description = "Softbuffer integrates with the raw-window-handle crate to allow writing to a window in a cross-platform way while using the very high quality dedicated window management libraries that are available in the Rust ecosystem."
 
 [dependencies]
 thiserror = "1.0.30"
