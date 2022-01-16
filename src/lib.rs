@@ -40,6 +40,10 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
 
     #[inline]
     pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16){
+        if (width as usize)*(height as usize) != buffer.len(){
+            panic!("The size of the passed buffer is not the correct size. Its length must be exactly width*height.");
+        }
+
         unsafe {
             self.graphics_context_impl.set_buffer(buffer, width, height);
         }
