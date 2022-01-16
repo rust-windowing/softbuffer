@@ -1,13 +1,13 @@
+use crate::{GraphicsContextImpl, SoftBufferError};
+use raw_window_handle::{HasRawWindowHandle, Win32Handle};
 use std::os::raw::c_int;
-use raw_window_handle::Win32Handle;
-use crate::GraphicsContextImpl;
-use winapi::um::wingdi::{BITMAPINFOHEADER, BI_BITFIELDS, RGBQUAD, StretchDIBits};
-use winapi::um::winuser::{ValidateRect, GetDC};
-use winapi::shared::windef::{HWND, HDC};
+use winapi::shared::windef::{HDC, HWND};
+use winapi::um::wingdi::{StretchDIBits, BITMAPINFOHEADER, BI_BITFIELDS, RGBQUAD};
+use winapi::um::winuser::{GetDC, ValidateRect};
 
-pub struct Win32Impl{
+pub struct Win32Impl {
     window: HWND,
-    dc: HDC
+    dc: HDC,
 }
 
 // Wrap this so we can have a proper number of bmiColors to write in
@@ -19,15 +19,20 @@ struct BitmapInfo {
 }
 
 impl Win32Impl {
-
-    pub unsafe fn new(handle: &Win32Handle) -> Self{
+    pub unsafe fn new<W: HasRawWindowHandle>(handle: &Win32Handle) -> Result<Self, crate::SoftBufferError<W>> {
         let dc = GetDC(handle.hwnd as HWND);
-        Self{
-            dc,
-            window: handle.hwnd as HWND
-        }
-    }
 
+        if dc.is_null(){
+            return Err(SoftBufferError::PlatformError(Some("Device Context is null".into()), None));
+        }
+
+        Ok(
+            Self {
+                dc,
+                window: handle.hwnd as HWND,
+            }
+        )
+    }
 }
 
 impl GraphicsContextImpl for Win32Impl {
@@ -57,7 +62,7 @@ impl GraphicsContextImpl for Win32Impl {
             std::mem::transmute(buffer.as_ptr()),
             std::mem::transmute(&bitmap_info),
             winapi::um::wingdi::DIB_RGB_COLORS,
-            winapi::um::wingdi::SRCCOPY
+            winapi::um::wingdi::SRCCOPY,
         );
 
         ValidateRect(self.window, std::ptr::null_mut());

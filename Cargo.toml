@@ -6,6 +6,7 @@ authors = ["David Johnson <john01dav@gmail.com>"]
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+thiserror = "1.0.30"
 raw-window-handle = "0.4.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
