@@ -5,6 +5,10 @@ mod win32;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
+/// An instance of this struct contains the platform-specific data that must be managed in order to
+/// write to a window on that platform. This struct owns the window that this data corresponds to
+/// to ensure safety, as that data must be destroyed before the window itself is destroyed. You may
+/// access the underlying window via [`window`](Self::window) and [`window_mut`](Self::window_mut).
 pub struct GraphicsContext<W: HasRawWindowHandle>{
     window: W,
     graphics_context_impl: Box<dyn GraphicsContextImpl>
@@ -12,6 +16,11 @@ pub struct GraphicsContext<W: HasRawWindowHandle>{
 
 impl<W: HasRawWindowHandle> GraphicsContext<W> {
 
+    /// Creates a new instance of this struct, consuming the given window.
+    ///
+    /// # Safety
+    ///
+    ///  - Ensure that the passed object is valid to draw a 2D buffer to
     pub unsafe fn new(window: W) -> Self{
         let raw_handle = window.raw_window_handle();
         let imple = match raw_handle{
@@ -28,16 +37,41 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
         }
     }
 
+    /// Gets shared access to the underlying window
     #[inline]
     pub fn window(&self) -> &W{
         &self.window
     }
 
+    /// Gets mut/exclusive access to the underlying window
     #[inline]
     pub fn window_mut(&mut self) -> &mut W{
         &mut self.window
     }
 
+    /// Shows the given buffer with the given width and height on the window corresponding to this
+    /// graphics context. Panics if buffer.len() ≠ width*height. If the size of the buffer does
+    /// not match the size of the window, the buffer is drawn in the upper-left corner of the window.
+    /// It is recommended in most production use cases to have the buffer fill the entire window.
+    /// Use your windowing library to find the size of the window.
+    ///
+    /// The format of the buffer is as follows. There is one u32 in the buffer for each pixel in
+    /// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
+    /// etc. (Row-major top to bottom left to right one u32 per pixel). Within each u32 the highest
+    /// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
+    /// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
+    /// one way to build this format using bitwise operations.
+    ///
+    /// --------
+    ///
+    /// Pixel format (u32):
+    ///
+    /// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
+    ///
+    /// 0: Bit is 0
+    /// R: Red channel
+    /// G: Green channel
+    /// B: Blue channel
     #[inline]
     pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16){
         if (width as usize)*(height as usize) != buffer.len(){
