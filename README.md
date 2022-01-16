@@ -1,0 +1,98 @@
+Overview
+==
+As the popularity of the library [minifb](https://crates.io/crates/minifb) shows, it is useful to put a 2D buffer/image
+on a window in a platform-independent way. Minifb's approach to doing window management itself, however, is problematic
+code duplication. We already have very high quality libraries for this in the Rust ecosystem
+(such as [winit](https://crates.io/crates/winit)), and minifb's implementation of window management is not ideal. For
+example, it occasionally segfaults on some platforms and is missing key features such as the ability to set a window
+icon. While it would be possible to add these features to minifb, it makes more sense to instead use the standard
+window handling systems.
+
+Softbuffer integrates with the [raw-window-handle](https://crates.io/crates/raw-window-handle) crate
+to allow writing to a window in a cross-platform way while using the very high quality dedicated window management
+libraries that are available in the Rust ecosystem.
+
+What about [pixels](https://crates.io/crates/pixels)? Pixels accomplishes a very similar goal to softbuffer, 
+however there are two key differences. Pixels provides some capacity for GPU-accelerated post-processing of what is
+displayed, while Softbuffer does not. Due to not having this post-processing, Softbuffer does not rely on the GPU or 
+hardware accelerated graphcis stack in any way, and is thus more portable to installations that do not have access to 
+hardware acceleration (e.g. VMs, older computers, computers with misconfigured drivers). Softbuffer should be used over 
+pixels when its GPU-accelerated post-processing effects are not needed.
+
+
+License & Credits
+==
+
+This library is dual-licensed under MIT or Apache-2.0, just like minifb and rust. Significant portions of code were taken
+from the minifb library to do platform-specific work.
+
+Platform support:
+==
+Some, but not all, platforms supported in [raw-window-handle]() are supported by Softbuffer. Pull requests are welcome 
+to add new platforms!
+
+For now, the priority for new platforms is:
+1) to have at least one platform on each OS working (e.g. one of Win32 or WinRT, or one of Xlib, Xcb, and Wayland) and
+2) for that one platform on each OS to be the one that winit uses.
+
+(PRs will be accepted for any platform, even if it does not follow the above priority.)
+
+✅: Present | ❌: Absent
+ - AndroidNdk ❌
+ - AppKit ❌
+ - Orbital ❌
+ - UiKit ❌
+ - Wayland ❌
+ - Web ❌
+ - Win32 ✅
+ - WinRt ❌
+ - Xcb ❌
+ - Xlib ✅
+
+Example
+==
+```no_run
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::WindowBuilder;
+use softbuffer::GraphicsContext;
+
+fn main() {
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let mut graphics_context = unsafe { GraphicsContext::new(window) };
+
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+
+        match event {
+            Event::RedrawRequested(window_id) if window_id == graphics_context.window().id() => {
+                let (width, height) = {
+                    let size = graphics_context.window().inner_size();
+                    (size.width, size.height)
+                };
+                let buffer = (0..((width*height) as usize)).map(|index|{
+                    let y = index / (width as usize);
+                    let x = index % (width as usize);
+                    let red = x % 255;
+                    let green = y % 255;
+                    let blue = (x*y) % 255;
+
+                    let color = blue | (green << 8) | (red << 16);
+
+                    color as u32
+                }).collect::<Vec<_>>();
+
+                graphics_context.set_buffer(&buffer, width as u16, height as u16);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id
+            } if window_id == graphics_context.window().id() => {
+                *control_flow = ControlFlow::Exit;
+            },
+            _ => {}
+        }
+    });
+}
+```

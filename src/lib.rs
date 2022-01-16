@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 #[cfg(target_os = "linux")]
 mod x11;
 #[cfg(target_os = "windows")]
