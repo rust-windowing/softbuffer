@@ -1,7 +1,13 @@
 #![doc = include_str!("../README.md")]
 
+#[cfg(target_os = "macos")]
+#[macro_use]
+extern crate objc;
+
 #[cfg(target_os = "windows")]
 mod win32;
+#[cfg(target_os = "macos")]
+mod cg;
 #[cfg(target_os = "linux")]
 mod x11;
 
@@ -32,6 +38,8 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
             RawWindowHandle::Xlib(xlib_handle) => Box::new(x11::X11Impl::new(xlib_handle)?),
             #[cfg(target_os = "windows")]
             RawWindowHandle::Win32(win32_handle) => Box::new(win32::Win32Impl::new(&win32_handle)?),
+            #[cfg(target_os = "macos")]
+            RawWindowHandle::AppKit(appkit_handle) => Box::new(cg::CGImpl::new(appkit_handle)?),
             unimplemented_handle_type => return Err(SoftBufferError::UnsupportedPlatform {
                 window,
                 human_readable_platform_name: window_handle_type_name(&unimplemented_handle_type),
