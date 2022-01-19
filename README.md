@@ -39,7 +39,7 @@ For now, the priority for new platforms is:
 
 ✅: Present | ❌: Absent
  - AndroidNdk ❌
- - AppKit ❌
+ - AppKit ✅ (Thanks to [Seo Sanghyeon](https://github.com/sanxiyn)!)
  - Orbital ❌
  - UiKit ❌
  - Wayland ❌
