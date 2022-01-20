@@ -15,7 +15,7 @@ libraries that are available in the Rust ecosystem.
 What about [pixels](https://crates.io/crates/pixels)? Pixels accomplishes a very similar goal to softbuffer, 
 however there are two key differences. Pixels provides some capacity for GPU-accelerated post-processing of what is
 displayed, while Softbuffer does not. Due to not having this post-processing, Softbuffer does not rely on the GPU or 
-hardware accelerated graphcis stack in any way, and is thus more portable to installations that do not have access to 
+hardware accelerated graphics stack in any way, and is thus more portable to installations that do not have access to 
 hardware acceleration (e.g. VMs, older computers, computers with misconfigured drivers). Softbuffer should be used over 
 pixels when its GPU-accelerated post-processing effects are not needed.
 
@@ -28,8 +28,9 @@ from the minifb library to do platform-specific work.
 
 Platform support:
 ==
-Some, but not all, platforms supported in [raw-window-handle]() are supported by Softbuffer. Pull requests are welcome 
-to add new platforms!
+Some, but not all, platforms supported in [raw-window-handle](https://crates.io/crates/raw-window-handle) are supported 
+by Softbuffer. Pull requests are welcome to add new platforms! **Nonetheless, all major desktop platforms that winit uses 
+on desktop are supported.**
 
 For now, the priority for new platforms is:
 1) to have at least one platform on each OS working (e.g. one of Win32 or WinRT, or one of Xlib, Xcb, and Wayland) and
