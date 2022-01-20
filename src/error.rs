@@ -15,3 +15,10 @@ pub enum SoftBufferError<W: HasRawWindowHandle> {
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>)
 }
+
+pub(crate) fn unwrap<T, E: std::error::Error + 'static, W: HasRawWindowHandle>(res: Result<T, E>, str: &str) -> Result<T, SoftBufferError<W>>{
+    match res{
+        Ok(t) => Ok(t),
+        Err(e) => Err(SoftBufferError::PlatformError(Some(str.into()), Some(Box::new(e))))
+    }
+}

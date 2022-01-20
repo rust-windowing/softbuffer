@@ -42,7 +42,7 @@ For now, the priority for new platforms is:
  - AppKit ✅ (Thanks to [Seo Sanghyeon](https://github.com/sanxiyn)!)
  - Orbital ❌
  - UiKit ❌
- - Wayland ❌
+ - Wayland ✅ (Wayland support in winit is immature at the moment, so it might be wise to force X11 if you're using winit)
  - Web ❌
  - Win32 ✅
  - WinRt ❌

@@ -10,8 +10,11 @@ mod win32;
 mod cg;
 #[cfg(target_os = "linux")]
 mod x11;
+#[cfg(target_os = "linux")]
+mod wayland;
 
 mod error;
+
 pub use error::SoftBufferError;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -33,9 +36,11 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
     ///  - Ensure that the passed object is valid to draw a 2D buffer to
     pub unsafe fn new(window: W) -> Result<Self, SoftBufferError<W>> {
         let raw_handle = window.raw_window_handle();
-        let imple = match raw_handle {
+        let imple: Box<dyn GraphicsContextImpl> = match raw_handle {
             #[cfg(target_os = "linux")]
             RawWindowHandle::Xlib(xlib_handle) => Box::new(x11::X11Impl::new(xlib_handle)?),
+            #[cfg(target_os = "linux")]
+            RawWindowHandle::Wayland(wayland_handle) => Box::new(wayland::WaylandImpl::new(wayland_handle)?),
             #[cfg(target_os = "windows")]
             RawWindowHandle::Win32(win32_handle) => Box::new(win32::Win32Impl::new(&win32_handle)?),
             #[cfg(target_os = "macos")]
