@@ -9,6 +9,21 @@ const BUFFER_HEIGHT: usize = 128;
 fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        use winit::platform::web::WindowExtWebSys;
+
+        web_sys::window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .body()
+            .unwrap()
+            .append_child(&window.canvas())
+            .unwrap();
+    }
+
     let mut graphics_context = unsafe { GraphicsContext::new(window) }.unwrap();
 
     event_loop.run(move |event, _, control_flow| {
