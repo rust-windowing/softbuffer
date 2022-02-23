@@ -16,6 +16,7 @@ pub enum SoftBufferError<W: HasRawWindowHandle> {
     PlatformError(Option<String>, Option<Box<dyn Error>>)
 }
 
+#[allow(unused)] // This isn't used on all platforms
 pub(crate) fn unwrap<T, E: std::error::Error + 'static, W: HasRawWindowHandle>(res: Result<T, E>, str: &str) -> Result<T, SoftBufferError<W>>{
     match res{
         Ok(t) => Ok(t),

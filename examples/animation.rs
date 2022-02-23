@@ -1,5 +1,6 @@
 use std::f64::consts::PI;
-use std::time::Instant;
+use instant::Instant;
+#[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use softbuffer::GraphicsContext;
 use winit::event::{Event, WindowEvent};
@@ -64,7 +65,7 @@ fn main() {
 }
 
 fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>>{
-    (0..60).into_par_iter().map(|frame_id|{
+    let render = |frame_id|{
         let elapsed = ((frame_id as f64)/(60.0))*2.0*PI;
         let buffer = (0..((width * height) as usize))
             .map(|index| {
@@ -81,5 +82,11 @@ fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>>{
             .collect::<Vec<_>>();
 
         buffer
-    }).collect()
+    };
+
+    #[cfg(target_arch = "wasm32")]
+    return (0..60).map(render).collect();
+
+    #[cfg(not(target_arch = "wasm32"))]
+    (0..60).into_par_iter().map(render).collect()
 }
