@@ -12,6 +12,8 @@ mod cg;
 mod x11;
 #[cfg(target_os = "linux")]
 mod wayland;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 mod error;
 
@@ -45,6 +47,8 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
             RawWindowHandle::Win32(win32_handle) => Box::new(win32::Win32Impl::new(&win32_handle)?),
             #[cfg(target_os = "macos")]
             RawWindowHandle::AppKit(appkit_handle) => Box::new(cg::CGImpl::new(appkit_handle)?),
+            #[cfg(target_arch = "wasm32")]
+            RawWindowHandle::Web(web_handle) => Box::new(web::WebImpl::new(web_handle)?),
             unimplemented_handle_type => return Err(SoftBufferError::UnsupportedPlatform {
                 window,
                 human_readable_platform_name: window_handle_type_name(&unimplemented_handle_type),
