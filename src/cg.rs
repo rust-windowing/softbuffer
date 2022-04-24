@@ -1,42 +1,30 @@
 use crate::{GraphicsContextImpl, SoftBufferError};
 use raw_window_handle::{HasRawWindowHandle, AppKitHandle};
-use objc::runtime::Object;
 use core_graphics::base::{kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault};
 use core_graphics::color_space::CGColorSpace;
-use core_graphics::context::CGContext;
 use core_graphics::data_provider::CGDataProvider;
-use core_graphics::geometry::{CGPoint, CGSize, CGRect};
+use core_graphics::geometry::CGSize;
 use core_graphics::image::CGImage;
-use core_graphics::sys;
+
+use cocoa::base::id;
+use cocoa::quartzcore::CALayer;
+use foreign_types::ForeignType;
 
 pub struct CGImpl {
-    view: *mut Object,
+    layer: CALayer,
 }
 
 impl CGImpl {
     pub unsafe fn new<W: HasRawWindowHandle>(handle: AppKitHandle) -> Result<Self, SoftBufferError<W>> {
-        let window = handle.ns_window as *mut Object;
-        let view = handle.ns_view as *mut Object;
-        let cls = class!(NSGraphicsContext);
-        let graphics_context: *mut Object = msg_send![cls, graphicsContextWithWindow:window];
-        if graphics_context.is_null() {
-            return Err(SoftBufferError::PlatformError(Some("Graphics context is null".into()), None));
-        }
-        let _: () = msg_send![cls, setCurrentContext:graphics_context];
-        Ok(
-            Self {
-                view,
-            }
-        )
+        let view = handle.ns_view as id;
+        let layer = CALayer::new();
+        let _: () = msg_send![view, setLayer:layer.clone()];
+        Ok(Self{layer})
     }
 }
 
 impl GraphicsContextImpl for CGImpl {
     unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        let cls = class!(NSGraphicsContext);
-        let graphics_context: *mut Object = msg_send![cls, currentContext];
-        let context_ptr: *mut sys::CGContext = msg_send![graphics_context, CGContext];
-        let context = CGContext::from_existing_context_ptr(context_ptr);
         let color_space = CGColorSpace::create_device_rgb();
         let slice = std::slice::from_raw_parts(
             buffer.as_ptr() as *const u8,
@@ -54,11 +42,17 @@ impl GraphicsContextImpl for CGImpl {
             false,
             kCGRenderingIntentDefault,
         );
-        let frame: CGRect = msg_send![self.view, frame];
-        // In Core Graphics, (0, 0) is bottom left, not top left
-        let origin = CGPoint { x: 0f64, y: frame.size.height };
-        let size = CGSize { width: width as f64, height: -(height as f64) };
-        let rect = CGRect { origin, size };
-        context.draw_image(rect, &image);
+
+        let size = CGSize::new(width as f64, height as f64);
+        let rep: id = msg_send![class!(NSCGImageRep), alloc];
+        let rep: id = msg_send![rep, initWithCGImage:image.as_ptr() size:size];
+
+        let nsimage: id = msg_send![class!(NSImage), alloc];
+        let nsimage: id = msg_send![nsimage, initWithSize:size];
+        let _: () = msg_send![nsimage, addRepresentation:rep];
+        let _: () = msg_send![rep, release];
+
+        self.layer.set_contents(nsimage);
+        let _: () = msg_send![nsimage, release];
     }
 }
