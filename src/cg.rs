@@ -7,7 +7,7 @@ use core_graphics::geometry::CGSize;
 use core_graphics::image::CGImage;
 
 use cocoa::base::id;
-use cocoa::quartzcore::CALayer;
+use cocoa::quartzcore::{CALayer, ContentsGravity};
 use foreign_types::ForeignType;
 
 pub struct CGImpl {
@@ -18,6 +18,7 @@ impl CGImpl {
     pub unsafe fn new<W: HasRawWindowHandle>(handle: AppKitHandle) -> Result<Self, SoftBufferError<W>> {
         let view = handle.ns_view as id;
         let layer = CALayer::new();
+        layer.set_contents_gravity(ContentsGravity::TopLeft);
         let _: () = msg_send![view, setLayer:layer.clone()];
         Ok(Self{layer})
     }
