@@ -40,11 +40,11 @@ For now, the priority for new platforms is:
 
 ✅: Present | ❌: Absent
  - AndroidNdk ❌
- - AppKit ✅ (Thanks to [Seo Sanghyeon](https://github.com/sanxiyn)!)
+ - AppKit ✅ (Thanks to [Seo Sanghyeon](https://github.com/sanxiyn) and [lunixbochs](https://github.com/lunixbochs)!)
  - Orbital ❌
  - UiKit ❌
  - Wayland ✅ (Wayland support in winit is immature at the moment, so it might be wise to force X11 if you're using winit)
- - Web ✅
+ - Web ✅ (Thanks to [Liamolucko](https://github.com/Liamolucko)!)
  - Win32 ✅
  - WinRt ❌
  - Xcb ❌
@@ -99,3 +99,17 @@ fn main() {
     });
 }
 ```
+
+Changelog
+---------
+
+See git tags for associated commits.
+
+0.1.1
+-----
+ - Added WASM support (Thanks to [Liamolucko](https://github.com/Liamolucko)!)
+ - CALayer is now used for Mac OS backend, which is more flexible about what happens in the windowing library (Thanks to [lunixbochs](https://github.com/lunixbochs)!)
+
+0.1.0
+-----
+Initial published version with support for Linux (X11 and Wayland), Mac OS (but buggy), and WIndows.
