@@ -12,25 +12,30 @@ pub struct X11Impl {
 }
 
 impl X11Impl {
-    pub unsafe fn new<W: HasRawWindowHandle>(handle: XlibHandle) -> Result<Self, SoftBufferError<W>> {
+    pub unsafe fn new<W: HasRawWindowHandle>(
+        handle: XlibHandle,
+    ) -> Result<Self, SoftBufferError<W>> {
         let lib = match Xlib::open() {
             Ok(lib) => lib,
-            Err(e) => return Err(SoftBufferError::PlatformError(Some("Failed to open Xlib".into()), Some(Box::new(e))))
+            Err(e) => {
+                return Err(SoftBufferError::PlatformError(
+                    Some("Failed to open Xlib".into()),
+                    Some(Box::new(e)),
+                ))
+            }
         };
         let screen = (lib.XDefaultScreen)(handle.display as *mut Display);
         let gc = (lib.XDefaultGC)(handle.display as *mut Display, screen);
         let visual = (lib.XDefaultVisual)(handle.display as *mut Display, screen);
         let depth = (lib.XDefaultDepth)(handle.display as *mut Display, screen);
 
-        Ok(
-            Self {
-                handle,
-                lib,
-                gc,
-                visual,
-                depth,
-            }
-        )
+        Ok(Self {
+            handle,
+            lib,
+            gc,
+            visual,
+            depth,
+        })
     }
 }
 
