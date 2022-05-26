@@ -43,21 +43,25 @@ impl WebImpl {
             .unchecked_into();
 
         let ctx = canvas
-        .get_context("2d")
-        .map_err(|_| {
-            SoftBufferError::PlatformError(
-                Some("Canvas already controlled using `OffscreenCanvas`".into()),
-                None,
-            )
-        })?
-        .ok_or_else(|| {
-            SoftBufferError::PlatformError(
-                Some("A canvas context other than `CanvasRenderingContext2d` was already created".into()),
-                None,
-            )
-        })?
-        .dyn_into()
-        .expect("`getContext(\"2d\") didn't return a `CanvasRenderingContext2d`");
+            .get_context("2d")
+            .map_err(|_| {
+                SoftBufferError::PlatformError(
+                    Some("Canvas already controlled using `OffscreenCanvas`".into()),
+                    None,
+                )
+            })?
+            .ok_or_else(|| {
+                SoftBufferError::PlatformError(
+                    Some(
+                        "A canvas context other than `CanvasRenderingContext2d` \
+                        was already created"
+                            .into(),
+                    ),
+                    None,
+                )
+            })?
+            .dyn_into()
+            .expect("`getContext(\"2d\") didn't return a `CanvasRenderingContext2d`");
 
         Ok(Self { canvas, ctx })
     }
@@ -74,7 +78,8 @@ impl GraphicsContextImpl for WebImpl {
             .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
             .collect();
 
-        // This should only throw an error if the buffer we pass's size is incorrect, which is checked in the outer `set_buffer` call.
+        // This should only throw an error if the buffer we pass's size is incorrect,
+        // which is checked in the outer `set_buffer` call.
         let image_data =
             ImageData::new_with_u8_clamped_array(Clamped(&bitmap), width.into()).unwrap();
 
