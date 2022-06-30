@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  Check_Formatting:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: stable
+        components: rustfmt
+    - name: Check Formatting
+      run: cargo +stable fmt --all -- --check
+
+  tests:
+    name: Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        rust_version: [stable, nightly]
+        platform:
+          - { target: x86_64-pc-windows-msvc,   os: windows-latest,  }
+          - { target: i686-pc-windows-msvc,     os: windows-latest,  }
+          - { target: x86_64-pc-windows-gnu,    os: windows-latest, host: -x86_64-pc-windows-gnu }
+          - { target: i686-pc-windows-gnu,      os: windows-latest, host: -i686-pc-windows-gnu }
+          - { target: i686-unknown-linux-gnu,   os: ubuntu-latest,   }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest,   }
+          - { target: x86_64-apple-darwin,      os: macos-latest,    }
+          - { target: x86_64-apple-ios,         os: macos-latest,    }
+          - { target: aarch64-apple-ios,        os: macos-latest,    }
+          # We're using Windows rather than Ubuntu to run the wasm tests because caching cargo-web
+          # doesn't currently work on Linux.
+          - { target: wasm32-unknown-unknown,   os: windows-latest,  }
+
+    env:
+      RUST_BACKTRACE: 1
+      CARGO_INCREMENTAL: 0
+      PKG_CONFIG_ALLOW_CROSS: 1
+      RUSTFLAGS: "-C debuginfo=0 --deny warnings"
+      RUSTDOCFLAGS: -Dwarnings
+
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+    - uses: actions/checkout@v2
+    # Used to cache cargo-web
+    - name: Cache cargo folder
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo
+        key: ${{ matrix.platform.target }}-cargo-${{ matrix.rust_version }}
+
+    - name: Check documentation
+      shell: bash
+      run: cargo doc --no-deps --target ${{ matrix.platform.target }} --document-private-items
+
+    - name: Build
+      shell: bash
+      run: cargo build --verbose --target ${{ matrix.platform.target }}
+
+    - name: Build tests
+      shell: bash
+      run: cargo test --no-run --verbose --target ${{ matrix.platform.target }}
+    - name: Run tests
+      shell: bash
+      if: (
+        !contains(matrix.platform.target, 'android') &&
+        !contains(matrix.platform.target, 'ios') &&
+        !contains(matrix.platform.target, 'wasm32'))
+      run: cargo test --verbose --target ${{ matrix.platform.target }}
