@@ -4,16 +4,16 @@
 #[macro_use]
 extern crate objc;
 
-#[cfg(target_os = "windows")]
-mod win32;
 #[cfg(target_os = "macos")]
 mod cg;
-#[cfg(target_os = "linux")]
-mod x11;
 #[cfg(target_os = "linux")]
 mod wayland;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(target_os = "windows")]
+mod win32;
+#[cfg(target_os = "linux")]
+mod x11;
 
 mod error;
 
@@ -42,18 +42,24 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
             #[cfg(target_os = "linux")]
             RawWindowHandle::Xlib(xlib_handle) => Box::new(x11::X11Impl::new(xlib_handle)?),
             #[cfg(target_os = "linux")]
-            RawWindowHandle::Wayland(wayland_handle) => Box::new(wayland::WaylandImpl::new(wayland_handle)?),
+            RawWindowHandle::Wayland(wayland_handle) => {
+                Box::new(wayland::WaylandImpl::new(wayland_handle)?)
+            }
             #[cfg(target_os = "windows")]
             RawWindowHandle::Win32(win32_handle) => Box::new(win32::Win32Impl::new(&win32_handle)?),
             #[cfg(target_os = "macos")]
             RawWindowHandle::AppKit(appkit_handle) => Box::new(cg::CGImpl::new(appkit_handle)?),
             #[cfg(target_arch = "wasm32")]
             RawWindowHandle::Web(web_handle) => Box::new(web::WebImpl::new(web_handle)?),
-            unimplemented_handle_type => return Err(SoftBufferError::UnsupportedPlatform {
-                window,
-                human_readable_platform_name: window_handle_type_name(&unimplemented_handle_type),
-                handle: unimplemented_handle_type,
-            }),
+            unimplemented_handle_type => {
+                return Err(SoftBufferError::UnsupportedPlatform {
+                    window,
+                    human_readable_platform_name: window_handle_type_name(
+                        &unimplemented_handle_type,
+                    ),
+                    handle: unimplemented_handle_type,
+                })
+            }
         };
 
         Ok(Self {

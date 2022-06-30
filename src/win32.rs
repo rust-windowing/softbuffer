@@ -19,19 +19,22 @@ struct BitmapInfo {
 }
 
 impl Win32Impl {
-    pub unsafe fn new<W: HasRawWindowHandle>(handle: &Win32Handle) -> Result<Self, crate::SoftBufferError<W>> {
+    pub unsafe fn new<W: HasRawWindowHandle>(
+        handle: &Win32Handle,
+    ) -> Result<Self, crate::SoftBufferError<W>> {
         let dc = GetDC(handle.hwnd as HWND);
 
-        if dc.is_null(){
-            return Err(SoftBufferError::PlatformError(Some("Device Context is null".into()), None));
+        if dc.is_null() {
+            return Err(SoftBufferError::PlatformError(
+                Some("Device Context is null".into()),
+                None,
+            ));
         }
 
-        Ok(
-            Self {
-                dc,
-                window: handle.hwnd as HWND,
-            }
-        )
+        Ok(Self {
+            dc,
+            window: handle.hwnd as HWND,
+        })
     }
 }
 
