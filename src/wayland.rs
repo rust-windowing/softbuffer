@@ -64,6 +64,21 @@ impl GraphicsContextImpl for WaylandImpl {
         self.tempfile.write_at(std::slice::from_raw_parts(buffer.as_ptr() as *const u8, buffer.len()*4), 0).expect("Failed to write buffer to temporary file.");
         self.tempfile.flush().expect("Failed to flush buffer to temporary file.");
         self.surface.attach(Some(&wayland_buffer.buffer), 0, 0);
+
+        // FIXME: Proper damaging mechanism.
+        //
+        // In order to propagate changes on compositors which track damage, for now damage the entire surface.
+        if self.surface.as_ref().version() < 4 {
+            // FIXME: Accommodate scale factor since wl_surface::damage is in terms of surface coordinates while
+            // wl_surface::damage_buffer is in buffer coordinates.
+            //
+            // i32::MAX is a valid damage box (most compositors interpret the damage box as "the entire surface")
+            self.surface.damage(0, 0, i32::MAX, i32::MAX);
+        } else {
+            // Introduced in version 4, it is an error to use this request in version 3 or lower.
+            self.surface.damage_buffer(0, 0, width as i32, height as i32);
+        }
+
         self.surface.commit();
     }
 }
