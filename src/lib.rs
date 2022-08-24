@@ -62,15 +62,28 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
         })
     }
 
-    /// Gets shared access to the underlying window
+    /// Gets shared access to the underlying window.
     #[inline]
     pub fn window(&self) -> &W {
         &self.window
     }
 
-    /// Gets mut/exclusive access to the underlying window
+    /// Gets mut/exclusive access to the underlying window.
+    ///
+    /// This method is `unsafe` because it could be used to replace the window with another one,
+    /// thus dropping the original window and violating the property that this [`GraphicsContext`]
+    /// will always be destroyed before the window it writes into. This method should only be used
+    /// when the window type in use requires mutable access to perform some action on an existing
+    /// window.
+    ///
+    /// # Safety
+    ///
+    /// - After the returned mutable reference is dropped, the window must still be the same window
+    ///   which this [`GraphicsContext`] was created for; and within that window, the
+    ///   platform-specific configuration for 2D drawing must not have been modified. (For example,
+    ///   on macOS the view hierarchy of the window must not have been modified.)
     #[inline]
-    pub fn window_mut(&mut self) -> &mut W {
+    pub unsafe fn window_mut(&mut self) -> &mut W {
         &mut self.window
     }
 
