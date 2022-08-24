@@ -122,6 +122,14 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
     }
 }
 
+impl<W: HasRawWindowHandle> AsRef<W> for GraphicsContext<W> {
+    /// Equivalent to [`self.window()`](Self::window()).
+    #[inline]
+    fn as_ref(&self) -> &W {
+        self.window()
+    }
+}
+
 trait GraphicsContextImpl {
     unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16);
 }
