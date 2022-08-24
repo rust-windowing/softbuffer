@@ -1,5 +1,5 @@
 use raw_window_handle::HasRawWindowHandle;
-use raw_window_handle::WebHandle;
+use raw_window_handle::WebWindowHandle;
 use wasm_bindgen::Clamped;
 use wasm_bindgen::JsCast;
 use web_sys::CanvasRenderingContext2d;
@@ -15,7 +15,7 @@ pub struct WebImpl {
 }
 
 impl WebImpl {
-    pub fn new<W: HasRawWindowHandle>(handle: WebHandle) -> Result<Self, SoftBufferError<W>> {
+    pub fn new<W: HasRawWindowHandle>(handle: WebWindowHandle) -> Result<Self, SoftBufferError<W>> {
         let canvas: HtmlCanvasElement = web_sys::window()
             .ok_or_else(|| {
                 SoftBufferError::PlatformError(

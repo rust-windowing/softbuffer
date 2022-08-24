@@ -1,4 +1,4 @@
-use raw_window_handle::{HasRawWindowHandle, WaylandHandle};
+use raw_window_handle::{HasRawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
 use tempfile::tempfile;
 use wayland_client::{Display, sys::client::wl_display, GlobalManager, protocol::{wl_shm::WlShm, wl_buffer::WlBuffer, wl_surface::WlSurface}, Main, Proxy, EventQueue};
 use crate::{GraphicsContextImpl, SoftBufferError, error::unwrap};
@@ -20,15 +20,15 @@ struct WaylandBuffer{
 
 impl WaylandImpl {
 
-    pub unsafe fn new<W: HasRawWindowHandle>(handle: WaylandHandle) -> Result<Self, SoftBufferError<W>> {
-        let display = Display::from_external_display(handle.display as *mut wl_display);
+    pub unsafe fn new<W: HasRawWindowHandle>(window_handle: WaylandWindowHandle, display_handle: WaylandDisplayHandle) -> Result<Self, SoftBufferError<W>> {
+        let display = Display::from_external_display(display_handle.display as *mut wl_display);
         let mut event_queue = display.create_event_queue();
         let attached_display = (*display).clone().attach(event_queue.token());
         let globals = GlobalManager::new(&attached_display);
         unwrap(event_queue.sync_roundtrip(&mut (), |_, _, _| unreachable!()), "Failed to make round trip to server")?;
         let shm = unwrap(globals.instantiate_exact::<WlShm>(1), "Failed to instantiate Wayland Shm")?;
         let tempfile = unwrap(tempfile(), "Failed to create temporary file to store buffer.")?;
-        let surface = Proxy::from_c_ptr(handle.surface as _).into();
+        let surface = Proxy::from_c_ptr(window_handle.surface as _).into();
         Ok(Self{
             _event_queue: event_queue,
             surface, shm, tempfile,

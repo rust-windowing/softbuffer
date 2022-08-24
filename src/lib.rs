@@ -3,6 +3,7 @@
 #[cfg(target_os = "macos")]
 #[macro_use]
 extern crate objc;
+extern crate core;
 
 #[cfg(target_os = "windows")]
 mod win32;
@@ -19,40 +20,44 @@ mod error;
 
 pub use error::SoftBufferError;
 
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform. This struct owns the window that this data corresponds to
 /// to ensure safety, as that data must be destroyed before the window itself is destroyed. You may
 /// access the underlying window via [`window`](Self::window) and [`window_mut`](Self::window_mut).
-pub struct GraphicsContext<W: HasRawWindowHandle> {
+pub struct GraphicsContext<W: HasRawWindowHandle + HasRawDisplayHandle> {
     window: W,
     graphics_context_impl: Box<dyn GraphicsContextImpl>,
 }
 
-impl<W: HasRawWindowHandle> GraphicsContext<W> {
+impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
     /// Creates a new instance of this struct, consuming the given window.
     ///
     /// # Safety
     ///
     ///  - Ensure that the passed object is valid to draw a 2D buffer to
     pub unsafe fn new(window: W) -> Result<Self, SoftBufferError<W>> {
-        let raw_handle = window.raw_window_handle();
-        let imple: Box<dyn GraphicsContextImpl> = match raw_handle {
+        let raw_window_handle = window.raw_window_handle();
+        let raw_display_handle = window.raw_display_handle();
+
+        let imple: Box<dyn GraphicsContextImpl> = match (raw_window_handle, raw_display_handle) {
             #[cfg(target_os = "linux")]
-            RawWindowHandle::Xlib(xlib_handle) => Box::new(x11::X11Impl::new(xlib_handle)?),
+            (RawWindowHandle::Xlib(xlib_window_handle), RawDisplayHandle::Xlib(xlib_display_handle)) => Box::new(x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?),
             #[cfg(target_os = "linux")]
-            RawWindowHandle::Wayland(wayland_handle) => Box::new(wayland::WaylandImpl::new(wayland_handle)?),
+            (RawWindowHandle::Wayland(wayland_window_handle), RawDisplayHandle::Wayland(wayland_display_handle)) => Box::new(wayland::WaylandImpl::new(wayland_window_handle, wayland_display_handle)?),
             #[cfg(target_os = "windows")]
-            RawWindowHandle::Win32(win32_handle) => Box::new(win32::Win32Impl::new(&win32_handle)?),
+            (RawWindowHandle::Win32(win32_handle), _) => Box::new(win32::Win32Impl::new(&win32_handle)?),
             #[cfg(target_os = "macos")]
-            RawWindowHandle::AppKit(appkit_handle) => Box::new(cg::CGImpl::new(appkit_handle)?),
+            (RawWindowHandle::AppKit(appkit_handle), _) => Box::new(cg::CGImpl::new(appkit_handle)?),
             #[cfg(target_arch = "wasm32")]
-            RawWindowHandle::Web(web_handle) => Box::new(web::WebImpl::new(web_handle)?),
-            unimplemented_handle_type => return Err(SoftBufferError::UnsupportedPlatform {
+            (RawWindowHandle::Web(web_handle), _) => Box::new(web::WebImpl::new(web_handle)?),
+            (unimplemented_window_handle, unimplemented_display_handle) => return Err(SoftBufferError::UnsupportedPlatform {
                 window,
-                human_readable_platform_name: window_handle_type_name(&unimplemented_handle_type),
-                handle: unimplemented_handle_type,
+                human_readable_window_platform_name: window_handle_type_name(&unimplemented_window_handle),
+                human_readable_display_platform_name: display_handle_type_name(&unimplemented_display_handle),
+                window_handle: unimplemented_window_handle,
+                display_handle: unimplemented_display_handle
             }),
         };
 
@@ -122,7 +127,7 @@ impl<W: HasRawWindowHandle> GraphicsContext<W> {
     }
 }
 
-impl<W: HasRawWindowHandle> AsRef<W> for GraphicsContext<W> {
+impl<W: HasRawWindowHandle + HasRawDisplayHandle> AsRef<W> for GraphicsContext<W> {
     /// Equivalent to [`self.window()`](Self::window()).
     #[inline]
     fn as_ref(&self) -> &W {
@@ -145,6 +150,28 @@ fn window_handle_type_name(handle: &RawWindowHandle) -> &'static str {
         RawWindowHandle::AppKit(_) => "AppKit",
         RawWindowHandle::Orbital(_) => "Orbital",
         RawWindowHandle::UiKit(_) => "UiKit",
+        RawWindowHandle::Xcb(_) => "XCB",
+        RawWindowHandle::Drm(_) => "DRM",
+        RawWindowHandle::Gbm(_) => "GBM",
+        RawWindowHandle::Haiku(_) => "Haiku",
+        _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
+    }
+}
+
+fn display_handle_type_name(handle: &RawDisplayHandle) -> &'static str {
+    match handle {
+        RawDisplayHandle::Xlib(_) => "Xlib",
+        RawDisplayHandle::Web(_) => "Web",
+        RawDisplayHandle::Wayland(_) => "Wayland",
+        RawDisplayHandle::AppKit(_) => "AppKit",
+        RawDisplayHandle::Orbital(_) => "Orbital",
+        RawDisplayHandle::UiKit(_) => "UiKit",
+        RawDisplayHandle::Xcb(_) => "XCB",
+        RawDisplayHandle::Drm(_) => "DRM",
+        RawDisplayHandle::Gbm(_) => "GBM",
+        RawDisplayHandle::Haiku(_) => "Haiku",
+        RawDisplayHandle::Windows(_) => "Windows",
+        RawDisplayHandle::Android(_) => "Android",
         _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
     }
 }
