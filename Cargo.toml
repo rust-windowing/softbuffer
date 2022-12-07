@@ -39,6 +39,9 @@ wasm-bindgen = "0.2.78"
 version = "0.3.55"
 features = ["CanvasRenderingContext2d", "Document", "Element", "HtmlCanvasElement", "ImageData", "Window"]
 
+[target.'cfg(target_os = "redox")'.dependencies]
+redox_syscall = "0.3"
+
 [dev-dependencies]
 instant = "0.1.12"
 winit = "0.27.2"

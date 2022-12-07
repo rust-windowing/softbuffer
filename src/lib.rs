@@ -15,6 +15,8 @@ mod x11;
 mod wayland;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(target_os = "redox")]
+mod orbital;
 
 mod error;
 
@@ -52,6 +54,8 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
             (RawWindowHandle::AppKit(appkit_handle), _) => Box::new(cg::CGImpl::new(appkit_handle)?),
             #[cfg(target_arch = "wasm32")]
             (RawWindowHandle::Web(web_handle), _) => Box::new(web::WebImpl::new(web_handle)?),
+            #[cfg(target_os = "redox")]
+            (RawWindowHandle::Orbital(orbital_handle), _) => Box::new(orbital::OrbitalImpl::new(orbital_handle)?),
             (unimplemented_window_handle, unimplemented_display_handle) => return Err(SoftBufferError::UnsupportedPlatform {
                 window,
                 human_readable_window_platform_name: window_handle_type_name(&unimplemented_window_handle),
