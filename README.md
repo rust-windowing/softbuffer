@@ -43,7 +43,7 @@ For now, the priority for new platforms is:
 ✅: Present | ❌: Absent
  - AndroidNdk ❌
  - AppKit ✅ (Thanks to [Seo Sanghyeon](https://github.com/sanxiyn) and [lunixbochs](https://github.com/lunixbochs)!)
- - Orbital ❌
+ - Orbital ✅
  - UiKit ❌
  - Wayland ✅ (Wayland support in winit is immature at the moment, so it might be wise to force X11 if you're using winit)
  - Web ✅ (Thanks to [Liamolucko](https://github.com/Liamolucko)!)
