@@ -6,7 +6,7 @@ use core_graphics::data_provider::CGDataProvider;
 use core_graphics::image::CGImage;
 
 use cocoa::base::{id, nil};
-use cocoa::appkit::{NSView, NSViewWidthSizable, NSViewHeightSizable};
+use cocoa::appkit::{NSView, NSViewWidthSizable, NSViewHeightSizable, NSWindow};
 use cocoa::quartzcore::{CALayer, ContentsGravity};
 use foreign_types::ForeignType;
 
@@ -18,11 +18,13 @@ pub struct CGImpl {
 
 impl CGImpl {
     pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SwBufError> {
+        let window = handle.ns_window as id;
         let view = handle.ns_view as id;
         let layer = CALayer::new();
-        let subview: id = NSView::alloc(nil).initWithFrame_(view.frame());
+        let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));
         layer.set_contents_gravity(ContentsGravity::TopLeft);
         layer.set_needs_display_on_bounds_change(false);
+        layer.set_contents_scale(window.backingScaleFactor());
         subview.setLayer(layer.id());
         subview.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
 
