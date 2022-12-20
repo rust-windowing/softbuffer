@@ -1,9 +1,12 @@
 use crate::{GraphicsContextImpl, SwBufError};
 use raw_window_handle::{HasRawWindowHandle, Win32WindowHandle};
 use std::os::raw::c_int;
-use winapi::shared::windef::{HDC, HWND};
-use winapi::um::wingdi::{StretchDIBits, BITMAPINFOHEADER, BI_BITFIELDS, RGBQUAD};
-use winapi::um::winuser::{GetDC, ValidateRect};
+
+use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Graphics::Gdi::{
+    StretchDIBits, BITMAPINFOHEADER, BI_BITFIELDS, RGBQUAD, HDC,
+    ValidateRect, GetDC, SRCCOPY, DIB_RGB_COLORS,
+};
 
 pub struct Win32Impl {
     window: HWND,
@@ -22,7 +25,7 @@ impl Win32Impl {
     pub unsafe fn new<W: HasRawWindowHandle>(handle: &Win32WindowHandle) -> Result<Self, crate::SwBufError<W>> {
         let dc = GetDC(handle.hwnd as HWND);
 
-        if dc.is_null(){
+        if dc == 0 {
             return Err(SwBufError::PlatformError(Some("Device Context is null".into()), None));
         }
 
@@ -61,8 +64,8 @@ impl GraphicsContextImpl for Win32Impl {
             height as c_int,
             std::mem::transmute(buffer.as_ptr()),
             std::mem::transmute(&bitmap_info),
-            winapi::um::wingdi::DIB_RGB_COLORS,
-            winapi::um::wingdi::SRCCOPY,
+            DIB_RGB_COLORS,
+            SRCCOPY,
         );
 
         ValidateRect(self.window, std::ptr::null_mut());
