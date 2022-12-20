@@ -1,15 +1,13 @@
 [package]
-name = "softbuffer"
+name = "swbuf"
 version = "0.1.1"
 edition = "2021"
-authors = ["David Johnson <john01dav@gmail.com>"]
 license = "MIT OR Apache-2.0"
-description = "Softbuffer integrates with the raw-window-handle crate to allow writing to a window in a cross-platform way while using the very high quality dedicated window management libraries that are available in the Rust ecosystem."
-documentation = "https://docs.rs/softbuffer"
+description = "Cross-platform software buffer"
+documentation = "https://docs.rs/swbuf"
 readme = "README.md"
-homepage = "https://github.com/john01dav/softbuffer"
-repository = "https://github.com/john01dav/softbuffer"
-keywords = ["framebuffer"]
+repository = "https://github.com/rust-windowing/swbuf"
+keywords = ["framebuffer", "windowing"]
 categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
 

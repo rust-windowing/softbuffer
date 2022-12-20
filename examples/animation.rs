@@ -2,7 +2,7 @@ use std::f64::consts::PI;
 use instant::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
-use softbuffer::GraphicsContext;
+use swbuf::GraphicsContext;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
