@@ -7,7 +7,7 @@ use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
 
 use crate::GraphicsContextImpl;
-use crate::SoftBufferError;
+use crate::SwBufError;
 
 pub struct WebImpl {
     canvas: HtmlCanvasElement,
@@ -15,17 +15,17 @@ pub struct WebImpl {
 }
 
 impl WebImpl {
-    pub fn new<W: HasRawWindowHandle>(handle: WebWindowHandle) -> Result<Self, SoftBufferError<W>> {
+    pub fn new<W: HasRawWindowHandle>(handle: WebWindowHandle) -> Result<Self, SwBufError<W>> {
         let canvas: HtmlCanvasElement = web_sys::window()
             .ok_or_else(|| {
-                SoftBufferError::PlatformError(
+                SwBufError::PlatformError(
                     Some("`window` is not present in this runtime".into()),
                     None,
                 )
             })?
             .document()
             .ok_or_else(|| {
-                SoftBufferError::PlatformError(
+                SwBufError::PlatformError(
                     Some("`document` is not present in this runtime".into()),
                     None,
                 )
@@ -34,7 +34,7 @@ impl WebImpl {
             // `querySelector` only throws an error if the selector is invalid.
             .unwrap()
             .ok_or_else(|| {
-                SoftBufferError::PlatformError(
+                SwBufError::PlatformError(
                     Some("No canvas found with the given id".into()),
                     None,
                 )
@@ -45,13 +45,13 @@ impl WebImpl {
         let ctx = canvas
         .get_context("2d")
         .map_err(|_| {
-            SoftBufferError::PlatformError(
+            SwBufError::PlatformError(
                 Some("Canvas already controlled using `OffscreenCanvas`".into()),
                 None,
             )
         })?
         .ok_or_else(|| {
-            SoftBufferError::PlatformError(
+            SwBufError::PlatformError(
                 Some("A canvas context other than `CanvasRenderingContext2d` was already created".into()),
                 None,
             )

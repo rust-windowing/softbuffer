@@ -1,4 +1,4 @@
-use crate::{GraphicsContextImpl, SoftBufferError};
+use crate::{GraphicsContextImpl, SwBufError};
 use raw_window_handle::{HasRawWindowHandle, Win32WindowHandle};
 use std::os::raw::c_int;
 use winapi::shared::windef::{HDC, HWND};
@@ -19,11 +19,11 @@ struct BitmapInfo {
 }
 
 impl Win32Impl {
-    pub unsafe fn new<W: HasRawWindowHandle>(handle: &Win32WindowHandle) -> Result<Self, crate::SoftBufferError<W>> {
+    pub unsafe fn new<W: HasRawWindowHandle>(handle: &Win32WindowHandle) -> Result<Self, crate::SwBufError<W>> {
         let dc = GetDC(handle.hwnd as HWND);
 
         if dc.is_null(){
-            return Err(SoftBufferError::PlatformError(Some("Device Context is null".into()), None));
+            return Err(SwBufError::PlatformError(Some("Device Context is null".into()), None));
         }
 
         Ok(

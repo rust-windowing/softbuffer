@@ -1,4 +1,4 @@
-use crate::{error::unwrap, GraphicsContextImpl, SoftBufferError};
+use crate::{error::unwrap, GraphicsContextImpl, SwBufError};
 use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
 use raw_window_handle::{HasRawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
 use std::{
@@ -43,7 +43,7 @@ impl WaylandImpl {
     pub unsafe fn new<W: HasRawWindowHandle>(
         window_handle: WaylandWindowHandle,
         display_handle: WaylandDisplayHandle,
-    ) -> Result<Self, SoftBufferError<W>> {
+    ) -> Result<Self, SwBufError<W>> {
         let conn = Connection::from_backend(Backend::from_foreign_display(
             display_handle.display as *mut _,
         ));

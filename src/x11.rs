@@ -1,4 +1,4 @@
-use crate::{GraphicsContextImpl, SoftBufferError};
+use crate::{GraphicsContextImpl, SwBufError};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::os::raw::{c_char, c_uint};
 use x11_dl::xlib::{Display, Visual, Xlib, ZPixmap, GC};
@@ -13,10 +13,10 @@ pub struct X11Impl {
 }
 
 impl X11Impl {
-    pub unsafe fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(window_handle: XlibWindowHandle, display_handle: XlibDisplayHandle) -> Result<Self, SoftBufferError<W>> {
+    pub unsafe fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(window_handle: XlibWindowHandle, display_handle: XlibDisplayHandle) -> Result<Self, SwBufError<W>> {
         let lib = match Xlib::open() {
             Ok(lib) => lib,
-            Err(e) => return Err(SoftBufferError::PlatformError(Some("Failed to open Xlib".into()), Some(Box::new(e))))
+            Err(e) => return Err(SwBufError::PlatformError(Some("Failed to open Xlib".into()), Some(Box::new(e))))
         };
         let screen = (lib.XDefaultScreen)(display_handle.display as *mut Display);
         let gc = (lib.XDefaultGC)(display_handle.display as *mut Display, screen);

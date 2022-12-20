@@ -20,7 +20,7 @@ mod orbital;
 
 mod error;
 
-pub use error::SoftBufferError;
+pub use error::SwBufError;
 
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle};
 
@@ -39,7 +39,7 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
     /// # Safety
     ///
     ///  - Ensure that the passed object is valid to draw a 2D buffer to
-    pub unsafe fn new(window: W) -> Result<Self, SoftBufferError<W>> {
+    pub unsafe fn new(window: W) -> Result<Self, SwBufError<W>> {
         let raw_window_handle = window.raw_window_handle();
         let raw_display_handle = window.raw_display_handle();
 
@@ -56,7 +56,7 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
             (RawWindowHandle::Web(web_handle), _) => Box::new(web::WebImpl::new(web_handle)?),
             #[cfg(target_os = "redox")]
             (RawWindowHandle::Orbital(orbital_handle), _) => Box::new(orbital::OrbitalImpl::new(orbital_handle)?),
-            (unimplemented_window_handle, unimplemented_display_handle) => return Err(SoftBufferError::UnsupportedPlatform {
+            (unimplemented_window_handle, unimplemented_display_handle) => return Err(SwBufError::UnsupportedPlatform {
                 window,
                 human_readable_window_platform_name: window_handle_type_name(&unimplemented_window_handle),
                 human_readable_display_platform_name: display_handle_type_name(&unimplemented_display_handle),

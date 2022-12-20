@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::GraphicsContextImpl;
-use crate::SoftBufferError;
+use crate::SwBufError;
 
 struct OrbitalMap {
     address: usize,
@@ -47,7 +47,7 @@ pub struct OrbitalImpl {
 }
 
 impl OrbitalImpl {
-    pub fn new<W: HasRawWindowHandle>(handle: OrbitalWindowHandle) -> Result<Self, SoftBufferError<W>> {
+    pub fn new<W: HasRawWindowHandle>(handle: OrbitalWindowHandle) -> Result<Self, SwBufError<W>> {
         Ok(Self { handle })
     }
 }
