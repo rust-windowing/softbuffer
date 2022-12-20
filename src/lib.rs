@@ -33,16 +33,23 @@ pub struct GraphicsContext {
 }
 
 impl GraphicsContext {
-    /// Creates a new instance of this struct, consuming the given window.
+    /// Creates a new instance of this struct, using the provided window.
     ///
     /// # Safety
     ///
-    ///  - Ensure that the passed object is valid to draw a 2D buffer to, and is valid for the
+    ///  - Ensure that the provided window is valid to draw a 2D buffer to, and is valid for the
     ///    lifetime of the GraphicsContext
     pub unsafe fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(window: &W) -> Result<Self, SwBufError> {
-        let raw_window_handle = window.raw_window_handle();
-        let raw_display_handle = window.raw_display_handle();
+        Self::from_raw(window.raw_window_handle(), window.raw_display_handle())
+    }
 
+    /// Creates a new instance of this struct, using the provided raw handles
+    ///
+    /// # Safety
+    ///
+    ///  - Ensure that the provided handles are valid to draw a 2D buffer to, and are valid for the
+    ///    lifetime of the GraphicsContext
+    pub unsafe fn from_raw(raw_window_handle: RawWindowHandle, raw_display_handle: RawDisplayHandle) -> Result<Self, SwBufError> {
         let imple: Box<dyn GraphicsContextImpl> = match (raw_window_handle, raw_display_handle) {
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             (RawWindowHandle::Xlib(xlib_window_handle), RawDisplayHandle::Xlib(xlib_display_handle)) => Box::new(x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?),
