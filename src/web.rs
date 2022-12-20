@@ -1,4 +1,3 @@
-use raw_window_handle::HasRawWindowHandle;
 use raw_window_handle::WebWindowHandle;
 use wasm_bindgen::Clamped;
 use wasm_bindgen::JsCast;
@@ -15,7 +14,7 @@ pub struct WebImpl {
 }
 
 impl WebImpl {
-    pub fn new<W: HasRawWindowHandle>(handle: WebWindowHandle) -> Result<Self, SwBufError<W>> {
+    pub fn new(handle: WebWindowHandle) -> Result<Self, SwBufError> {
         let canvas: HtmlCanvasElement = web_sys::window()
             .ok_or_else(|| {
                 SwBufError::PlatformError(

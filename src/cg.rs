@@ -1,5 +1,5 @@
 use crate::{GraphicsContextImpl, SwBufError};
-use raw_window_handle::{HasRawWindowHandle, AppKitWindowHandle};
+use raw_window_handle::AppKitWindowHandle;
 use core_graphics::base::{kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault};
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::data_provider::CGDataProvider;
@@ -17,7 +17,7 @@ pub struct CGImpl {
 }
 
 impl CGImpl {
-    pub unsafe fn new<W: HasRawWindowHandle>(handle: AppKitWindowHandle) -> Result<Self, SwBufError<W>> {
+    pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SwBufError> {
         let view = handle.ns_view as id;
         let layer = CALayer::new();
         let subview: id = NSView::alloc(nil).initWithFrame_(view.frame());

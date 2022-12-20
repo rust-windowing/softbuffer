@@ -1,6 +1,6 @@
 use crate::{error::unwrap, GraphicsContextImpl, SwBufError};
 use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
-use raw_window_handle::{HasRawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
+use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
 use std::{
     ffi::CStr,
     fs::File,
@@ -40,10 +40,10 @@ impl Drop for WaylandBuffer {
 }
 
 impl WaylandImpl {
-    pub unsafe fn new<W: HasRawWindowHandle>(
+    pub unsafe fn new(
         window_handle: WaylandWindowHandle,
         display_handle: WaylandDisplayHandle,
-    ) -> Result<Self, SwBufError<W>> {
+    ) -> Result<Self, SwBufError> {
         let conn = Connection::from_backend(Backend::from_foreign_display(
             display_handle.display as *mut _,
         ));

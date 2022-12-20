@@ -25,7 +25,7 @@ fn main() {
             .unwrap();
     }
 
-    let mut graphics_context = unsafe { GraphicsContext::new(window) }.unwrap();
+    let mut graphics_context = unsafe { GraphicsContext::new(&window) }.unwrap();
 
     let mut old_size = (0, 0);
     let mut frames = pre_render_frames(0, 0);
@@ -35,10 +35,10 @@ fn main() {
         *control_flow = ControlFlow::Poll;
 
         match event {
-            Event::RedrawRequested(window_id) if window_id == graphics_context.window().id() => {
+            Event::RedrawRequested(window_id) if window_id == window.id() => {
                 let elapsed = start.elapsed().as_secs_f64() % 1.0;
                 let (width, height) = {
-                    let size = graphics_context.window().inner_size();
+                    let size = window.inner_size();
                     (size.width, size.height)
                 };
 
@@ -51,12 +51,12 @@ fn main() {
                 graphics_context.set_buffer(buffer.as_slice(), width as u16, height as u16);
             }
             Event::MainEventsCleared => {
-                graphics_context.window().request_redraw();
+                window.request_redraw();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
-            } if window_id == graphics_context.window().id() => {
+            } if window_id == window.id() => {
                 *control_flow = ControlFlow::Exit;
             }
             _ => {}

@@ -28,18 +28,18 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandl
 /// write to a window on that platform. This struct owns the window that this data corresponds to
 /// to ensure safety, as that data must be destroyed before the window itself is destroyed. You may
 /// access the underlying window via [`window`](Self::window) and [`window_mut`](Self::window_mut).
-pub struct GraphicsContext<W: HasRawWindowHandle + HasRawDisplayHandle> {
-    window: W,
+pub struct GraphicsContext {
     graphics_context_impl: Box<dyn GraphicsContextImpl>,
 }
 
-impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
+impl GraphicsContext {
     /// Creates a new instance of this struct, consuming the given window.
     ///
     /// # Safety
     ///
-    ///  - Ensure that the passed object is valid to draw a 2D buffer to
-    pub unsafe fn new(window: W) -> Result<Self, SwBufError<W>> {
+    ///  - Ensure that the passed object is valid to draw a 2D buffer to, and is valid for the
+    ///    lifetime of the GraphicsContext
+    pub unsafe fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(window: &W) -> Result<Self, SwBufError> {
         let raw_window_handle = window.raw_window_handle();
         let raw_display_handle = window.raw_display_handle();
 
@@ -57,7 +57,6 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
             #[cfg(target_os = "redox")]
             (RawWindowHandle::Orbital(orbital_handle), _) => Box::new(orbital::OrbitalImpl::new(orbital_handle)?),
             (unimplemented_window_handle, unimplemented_display_handle) => return Err(SwBufError::UnsupportedPlatform {
-                window,
                 human_readable_window_platform_name: window_handle_type_name(&unimplemented_window_handle),
                 human_readable_display_platform_name: display_handle_type_name(&unimplemented_display_handle),
                 window_handle: unimplemented_window_handle,
@@ -66,34 +65,8 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
         };
 
         Ok(Self {
-            window,
             graphics_context_impl: imple,
         })
-    }
-
-    /// Gets shared access to the underlying window.
-    #[inline]
-    pub fn window(&self) -> &W {
-        &self.window
-    }
-
-    /// Gets mut/exclusive access to the underlying window.
-    ///
-    /// This method is `unsafe` because it could be used to replace the window with another one,
-    /// thus dropping the original window and violating the property that this [`GraphicsContext`]
-    /// will always be destroyed before the window it writes into. This method should only be used
-    /// when the window type in use requires mutable access to perform some action on an existing
-    /// window.
-    ///
-    /// # Safety
-    ///
-    /// - After the returned mutable reference is dropped, the window must still be the same window
-    ///   which this [`GraphicsContext`] was created for; and within that window, the
-    ///   platform-specific configuration for 2D drawing must not have been modified. (For example,
-    ///   on macOS the view hierarchy of the window must not have been modified.)
-    #[inline]
-    pub unsafe fn window_mut(&mut self) -> &mut W {
-        &mut self.window
     }
 
     /// Shows the given buffer with the given width and height on the window corresponding to this
@@ -128,14 +101,6 @@ impl<W: HasRawWindowHandle + HasRawDisplayHandle> GraphicsContext<W> {
         unsafe {
             self.graphics_context_impl.set_buffer(buffer, width, height);
         }
-    }
-}
-
-impl<W: HasRawWindowHandle + HasRawDisplayHandle> AsRef<W> for GraphicsContext<W> {
-    /// Equivalent to [`self.window()`](Self::window()).
-    #[inline]
-    fn as_ref(&self) -> &W {
-        self.window()
     }
 }
 

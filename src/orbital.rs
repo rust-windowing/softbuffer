@@ -1,4 +1,3 @@
-use raw_window_handle::HasRawWindowHandle;
 use raw_window_handle::OrbitalWindowHandle;
 use std::{
     cmp,
@@ -47,7 +46,7 @@ pub struct OrbitalImpl {
 }
 
 impl OrbitalImpl {
-    pub fn new<W: HasRawWindowHandle>(handle: OrbitalWindowHandle) -> Result<Self, SwBufError<W>> {
+    pub fn new(handle: OrbitalWindowHandle) -> Result<Self, SwBufError> {
         Ok(Self { handle })
     }
 }

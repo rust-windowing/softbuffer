@@ -1,5 +1,5 @@
 use crate::{GraphicsContextImpl, SwBufError};
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, XlibDisplayHandle, XlibWindowHandle};
+use raw_window_handle::{XlibDisplayHandle, XlibWindowHandle};
 use std::os::raw::{c_char, c_uint};
 use x11_dl::xlib::{Display, Visual, Xlib, ZPixmap, GC};
 
@@ -13,7 +13,7 @@ pub struct X11Impl {
 }
 
 impl X11Impl {
-    pub unsafe fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(window_handle: XlibWindowHandle, display_handle: XlibDisplayHandle) -> Result<Self, SwBufError<W>> {
+    pub unsafe fn new(window_handle: XlibWindowHandle, display_handle: XlibDisplayHandle) -> Result<Self, SwBufError> {
         let lib = match Xlib::open() {
             Ok(lib) => lib,
             Err(e) => return Err(SwBufError::PlatformError(Some("Failed to open Xlib".into()), Some(Box::new(e))))

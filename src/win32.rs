@@ -1,5 +1,5 @@
 use crate::{GraphicsContextImpl, SwBufError};
-use raw_window_handle::{HasRawWindowHandle, Win32WindowHandle};
+use raw_window_handle::Win32WindowHandle;
 use std::os::raw::c_int;
 
 use windows_sys::Win32::Foundation::HWND;
@@ -22,7 +22,7 @@ struct BitmapInfo {
 }
 
 impl Win32Impl {
-    pub unsafe fn new<W: HasRawWindowHandle>(handle: &Win32WindowHandle) -> Result<Self, crate::SwBufError<W>> {
+    pub unsafe fn new(handle: &Win32WindowHandle) -> Result<Self, crate::SwBufError> {
         let dc = GetDC(handle.hwnd as HWND);
 
         if dc == 0 {
