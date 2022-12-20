@@ -32,7 +32,7 @@ fn main() {
             .unwrap();
     }
 
-    let mut graphics_context = unsafe { GraphicsContext::new(&window) }.unwrap();
+    let mut graphics_context = unsafe { GraphicsContext::new(&window, &window) }.unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;

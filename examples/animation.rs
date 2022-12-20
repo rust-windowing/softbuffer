@@ -25,7 +25,7 @@ fn main() {
             .unwrap();
     }
 
-    let mut graphics_context = unsafe { GraphicsContext::new(&window) }.unwrap();
+    let mut graphics_context = unsafe { GraphicsContext::new(&window, &window) }.unwrap();
 
     let mut old_size = (0, 0);
     let mut frames = pre_render_frames(0, 0);

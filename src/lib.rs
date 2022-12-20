@@ -33,17 +33,17 @@ pub struct GraphicsContext {
 }
 
 impl GraphicsContext {
-    /// Creates a new instance of this struct, using the provided window.
+    /// Creates a new instance of this struct, using the provided window and display.
     ///
     /// # Safety
     ///
-    ///  - Ensure that the provided window is valid to draw a 2D buffer to, and is valid for the
+    ///  - Ensure that the provided objects are valid to draw a 2D buffer to, and are valid for the
     ///    lifetime of the GraphicsContext
-    pub unsafe fn new<W: HasRawWindowHandle + HasRawDisplayHandle>(window: &W) -> Result<Self, SwBufError> {
-        Self::from_raw(window.raw_window_handle(), window.raw_display_handle())
+    pub unsafe fn new<W: HasRawWindowHandle, D: HasRawDisplayHandle>(window: &W, display: &D) -> Result<Self, SwBufError> {
+        Self::from_raw(window.raw_window_handle(), display.raw_display_handle())
     }
 
-    /// Creates a new instance of this struct, using the provided raw handles
+    /// Creates a new instance of this struct, using the provided raw window and display handles
     ///
     /// # Safety
     ///
