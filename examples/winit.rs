@@ -54,6 +54,12 @@ fn main() {
             } if window_id == window.id() => {
                 *control_flow = ControlFlow::Exit;
             }
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                window_id,
+            } if window_id == window.id() => {
+                window.request_redraw();
+            }
             _ => {}
         }
     });
