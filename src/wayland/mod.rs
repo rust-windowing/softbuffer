@@ -1,5 +1,6 @@
 use crate::{error::unwrap, GraphicsContextImpl, SwBufError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
+use std::collections::VecDeque;
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
@@ -17,7 +18,8 @@ pub struct WaylandImpl {
     qh: QueueHandle<State>,
     surface: wl_surface::WlSurface,
     shm: wl_shm::WlShm,
-    buffers: Vec<WaylandBuffer>,
+    // 0-2 buffers
+    buffers: VecDeque<WaylandBuffer>,
 }
 
 impl WaylandImpl {
@@ -53,20 +55,28 @@ impl WaylandImpl {
             qh,
             surface,
             shm,
-            buffers: Vec::new(),
+            buffers: Default::default(),
         })
     }
 
     // Allocate or reuse a buffer of the given size
     fn buffer(&mut self, width: i32, height: i32) -> &WaylandBuffer {
-        if let Some(idx) = self.buffers.iter().position(|i| i.released()) {
-            self.buffers[idx].resize(width, height);
-            &mut self.buffers[idx]
+        let buffer = if let Some(mut buffer) = self.buffers.pop_front() {
+            if buffer.released() {
+                buffer.resize(width, height);
+                buffer
+            } else {
+                // If we have more than 1 unreleased buffer, destroy it
+                if self.buffers.len() == 0 {
+                    self.buffers.push_back(buffer);
+                }
+                WaylandBuffer::new(&self.shm, width, height, &self.qh)
+            }
         } else {
-            self.buffers
-                .push(WaylandBuffer::new(&self.shm, width, height, &self.qh));
-            self.buffers.last().unwrap()
-        }
+            WaylandBuffer::new(&self.shm, width, height, &self.qh)
+        };
+        self.buffers.push_back(buffer);
+        self.buffers.back().unwrap()
     }
 }
 
