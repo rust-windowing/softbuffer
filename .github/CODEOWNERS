@@ -1,0 +1,17 @@
+# Apple platforms
+/src/cg.rs
+
+# Redox
+/src/orbital.rs
+
+# Wayland (no maintainer)
+/src/wayland
+
+# Web (no maintainer)
+/src/web.rs
+
+# Windows (no maintainer)
+/src/win32.rs
+
+# X11 (no maintainer)
+/src/x11.rs
