@@ -2,7 +2,7 @@
 /src/cg.rs          @madsmtm
 
 # Redox
-/src/orbital.rs
+/src/orbital.rs     @jackpot51
 
 # Wayland (no maintainer)
 /src/wayland
