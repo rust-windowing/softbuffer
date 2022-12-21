@@ -54,7 +54,7 @@ For now, the priority for new platforms is:
 
 Example
 ==
-```no_run
+```rust,no_run
 use swbuf::GraphicsContext;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
