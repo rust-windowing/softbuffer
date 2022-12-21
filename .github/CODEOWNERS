@@ -4,8 +4,8 @@
 # Redox
 /src/orbital.rs     @jackpot51
 
-# Wayland (no maintainer)
-/src/wayland
+# Wayland
+/src/wayland        @ids1024
 
 # Web (no maintainer)
 /src/web.rs
