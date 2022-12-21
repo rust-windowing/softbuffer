@@ -1,5 +1,5 @@
 # Apple platforms
-/src/cg.rs
+/src/cg.rs          @madsmtm
 
 # Redox
 /src/orbital.rs
