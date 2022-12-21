@@ -25,9 +25,7 @@ pub use error::SwBufError;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
-/// write to a window on that platform. This struct owns the window that this data corresponds to
-/// to ensure safety, as that data must be destroyed before the window itself is destroyed. You may
-/// access the underlying window via [`window`](Self::window) and [`window_mut`](Self::window_mut).
+/// write to a window on that platform.
 pub struct GraphicsContext {
     graphics_context_impl: Box<dyn GraphicsContextImpl>,
 }
