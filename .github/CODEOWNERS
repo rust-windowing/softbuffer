@@ -10,8 +10,8 @@
 # Web (no maintainer)
 /src/web.rs
 
-# Windows (no maintainer)
-/src/win32.rs
+# Windows
+/src/win32.rs       @notgull
 
-# X11 (no maintainer)
-/src/x11.rs
+# X11
+/src/x11.rs         @notgull
