@@ -27,7 +27,54 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandl
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
 pub struct GraphicsContext {
-    graphics_context_impl: Box<dyn GraphicsContextImpl>,
+    /// The inner static dispatch object.
+    /// 
+    /// This is boxed so that `GraphicsContext` is the same size on every platform, which should
+    /// hopefully prevent surprises.
+    graphics_context_impl: Box<Dispatch>
+}
+
+/// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
+macro_rules! make_dispatch {
+    (
+        $(
+            $(#[$attr:meta])*
+            $name: ident ($inner_ty: ty),
+        )*
+    ) => {
+        enum Dispatch {
+            $(
+                $(#[$attr])*
+                $name($inner_ty),
+            )*
+        }
+
+        impl Dispatch {
+            unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.set_buffer(buffer, width, height),
+                    )*
+                }
+            }
+        }
+    };
+}
+
+make_dispatch! {
+    #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
+    X11(x11::X11Impl),
+    #[cfg(all(feature = "wayland", any(target_os = "linux", target_os = "freebsd")))]
+    Wayland(wayland::WaylandImpl),
+    #[cfg(target_os = "windows")]
+    Win32(win32::Win32Impl),
+    #[cfg(target_os = "macos")]
+    CG(cg::CGImpl),
+    #[cfg(target_arch = "wasm32")]
+    Web(web::WebImpl),
+    #[cfg(target_os = "redox")]
+    Orbital(orbital::OrbitalImpl),
 }
 
 impl GraphicsContext {
@@ -48,19 +95,19 @@ impl GraphicsContext {
     ///  - Ensure that the provided handles are valid to draw a 2D buffer to, and are valid for the
     ///    lifetime of the GraphicsContext
     pub unsafe fn from_raw(raw_window_handle: RawWindowHandle, raw_display_handle: RawDisplayHandle) -> Result<Self, SwBufError> {
-        let imple: Box<dyn GraphicsContextImpl> = match (raw_window_handle, raw_display_handle) {
+        let imple: Dispatch = match (raw_window_handle, raw_display_handle) {
             #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
-            (RawWindowHandle::Xlib(xlib_window_handle), RawDisplayHandle::Xlib(xlib_display_handle)) => Box::new(x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?),
+            (RawWindowHandle::Xlib(xlib_window_handle), RawDisplayHandle::Xlib(xlib_display_handle)) => Dispatch::X11(x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?),
             #[cfg(all(feature = "wayland", any(target_os = "linux", target_os = "freebsd")))]
-            (RawWindowHandle::Wayland(wayland_window_handle), RawDisplayHandle::Wayland(wayland_display_handle)) => Box::new(wayland::WaylandImpl::new(wayland_window_handle, wayland_display_handle)?),
+            (RawWindowHandle::Wayland(wayland_window_handle), RawDisplayHandle::Wayland(wayland_display_handle)) => Dispatch::Wayland(wayland::WaylandImpl::new(wayland_window_handle, wayland_display_handle)?), 
             #[cfg(target_os = "windows")]
-            (RawWindowHandle::Win32(win32_handle), _) => Box::new(win32::Win32Impl::new(&win32_handle)?),
+            (RawWindowHandle::Win32(win32_handle), _) => Dispatch::Win32(win32::Win32Impl::new(&win32_handle)?),
             #[cfg(target_os = "macos")]
-            (RawWindowHandle::AppKit(appkit_handle), _) => Box::new(cg::CGImpl::new(appkit_handle)?),
+            (RawWindowHandle::AppKit(appkit_handle), _) => Dispatch::CG(cg::CGImpl::new(appkit_handle)?),
             #[cfg(target_arch = "wasm32")]
-            (RawWindowHandle::Web(web_handle), _) => Box::new(web::WebImpl::new(web_handle)?),
+            (RawWindowHandle::Web(web_handle), _) => Dispatch::Web(web::WebImpl::new(web_handle)?),
             #[cfg(target_os = "redox")]
-            (RawWindowHandle::Orbital(orbital_handle), _) => Box::new(orbital::OrbitalImpl::new(orbital_handle)?),
+            (RawWindowHandle::Orbital(orbital_handle), _) => Dispatch::Orbital(orbital::OrbitalImpl::new(orbital_handle)?),
             (unimplemented_window_handle, unimplemented_display_handle) => return Err(SwBufError::UnsupportedPlatform {
                 human_readable_window_platform_name: window_handle_type_name(&unimplemented_window_handle),
                 human_readable_display_platform_name: display_handle_type_name(&unimplemented_display_handle),
@@ -70,7 +117,7 @@ impl GraphicsContext {
         };
 
         Ok(Self {
-            graphics_context_impl: imple,
+            graphics_context_impl: Box::new(imple)
         })
     }
 
@@ -107,10 +154,6 @@ impl GraphicsContext {
             self.graphics_context_impl.set_buffer(buffer, width, height);
         }
     }
-}
-
-trait GraphicsContextImpl {
-    unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16);
 }
 
 fn window_handle_type_name(handle: &RawWindowHandle) -> &'static str {

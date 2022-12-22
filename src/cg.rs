@@ -1,4 +1,4 @@
-use crate::{GraphicsContextImpl, SwBufError};
+use crate::SwBufError;
 use raw_window_handle::AppKitWindowHandle;
 use core_graphics::base::{kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault};
 use core_graphics::color_space::CGColorSpace;
@@ -32,10 +32,8 @@ impl CGImpl {
         let _: () = msg_send![subview, release]; // releases subview (-1) = 1
         Ok(Self{layer})
     }
-}
 
-impl GraphicsContextImpl for CGImpl {
-    unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         let color_space = CGColorSpace::create_device_rgb();
         let data = std::slice::from_raw_parts(
             buffer.as_ptr() as *const u8,
