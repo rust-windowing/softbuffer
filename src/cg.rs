@@ -1,12 +1,14 @@
 use crate::SwBufError;
-use raw_window_handle::AppKitWindowHandle;
-use core_graphics::base::{kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault};
+use core_graphics::base::{
+    kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
+};
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::data_provider::CGDataProvider;
 use core_graphics::image::CGImage;
+use raw_window_handle::AppKitWindowHandle;
 
+use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable, NSWindow};
 use cocoa::base::{id, nil};
-use cocoa::appkit::{NSView, NSViewWidthSizable, NSViewHeightSizable, NSWindow};
 use cocoa::quartzcore::{CALayer, ContentsGravity};
 use foreign_types::ForeignType;
 
@@ -30,14 +32,13 @@ impl CGImpl {
 
         view.addSubview_(subview); // retains subview (+1) = 2
         let _: () = msg_send![subview, release]; // releases subview (-1) = 1
-        Ok(Self{layer})
+        Ok(Self { layer })
     }
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         let color_space = CGColorSpace::create_device_rgb();
-        let data = std::slice::from_raw_parts(
-            buffer.as_ptr() as *const u8,
-            buffer.len() * 4).to_vec();
+        let data =
+            std::slice::from_raw_parts(buffer.as_ptr() as *const u8, buffer.len() * 4).to_vec();
         let data_provider = CGDataProvider::from_buffer(Arc::new(data));
         let image = CGImage::new(
             width as usize,

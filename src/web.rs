@@ -32,10 +32,7 @@ impl WebImpl {
             // `querySelector` only throws an error if the selector is invalid.
             .unwrap()
             .ok_or_else(|| {
-                SwBufError::PlatformError(
-                    Some("No canvas found with the given id".into()),
-                    None,
-                )
+                SwBufError::PlatformError(Some("No canvas found with the given id".into()), None)
             })?
             // We already made sure this was a canvas in `querySelector`.
             .unchecked_into();

@@ -1,9 +1,5 @@
 use raw_window_handle::OrbitalWindowHandle;
-use std::{
-    cmp,
-    slice,
-    str,
-};
+use std::{cmp, slice, str};
 
 use crate::SwBufError;
 
@@ -19,12 +15,15 @@ impl OrbitalMap {
         let size = pages * syscall::PAGE_SIZE;
 
         // Map window buffer
-        let address = syscall::fmap(fd, &syscall::Map {
-            offset: 0,
-            size,
-            flags: syscall::PROT_READ | syscall::PROT_WRITE,
-            address: 0,
-        })?;
+        let address = syscall::fmap(
+            fd,
+            &syscall::Map {
+                offset: 0,
+                size,
+                flags: syscall::PROT_READ | syscall::PROT_WRITE,
+                address: 0,
+            },
+        )?;
 
         Ok(Self { address, size })
     }
@@ -34,8 +33,7 @@ impl Drop for OrbitalMap {
     fn drop(&mut self) {
         unsafe {
             // Unmap window buffer on drop
-            syscall::funmap(self.address, self.size)
-                .expect("failed to unmap orbital window");
+            syscall::funmap(self.address, self.size).expect("failed to unmap orbital window");
         }
     }
 }
@@ -71,15 +69,13 @@ impl OrbitalImpl {
 
         {
             // Map window buffer
-            let window_map = OrbitalMap::new(
-                window_fd,
-                window_width * window_height * 4
-            ).expect("failed to map orbital window");
+            let window_map = OrbitalMap::new(window_fd, window_width * window_height * 4)
+                .expect("failed to map orbital window");
 
             // Window buffer is u32 color data in 0xAABBGGRR format
             let window_data = slice::from_raw_parts_mut(
                 window_map.address as *mut u32,
-                window_width * window_height
+                window_width * window_height,
             );
 
             // Copy each line, cropping to fit
@@ -90,9 +86,8 @@ impl OrbitalImpl {
             for y in 0..min_height {
                 let offset_buffer = y * width;
                 let offset_data = y * window_width;
-                window_data[offset_data..offset_data + min_width].copy_from_slice(
-                    &buffer[offset_buffer..offset_buffer + min_width]
-                );
+                window_data[offset_data..offset_data + min_width]
+                    .copy_from_slice(&buffer[offset_buffer..offset_buffer + min_width]);
             }
 
             // Window buffer map is dropped here

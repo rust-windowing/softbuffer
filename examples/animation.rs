@@ -1,7 +1,7 @@
-use std::f64::consts::PI;
 use instant::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
+use std::f64::consts::PI;
 use swbuf::GraphicsContext;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -42,12 +42,12 @@ fn main() {
                     (size.width, size.height)
                 };
 
-                if (width, height) != old_size{
+                if (width, height) != old_size {
                     old_size = (width, height);
                     frames = pre_render_frames(width as usize, height as usize);
                 };
 
-                let buffer = &frames[((elapsed*60.0).round() as usize).clamp(0, 59)];
+                let buffer = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
                 graphics_context.set_buffer(buffer.as_slice(), width as u16, height as u16);
             }
             Event::MainEventsCleared => {
@@ -64,17 +64,20 @@ fn main() {
     });
 }
 
-fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>>{
-    let render = |frame_id|{
-        let elapsed = ((frame_id as f64)/(60.0))*2.0*PI;
+fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>> {
+    let render = |frame_id| {
+        let elapsed = ((frame_id as f64) / (60.0)) * 2.0 * PI;
 
         (0..(width * height))
             .map(|index| {
-                let y = ((index / width) as f64)/(height as f64);
-                let x = ((index % width) as f64)/(width as f64);
-                let red = ((((y + elapsed).sin()*0.5+0.5)*255.0).round() as u32).clamp(0, 255);
-                let green = ((((x + elapsed).sin()*0.5+0.5)*255.0).round() as u32).clamp(0, 255);
-                let blue = ((((y - elapsed).cos()*0.5+0.5)*255.0).round() as u32).clamp(0, 255);
+                let y = ((index / width) as f64) / (height as f64);
+                let x = ((index % width) as f64) / (width as f64);
+                let red =
+                    ((((y + elapsed).sin() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
+                let green =
+                    ((((x + elapsed).sin() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
+                let blue =
+                    ((((y - elapsed).cos() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
 
                 blue | (green << 8) | (red << 16)
             })

@@ -7,13 +7,16 @@ use winit::window::WindowBuilder;
 fn main() {
     //see fruit.jpg.license for the license of fruit.jpg
     let fruit = image::load_from_memory(include_bytes!("fruit.jpg")).unwrap();
-    let buffer = fruit.pixels().map(|(_x, _y, pixel)|{
-        let red = pixel.0[0] as u32;
-        let green = pixel.0[1] as u32;
-        let blue = pixel.0[2] as u32;
+    let buffer = fruit
+        .pixels()
+        .map(|(_x, _y, pixel)| {
+            let red = pixel.0[0] as u32;
+            let green = pixel.0[1] as u32;
+            let blue = pixel.0[2] as u32;
 
-        blue | (green << 8) | (red << 16)
-    }).collect::<Vec<_>>();
+            blue | (green << 8) | (red << 16)
+        })
+        .collect::<Vec<_>>();
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
