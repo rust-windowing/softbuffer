@@ -11,15 +11,20 @@ keywords = ["framebuffer", "windowing"]
 categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
 
+[features]
+default = ["x11", "wayland"]
+wayland = ["wayland-backend", "wayland-client", "nix"]
+x11 = ["x11-dl"]
+
 [dependencies]
 thiserror = "1.0.30"
 raw-window-handle = "0.5.0"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
-nix = "0.26.1"
-wayland-backend = {version = "0.1.0-beta.14", features = ["client_system"]}
-wayland-client = {version = "0.30.0-beta.14"}
-x11-dl = "2.19.1"
+nix = { version = "0.26.1", optional = true }
+wayland-backend = { version = "0.1.0-beta.14", features = ["client_system"], optional = true }
+wayland-client = { version = "0.30.0-beta.14", optional = true }
+x11-dl = { version  = "2.19.1", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-sys]
 version = "0.42.0"
