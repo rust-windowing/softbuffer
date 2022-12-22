@@ -5,7 +5,6 @@ use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
 
-use crate::GraphicsContextImpl;
 use crate::SwBufError;
 
 pub struct WebImpl {
@@ -60,10 +59,8 @@ impl WebImpl {
 
         Ok(Self { canvas, ctx })
     }
-}
 
-impl GraphicsContextImpl for WebImpl {
-    unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         self.canvas.set_width(width.into());
         self.canvas.set_height(height.into());
 

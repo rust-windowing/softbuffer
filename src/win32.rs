@@ -1,12 +1,12 @@
 //! Implementation of software buffering for Windows.
-//! 
+//!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
-use crate::{GraphicsContextImpl, SwBufError};
+use crate::SwBufError;
 use raw_window_handle::Win32WindowHandle;
 
-use std::mem;
 use std::io;
+use std::mem;
 use std::os::raw::c_int;
 
 use windows_sys::Win32::Foundation::HWND;
@@ -33,9 +33,9 @@ struct BitmapInfo {
 
 impl Win32Impl {
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// The `Win32WindowHandle` must be a valid window handle.
     pub unsafe fn new(handle: &Win32WindowHandle) -> Result<Self, crate::SwBufError> {
         // It is valid for the window handle to be null here. Error out if it is.
@@ -56,17 +56,12 @@ impl Win32Impl {
             ));
         }
 
-        Ok(Self {
-            dc,
-            window: hwnd,
-        })
+        Ok(Self { dc, window: hwnd })
     }
-}
 
-impl GraphicsContextImpl for Win32Impl {
-    unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         // Create a new bitmap info struct.
-        let mut bitmap_info: BitmapInfo =mem::zeroed();
+        let mut bitmap_info: BitmapInfo = mem::zeroed();
 
         bitmap_info.bmi_header.biSize = mem::size_of::<BITMAPINFOHEADER>() as u32;
         bitmap_info.bmi_header.biPlanes = 1;

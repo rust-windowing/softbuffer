@@ -1,4 +1,4 @@
-use crate::{error::unwrap, GraphicsContextImpl, SwBufError};
+use crate::{error::unwrap, SwBufError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
 use std::collections::VecDeque;
 use wayland_client::{
@@ -78,10 +78,8 @@ impl WaylandImpl {
         self.buffers.push_back(buffer);
         self.buffers.back().unwrap()
     }
-}
 
-impl GraphicsContextImpl for WaylandImpl {
-    unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+    pub(super) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         let _ = self.event_queue.dispatch_pending(&mut State);
 
         let surface = self.surface.clone();

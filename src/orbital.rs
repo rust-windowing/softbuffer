@@ -5,7 +5,6 @@ use std::{
     str,
 };
 
-use crate::GraphicsContextImpl;
 use crate::SwBufError;
 
 struct OrbitalMap {
@@ -49,10 +48,8 @@ impl OrbitalImpl {
     pub fn new(handle: OrbitalWindowHandle) -> Result<Self, SwBufError> {
         Ok(Self { handle })
     }
-}
 
-impl GraphicsContextImpl for OrbitalImpl {
-    unsafe fn set_buffer(&mut self, buffer: &[u32], width_u16: u16, height_u16: u16) {
+    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width_u16: u16, height_u16: u16) {
         let window_fd = self.handle.window as usize;
 
         // Read the current width and size

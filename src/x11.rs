@@ -1,10 +1,10 @@
 //! Implementation of software buffering for X11.
-//! 
+//!
 //! This module converts the input buffer into an XImage and then sends it over the wire to be
 //! drawn. A more effective implementation would use shared memory instead of the wire. In
 //! addition, we may also want to blit to a pixmap instead of a window.
 
-use crate::{GraphicsContextImpl, SwBufError};
+use crate::SwBufError;
 use raw_window_handle::{XlibDisplayHandle, XlibWindowHandle};
 use std::os::raw::{c_char, c_uint};
 use x11_dl::xlib::{Display, Visual, Xlib, ZPixmap, GC};
@@ -32,9 +32,9 @@ pub struct X11Impl {
 
 impl X11Impl {
     /// Create a new `X11Impl` from a `XlibWindowHandle` and `XlibDisplayHandle`.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// The `XlibWindowHandle` and `XlibDisplayHandle` must be valid.
     pub unsafe fn new(
         window_handle: XlibWindowHandle,
@@ -83,10 +83,8 @@ impl X11Impl {
             depth,
         })
     }
-}
 
-impl GraphicsContextImpl for X11Impl {
-    unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         // Create the image from the buffer.
         let image = (self.lib.XCreateImage)(
             self.display_handle.display as *mut Display,
