@@ -3,6 +3,7 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum SwBufError {
     #[error(
         "The provided window returned an unsupported platform: {human_readable_window_platform_name}, {human_readable_display_platform_name}."
@@ -13,6 +14,13 @@ pub enum SwBufError {
         window_handle: RawWindowHandle,
         display_handle: RawDisplayHandle
     },
+
+    #[error("The provided window handle is null.")]
+    IncompleteWindowHandle,
+
+    #[error("The provided display handle is null.")]
+    IncompleteDisplayHandle,
+
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>)
 }
