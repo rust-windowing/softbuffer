@@ -56,7 +56,7 @@ impl X11Impl {
             return Err(SwBufError::IncompleteDisplayHandle);
         }
 
-        if window_handle.window.is_null() {
+        if window_handle.window == 0 {
             return Err(SwBufError::IncompleteWindowHandle);
         }
 
