@@ -33,7 +33,7 @@ impl WaylandBuffer {
             .expect("Failed to create memfd to store buffer.");
         let tempfile = unsafe { File::from_raw_fd(tempfile_fd) };
         let pool_size = width * height * 4;
-        let pool = shm.create_pool(tempfile.as_raw_fd(), pool_size, &qh, ());
+        let pool = shm.create_pool(tempfile.as_raw_fd(), pool_size, qh, ());
         let released = Arc::new(AtomicBool::new(true));
         let buffer = pool.create_buffer(
             0,
@@ -41,7 +41,7 @@ impl WaylandBuffer {
             height,
             width * 4,
             wl_shm::Format::Xrgb8888,
-            &qh,
+            qh,
             released.clone(),
         );
         Self {
@@ -129,9 +129,8 @@ impl Dispatch<wl_buffer::WlBuffer, Arc<AtomicBool>> for State {
         _: &Connection,
         _: &QueueHandle<State>,
     ) {
-        match event {
-            wl_buffer::Event::Release => released.store(true, Ordering::SeqCst),
-            _ => {}
+        if let wl_buffer::Event::Release = event {
+            released.store(true, Ordering::SeqCst);
         }
     }
 }

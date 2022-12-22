@@ -51,7 +51,7 @@ impl WaylandImpl {
             "Failed to create proxy for surface ID.",
         )?;
         Ok(Self {
-            event_queue: event_queue,
+            event_queue,
             qh,
             surface,
             shm,
@@ -67,7 +67,7 @@ impl WaylandImpl {
                 buffer
             } else {
                 // If we have more than 1 unreleased buffer, destroy it
-                if self.buffers.len() == 0 {
+                if self.buffers.is_empty() {
                     self.buffers.push_back(buffer);
                 }
                 WaylandBuffer::new(&self.shm, width, height, &self.qh)

@@ -31,10 +31,10 @@ fn main() {
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                let buffer = (0..((BUFFER_WIDTH * BUFFER_HEIGHT) as usize))
+                let buffer = (0..(BUFFER_WIDTH * BUFFER_HEIGHT))
                     .map(|index| {
-                        let y = index / (BUFFER_WIDTH as usize);
-                        let x = index % (BUFFER_WIDTH as usize);
+                        let y = index / BUFFER_WIDTH;
+                        let x = index % BUFFER_WIDTH;
                         let red = x % 255;
                         let green = y % 255;
                         let blue = (x * y) % 255;

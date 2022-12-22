@@ -67,21 +67,18 @@ fn main() {
 fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>>{
     let render = |frame_id|{
         let elapsed = ((frame_id as f64)/(60.0))*2.0*PI;
-        let buffer = (0..((width * height) as usize))
+
+        (0..(width * height))
             .map(|index| {
-                let y = ((index / (width as usize)) as f64)/(height as f64);
-                let x = ((index % (width as usize)) as f64)/(width as f64);
+                let y = ((index / width) as f64)/(height as f64);
+                let x = ((index % width) as f64)/(width as f64);
                 let red = ((((y + elapsed).sin()*0.5+0.5)*255.0).round() as u32).clamp(0, 255);
                 let green = ((((x + elapsed).sin()*0.5+0.5)*255.0).round() as u32).clamp(0, 255);
                 let blue = ((((y - elapsed).cos()*0.5+0.5)*255.0).round() as u32).clamp(0, 255);
 
-                let color = blue | (green << 8) | (red << 16);
-
-                color
+                blue | (green << 8) | (red << 16)
             })
-            .collect::<Vec<_>>();
-
-        buffer
+            .collect::<Vec<_>>()
     };
 
     #[cfg(target_arch = "wasm32")]
