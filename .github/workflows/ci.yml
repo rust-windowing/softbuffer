@@ -33,6 +33,8 @@ jobs:
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: x11 }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "wayland,wayland-dlopen" }
           - { target: x86_64-unknown-redox,     os: ubuntu-latest,   }
+          - { target: x86_64-unknown-freebsd,   os: ubuntu-latest,   }
+          - { target: x86_64-unknown-netbsd,    os: ubuntu-latest,   }
           - { target: x86_64-apple-darwin,      os: macos-latest,    }
           # We're using Windows rather than Ubuntu to run the wasm tests because caching cargo-web
           # doesn't currently work on Linux.
@@ -77,6 +79,8 @@ jobs:
       if: >
         !((matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')) &&
         !contains(matrix.platform.target, 'redox') &&
+        !contains(matrix.platform.target, 'freebsd') &&
+        !contains(matrix.platform.target, 'netbsd') &&
         matrix.rust_version != '1.60.0'
       run: cargo $CMD test --no-run --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
@@ -85,7 +89,9 @@ jobs:
       if: >
         !((matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')) &&
         !contains(matrix.platform.target, 'wasm32') &&
-        !contains(matrix.platform.target, 'redox')
+        !contains(matrix.platform.target, 'redox') &&
+        !contains(matrix.platform.target, 'freebsd') &&
+        !contains(matrix.platform.target, 'netbsd')
       run: cargo $CMD test --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
     - name: Lint with clippy
@@ -94,5 +100,7 @@ jobs:
         (matrix.rust_version == 'stable') &&
         !contains(matrix.platform.options, '--no-default-features') &&
         !((matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')) &&
-        !contains(matrix.platform.target, 'redox')
+        !contains(matrix.platform.target, 'redox') &&
+        !contains(matrix.platform.target, 'freebsd') &&
+        !contains(matrix.platform.target, 'netbsd')
       run: cargo clippy --all-targets --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES -- -Dwarnings
