@@ -9,9 +9,9 @@ extern crate core;
 mod win32;
 #[cfg(target_os = "macos")]
 mod cg;
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
 mod x11;
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[cfg(all(feature = "wayland", any(target_os = "linux", target_os = "freebsd")))]
 mod wayland;
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -49,9 +49,9 @@ impl GraphicsContext {
     ///    lifetime of the GraphicsContext
     pub unsafe fn from_raw(raw_window_handle: RawWindowHandle, raw_display_handle: RawDisplayHandle) -> Result<Self, SwBufError> {
         let imple: Box<dyn GraphicsContextImpl> = match (raw_window_handle, raw_display_handle) {
-            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
             (RawWindowHandle::Xlib(xlib_window_handle), RawDisplayHandle::Xlib(xlib_display_handle)) => Box::new(x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?),
-            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            #[cfg(all(feature = "wayland", any(target_os = "linux", target_os = "freebsd")))]
             (RawWindowHandle::Wayland(wayland_window_handle), RawDisplayHandle::Wayland(wayland_display_handle)) => Box::new(wayland::WaylandImpl::new(wayland_window_handle, wayland_display_handle)?),
             #[cfg(target_os = "windows")]
             (RawWindowHandle::Win32(win32_handle), _) => Box::new(win32::Win32Impl::new(&win32_handle)?),
