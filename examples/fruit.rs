@@ -1,5 +1,5 @@
 use image::GenericImageView;
-use swbuf::GraphicsContext;
+use softbuffer::GraphicsContext;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;

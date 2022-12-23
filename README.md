@@ -10,15 +10,15 @@ example, it occasionally segfaults on some platforms and is missing key features
 icon. While it would be possible to add these features to minifb, it makes more sense to instead use the standard
 window handling systems.
 
-swbuf integrates with the [raw-window-handle](https://crates.io/crates/raw-window-handle) crate
+Softbuffer integrates with the [raw-window-handle](https://crates.io/crates/raw-window-handle) crate
 to allow writing to a window in a cross-platform way while using the very high quality dedicated window management
 libraries that are available in the Rust ecosystem.
 
-What about [pixels](https://crates.io/crates/pixels)? Pixels accomplishes a very similar goal to swbuf,
+What about [pixels](https://crates.io/crates/pixels)? Pixels accomplishes a very similar goal to Softbuffer,
 however there are two key differences. Pixels provides some capacity for GPU-accelerated post-processing of what is
-displayed, while swbuf does not. Due to not having this post-processing, swbuf does not rely on the GPU or
+displayed, while Softbuffer does not. Due to not having this post-processing, Softbuffer does not rely on the GPU or
 hardware accelerated graphics stack in any way, and is thus more portable to installations that do not have access to
-hardware acceleration (e.g. VMs, older computers, computers with misconfigured drivers). swbuf should be used over
+hardware acceleration (e.g. VMs, older computers, computers with misconfigured drivers). Softbuffer should be used over
 pixels when its GPU-accelerated post-processing effects are not needed.
 
 
@@ -31,7 +31,7 @@ from the minifb library to do platform-specific work.
 Platform support:
 ==
 Some, but not all, platforms supported in [raw-window-handle](https://crates.io/crates/raw-window-handle) are supported
-by swbuf. Pull requests are welcome to add new platforms! **Nonetheless, all major desktop platforms that winit uses
+by Softbuffer. Pull requests are welcome to add new platforms! **Nonetheless, all major desktop platforms that winit uses
 on desktop are supported.**
 
 For now, the priority for new platforms is:
@@ -55,7 +55,7 @@ For now, the priority for new platforms is:
 Example
 ==
 ```rust,no_run
-use swbuf::GraphicsContext;
+use Softbuffer::GraphicsContext;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;

@@ -28,7 +28,7 @@ pub(super) struct WaylandBuffer {
 
 impl WaylandBuffer {
     pub fn new(shm: &wl_shm::WlShm, width: i32, height: i32, qh: &QueueHandle<State>) -> Self {
-        let name = unsafe { CStr::from_bytes_with_nul_unchecked("swbuf\0".as_bytes()) };
+        let name = unsafe { CStr::from_bytes_with_nul_unchecked("softbuffer\0".as_bytes()) };
         let tempfile_fd = memfd_create(name, MemFdCreateFlag::MFD_CLOEXEC)
             .expect("Failed to create memfd to store buffer.");
         let tempfile = unsafe { File::from_raw_fd(tempfile_fd) };
