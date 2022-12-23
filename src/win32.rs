@@ -46,7 +46,7 @@ impl Win32Impl {
         // Get the handle to the device context.
         // SAFETY: We have confirmed that the window handle is valid.
         let hwnd = handle.hwnd as HWND;
-        let dc = GetDC(hwnd);
+        let dc = unsafe { GetDC(hwnd) };
 
         // GetDC returns null if there is a platform error.
         if dc == 0 {
@@ -61,7 +61,7 @@ impl Win32Impl {
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         // Create a new bitmap info struct.
-        let mut bitmap_info: BitmapInfo = mem::zeroed();
+        let mut bitmap_info: BitmapInfo = unsafe { mem::zeroed() };
 
         bitmap_info.bmi_header.biSize = mem::size_of::<BITMAPINFOHEADER>() as u32;
         bitmap_info.bmi_header.biPlanes = 1;
@@ -77,23 +77,25 @@ impl Win32Impl {
         // SAFETY:
         //  - The bitmap information is valid.
         //  - The buffer is a valid pointer to image data.
-        StretchDIBits(
-            self.dc,
-            0,
-            0,
-            width as c_int,
-            height as c_int,
-            0,
-            0,
-            width as c_int,
-            height as c_int,
-            buffer.as_ptr().cast(),
-            &bitmap_info as *const BitmapInfo as *const _,
-            DIB_RGB_COLORS,
-            SRCCOPY,
-        );
+        unsafe {
+            StretchDIBits(
+                self.dc,
+                0,
+                0,
+                width as c_int,
+                height as c_int,
+                0,
+                0,
+                width as c_int,
+                height as c_int,
+                buffer.as_ptr().cast(),
+                &bitmap_info as *const BitmapInfo as *const _,
+                DIB_RGB_COLORS,
+                SRCCOPY,
+            )
+        };
 
         // Validate the window.
-        ValidateRect(self.window, std::ptr::null_mut());
+        unsafe { ValidateRect(self.window, std::ptr::null_mut()) };
     }
 }

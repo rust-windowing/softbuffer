@@ -27,9 +27,9 @@ impl WaylandImpl {
         window_handle: WaylandWindowHandle,
         display_handle: WaylandDisplayHandle,
     ) -> Result<Self, SwBufError> {
-        let conn = Connection::from_backend(Backend::from_foreign_display(
-            display_handle.display as *mut _,
-        ));
+        // SAFETY: Ensured by user
+        let backend = unsafe { Backend::from_foreign_display(display_handle.display as *mut _) };
+        let conn = Connection::from_backend(backend);
         let (globals, event_queue) = unwrap(
             registry_queue_init(&conn),
             "Failed to make round trip to server",
@@ -40,10 +40,12 @@ impl WaylandImpl {
             "Failed to instantiate Wayland Shm",
         )?;
         let surface_id = unwrap(
-            ObjectId::from_ptr(
-                wl_surface::WlSurface::interface(),
-                window_handle.surface as _,
-            ),
+            unsafe {
+                ObjectId::from_ptr(
+                    wl_surface::WlSurface::interface(),
+                    window_handle.surface as _,
+                )
+            },
             "Failed to create proxy for surface ID.",
         )?;
         let surface = unwrap(

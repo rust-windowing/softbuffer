@@ -15,15 +15,17 @@ impl OrbitalMap {
         let size = pages * syscall::PAGE_SIZE;
 
         // Map window buffer
-        let address = syscall::fmap(
-            fd,
-            &syscall::Map {
-                offset: 0,
-                size,
-                flags: syscall::PROT_READ | syscall::PROT_WRITE,
-                address: 0,
-            },
-        )?;
+        let address = unsafe {
+            syscall::fmap(
+                fd,
+                &syscall::Map {
+                    offset: 0,
+                    size,
+                    flags: syscall::PROT_READ | syscall::PROT_WRITE,
+                    address: 0,
+                },
+            )?
+        };
 
         Ok(Self { address, size })
     }
@@ -69,14 +71,17 @@ impl OrbitalImpl {
 
         {
             // Map window buffer
-            let window_map = OrbitalMap::new(window_fd, window_width * window_height * 4)
-                .expect("failed to map orbital window");
+            let window_map =
+                unsafe { OrbitalMap::new(window_fd, window_width * window_height * 4) }
+                    .expect("failed to map orbital window");
 
             // Window buffer is u32 color data in 0xAABBGGRR format
-            let window_data = slice::from_raw_parts_mut(
-                window_map.address as *mut u32,
-                window_width * window_height,
-            );
+            let window_data = unsafe {
+                slice::from_raw_parts_mut(
+                    window_map.address as *mut u32,
+                    window_width * window_height,
+                )
+            };
 
             // Copy each line, cropping to fit
             let width = width_u16 as usize;

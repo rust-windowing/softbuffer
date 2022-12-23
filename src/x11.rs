@@ -65,14 +65,15 @@ impl X11Impl {
         // it could mean either screen index zero, or that the screen number was not set. We
         // can't tell which, so we'll just assume that the screen number was not set.
         let screen = match display_handle.screen {
-            0 => (lib.XDefaultScreen)(display_handle.display as *mut Display),
+            0 => unsafe { (lib.XDefaultScreen)(display_handle.display as *mut Display) },
             screen => screen,
         };
 
         // Use the default graphics context, visual and depth for this screen.
-        let gc = (lib.XDefaultGC)(display_handle.display as *mut Display, screen);
-        let visual = (lib.XDefaultVisual)(display_handle.display as *mut Display, screen);
-        let depth = (lib.XDefaultDepth)(display_handle.display as *mut Display, screen);
+        let gc = unsafe { (lib.XDefaultGC)(display_handle.display as *mut Display, screen) };
+        let visual =
+            unsafe { (lib.XDefaultVisual)(display_handle.display as *mut Display, screen) };
+        let depth = unsafe { (lib.XDefaultDepth)(display_handle.display as *mut Display, screen) };
 
         Ok(Self {
             window_handle,
@@ -86,35 +87,39 @@ impl X11Impl {
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         // Create the image from the buffer.
-        let image = (self.lib.XCreateImage)(
-            self.display_handle.display as *mut Display,
-            self.visual,
-            self.depth as u32,
-            ZPixmap,
-            0,
-            (buffer.as_ptr()) as *mut c_char,
-            width as u32,
-            height as u32,
-            32,
-            (width * 4) as i32,
-        );
+        let image = unsafe {
+            (self.lib.XCreateImage)(
+                self.display_handle.display as *mut Display,
+                self.visual,
+                self.depth as u32,
+                ZPixmap,
+                0,
+                (buffer.as_ptr()) as *mut c_char,
+                width as u32,
+                height as u32,
+                32,
+                (width * 4) as i32,
+            )
+        };
 
         // Draw the image to the window.
-        (self.lib.XPutImage)(
-            self.display_handle.display as *mut Display,
-            self.window_handle.window,
-            self.gc,
-            image,
-            0,
-            0,
-            0,
-            0,
-            width as c_uint,
-            height as c_uint,
-        );
+        unsafe {
+            (self.lib.XPutImage)(
+                self.display_handle.display as *mut Display,
+                self.window_handle.window,
+                self.gc,
+                image,
+                0,
+                0,
+                0,
+                0,
+                width as c_uint,
+                height as c_uint,
+            )
+        };
 
         // Delete the image data.
-        (*image).data = std::ptr::null_mut();
-        (self.lib.XDestroyImage)(image);
+        unsafe { (*image).data = std::ptr::null_mut() };
+        unsafe { (self.lib.XDestroyImage)(image) };
     }
 }
