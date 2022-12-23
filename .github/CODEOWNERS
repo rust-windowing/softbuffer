@@ -1,0 +1,20 @@
+# Core maintainers
+*                   @john01dav
+
+# Apple platforms
+/src/cg.rs          @madsmtm
+
+# Redox
+/src/orbital.rs     @jackpot51
+
+# Wayland
+/src/wayland        @ids1024
+
+# Web (no maintainer)
+/src/web.rs
+
+# Windows
+/src/win32.rs       @notgull
+
+# X11
+/src/x11.rs         @notgull
