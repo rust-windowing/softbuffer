@@ -46,7 +46,7 @@ impl Win32Impl {
         // Get the handle to the device context.
         // SAFETY: We have confirmed that the window handle is valid.
         let hwnd = handle.hwnd as HWND;
-        let dc = GetDC(hwnd);
+        let dc = unsafe { GetDC(hwnd) };
 
         // GetDC returns null if there is a platform error.
         if dc == 0 {
@@ -61,39 +61,67 @@ impl Win32Impl {
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         // Create a new bitmap info struct.
-        let mut bitmap_info: BitmapInfo = mem::zeroed();
-
-        bitmap_info.bmi_header.biSize = mem::size_of::<BITMAPINFOHEADER>() as u32;
-        bitmap_info.bmi_header.biPlanes = 1;
-        bitmap_info.bmi_header.biBitCount = 32;
-        bitmap_info.bmi_header.biCompression = BI_BITFIELDS;
-        bitmap_info.bmi_header.biWidth = width as i32;
-        bitmap_info.bmi_header.biHeight = -(height as i32);
-        bitmap_info.bmi_colors[0].rgbRed = 0xff;
-        bitmap_info.bmi_colors[1].rgbGreen = 0xff;
-        bitmap_info.bmi_colors[2].rgbBlue = 0xff;
+        let bmi_header = BITMAPINFOHEADER {
+            biSize: mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width as i32,
+            biHeight: -(height as i32),
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_BITFIELDS,
+            biSizeImage: 0,
+            biXPelsPerMeter: 0,
+            biYPelsPerMeter: 0,
+            biClrUsed: 0,
+            biClrImportant: 0,
+        };
+        let zero_quad = RGBQUAD {
+            rgbBlue: 0,
+            rgbGreen: 0,
+            rgbRed: 0,
+            rgbReserved: 0,
+        };
+        let bmi_colors = [
+            RGBQUAD {
+                rgbRed: 0xff,
+                ..zero_quad
+            },
+            RGBQUAD {
+                rgbGreen: 0xff,
+                ..zero_quad
+            },
+            RGBQUAD {
+                rgbBlue: 0xff,
+                ..zero_quad
+            },
+        ];
+        let bitmap_info = BitmapInfo {
+            bmi_header,
+            bmi_colors,
+        };
 
         // Stretch the bitmap onto the window.
         // SAFETY:
         //  - The bitmap information is valid.
         //  - The buffer is a valid pointer to image data.
-        StretchDIBits(
-            self.dc,
-            0,
-            0,
-            width as c_int,
-            height as c_int,
-            0,
-            0,
-            width as c_int,
-            height as c_int,
-            buffer.as_ptr().cast(),
-            &bitmap_info as *const BitmapInfo as *const _,
-            DIB_RGB_COLORS,
-            SRCCOPY,
-        );
+        unsafe {
+            StretchDIBits(
+                self.dc,
+                0,
+                0,
+                width as c_int,
+                height as c_int,
+                0,
+                0,
+                width as c_int,
+                height as c_int,
+                buffer.as_ptr().cast(),
+                &bitmap_info as *const BitmapInfo as *const _,
+                DIB_RGB_COLORS,
+                SRCCOPY,
+            )
+        };
 
         // Validate the window.
-        ValidateRect(self.window, std::ptr::null_mut());
+        unsafe { ValidateRect(self.window, std::ptr::null_mut()) };
     }
 }

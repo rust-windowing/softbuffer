@@ -23,22 +23,25 @@ impl CGImpl {
         let window = handle.ns_window as id;
         let view = handle.ns_view as id;
         let layer = CALayer::new();
-        let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));
-        layer.set_contents_gravity(ContentsGravity::TopLeft);
-        layer.set_needs_display_on_bounds_change(false);
-        layer.set_contents_scale(window.backingScaleFactor());
-        subview.setLayer(layer.id());
-        subview.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
+        unsafe {
+            let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));
+            layer.set_contents_gravity(ContentsGravity::TopLeft);
+            layer.set_needs_display_on_bounds_change(false);
+            layer.set_contents_scale(window.backingScaleFactor());
+            subview.setLayer(layer.id());
+            subview.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
 
-        view.addSubview_(subview); // retains subview (+1) = 2
-        let _: () = msg_send![subview, release]; // releases subview (-1) = 1
+            view.addSubview_(subview); // retains subview (+1) = 2
+            let _: () = msg_send![subview, release]; // releases subview (-1) = 1
+        }
         Ok(Self { layer })
     }
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         let color_space = CGColorSpace::create_device_rgb();
         let data =
-            std::slice::from_raw_parts(buffer.as_ptr() as *const u8, buffer.len() * 4).to_vec();
+            unsafe { std::slice::from_raw_parts(buffer.as_ptr() as *const u8, buffer.len() * 4) }
+                .to_vec();
         let data_provider = CGDataProvider::from_buffer(Arc::new(data));
         let image = CGImage::new(
             width as usize,
@@ -52,6 +55,6 @@ impl CGImpl {
             false,
             kCGRenderingIntentDefault,
         );
-        self.layer.set_contents(image.as_ptr() as id);
+        unsafe { self.layer.set_contents(image.as_ptr() as id) };
     }
 }

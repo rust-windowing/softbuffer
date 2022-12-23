@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 #[cfg(target_os = "macos")]
 #[macro_use]
@@ -56,7 +57,7 @@ macro_rules! make_dispatch {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => inner.set_buffer(buffer, width, height),
+                        Self::$name(inner) => unsafe { inner.set_buffer(buffer, width, height) },
                     )*
                 }
             }
@@ -90,7 +91,7 @@ impl GraphicsContext {
         window: &W,
         display: &D,
     ) -> Result<Self, SwBufError> {
-        Self::from_raw(window.raw_window_handle(), display.raw_display_handle())
+        unsafe { Self::from_raw(window.raw_window_handle(), display.raw_display_handle()) }
     }
 
     /// Creates a new instance of this struct, using the provided raw window and display handles
@@ -108,22 +109,23 @@ impl GraphicsContext {
             (
                 RawWindowHandle::Xlib(xlib_window_handle),
                 RawDisplayHandle::Xlib(xlib_display_handle),
-            ) => Dispatch::X11(x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?),
+            ) => Dispatch::X11(unsafe {
+                x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?
+            }),
             #[cfg(all(feature = "wayland", any(target_os = "linux", target_os = "freebsd")))]
             (
                 RawWindowHandle::Wayland(wayland_window_handle),
                 RawDisplayHandle::Wayland(wayland_display_handle),
-            ) => Dispatch::Wayland(wayland::WaylandImpl::new(
-                wayland_window_handle,
-                wayland_display_handle,
-            )?),
+            ) => Dispatch::Wayland(unsafe {
+                wayland::WaylandImpl::new(wayland_window_handle, wayland_display_handle)?
+            }),
             #[cfg(target_os = "windows")]
             (RawWindowHandle::Win32(win32_handle), _) => {
-                Dispatch::Win32(win32::Win32Impl::new(&win32_handle)?)
+                Dispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
             }
             #[cfg(target_os = "macos")]
             (RawWindowHandle::AppKit(appkit_handle), _) => {
-                Dispatch::CG(cg::CGImpl::new(appkit_handle)?)
+                Dispatch::CG(unsafe { cg::CGImpl::new(appkit_handle)? })
             }
             #[cfg(target_arch = "wasm32")]
             (RawWindowHandle::Web(web_handle), _) => Dispatch::Web(web::WebImpl::new(web_handle)?),
