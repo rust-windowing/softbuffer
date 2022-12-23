@@ -5,13 +5,16 @@
 //! addition, we may also want to blit to a pixmap instead of a window.
 
 use crate::SoftBufferError;
+use nix::libc::{shmget, shmat, shmdt, shmctl, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
-use std::fmt;
+use std::{fmt, io};
+use std::ptr::{NonNull, null_mut};
 
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
 
 use x11rb::connection::Connection;
+use x11rb::protocol::shm::{self, ConnectionExt as _};
 use x11rb::protocol::xproto::{self, ConnectionExt as _, Gcontext, Window};
 use x11rb::xcb_ffi::XCBConnection;
 
@@ -28,6 +31,13 @@ pub struct X11Impl {
 
     /// The depth (bits per pixel) of the drawing context.
     depth: u8,
+
+    /// Information about SHM, if it is available.
+    shm: Option<ShmInfo>
+}
+
+struct ShmInfo {
+
 }
 
 impl X11Impl {
@@ -147,6 +157,49 @@ impl X11Impl {
         match result {
             Err(e) => log::error!("Failed to draw image to window: {}", e),
             Ok(token) => token.ignore_error(),
+        }
+    }
+}
+
+struct ShmSegment {
+    id: i32,
+    ptr: NonNull<i8>,
+    size: usize,
+}
+
+impl ShmSegment {
+    /// Create a new `ShmSegment` with the given size.
+    fn new(size: usize) -> io::Result<Self> {
+        unsafe {
+            // Create the shared memory segment.
+            let id = shmget(IPC_PRIVATE, size, 0o600);
+            if id == -1 {
+                return Err(io::Error::last_os_error());
+            }
+
+            // Get the pointer it maps to.
+            let ptr = shmat(id, null_mut(), 0);
+            let ptr = match NonNull::new(ptr as *mut i8) {
+                Some(ptr) => ptr,
+                None => {
+                    shmctl(id, IPC_RMID, null_mut());
+                    return Err(io::Error::last_os_error());
+                }
+            };
+
+            Ok(Self { id, ptr, size })
+        }
+    }
+}
+
+impl Drop for ShmSegment {
+    fn drop(&mut self) {
+        unsafe {
+            // Detach the shared memory segment.
+            shmdt(self.ptr.as_ptr() as _);
+
+            // Delete the shared memory segment.
+            shmctl(self.id, IPC_RMID, null_mut());
         }
     }
 }
