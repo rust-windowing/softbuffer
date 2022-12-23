@@ -1,12 +1,12 @@
 [package]
-name = "swbuf"
+name = "softbuffer"
 version = "0.1.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Cross-platform software buffer"
-documentation = "https://docs.rs/swbuf"
+documentation = "https://docs.rs/softbuffer"
 readme = "README.md"
-repository = "https://github.com/rust-windowing/swbuf"
+repository = "https://github.com/rust-windowing/softbuffer"
 keywords = ["framebuffer", "windowing"]
 categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
