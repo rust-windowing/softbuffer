@@ -1,7 +1,5 @@
 Overview
 ==
-This is a fork of [softbuffer](https://github.com/john01dav/softbuffer) for more active maintenance, as softbuffer now appears to be unmaintained. Currently, it is a drop-in replacement for softbuffer, and many things are the same (including this README).
-
 As the popularity of the library [minifb](https://crates.io/crates/minifb) shows, it is useful to put a 2D buffer/image
 on a window in a platform-independent way. Minifb's approach to doing window management itself, however, is problematic
 code duplication. We already have very high quality libraries for this in the Rust ecosystem
