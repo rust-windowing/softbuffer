@@ -97,13 +97,10 @@ impl X11Impl {
 
         let window = window_handle.window;
 
-        // Get the depth of the window.
-        let depth = connection
+        // Start getting the depth of the window.
+        let geometry_token = connection
             .get_geometry(window)
-            .swbuf_err("Failed to send geometry request")?
-            .reply()
-            .swbuf_err("Failed to receive geometry reply")?
-            .depth;
+            .swbuf_err("Failed to send geometry request")?;
 
         // Create a new graphics context to draw to.
         let gc = connection
@@ -119,11 +116,16 @@ impl X11Impl {
             .check()
             .swbuf_err("Failed to create GC")?;
 
+        // Finish getting the depth of the window.
+        let geometry_reply = geometry_token
+            .reply()
+            .swbuf_err("Failed to get geometry reply")?;
+
         Ok(Self {
             connection,
             window,
             gc,
-            depth,
+            depth: geometry_reply.depth,
         })
     }
 
@@ -145,6 +147,15 @@ impl X11Impl {
         match result {
             Err(e) => log::error!("Failed to draw image to window: {}", e),
             Ok(token) => token.ignore_error(),
+        }
+    }
+}
+
+impl Drop for X11Impl {
+    fn drop(&mut self) {
+        // Close the graphics context that we created.
+        if let Ok(token) = self.connection.free_gc(self.gc) {
+            token.ignore_error();
         }
     }
 }
