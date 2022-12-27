@@ -10,6 +10,7 @@ repository = "https://github.com/rust-windowing/softbuffer"
 keywords = ["framebuffer", "windowing"]
 categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
+rust-version = "1.60.0"
 
 [features]
 default = ["x11", "wayland", "wayland-dlopen"]
