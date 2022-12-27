@@ -10,31 +10,13 @@ extern crate core;
 mod cg;
 #[cfg(target_os = "redox")]
 mod orbital;
-#[cfg(all(
-    feature = "wayland",
-    any(
-        target_os = "linux",
-        target_os = "freebsd",
-        target_os = "dragonfly",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    )
-))]
+#[cfg(wayland_platform)]
 mod wayland;
 #[cfg(target_arch = "wasm32")]
 mod web;
 #[cfg(target_os = "windows")]
 mod win32;
-#[cfg(all(
-    feature = "x11",
-    any(
-        target_os = "linux",
-        target_os = "freebsd",
-        target_os = "dragonfly",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    )
-))]
+#[cfg(x11_platform)]
 mod x11;
 
 mod error;
@@ -84,9 +66,9 @@ macro_rules! make_dispatch {
 }
 
 make_dispatch! {
-    #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
+    #[cfg(x11_platform)]
     X11(x11::X11Impl),
-    #[cfg(all(feature = "wayland", any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd")))]
+    #[cfg(wayland_platform)]
     Wayland(wayland::WaylandImpl),
     #[cfg(target_os = "windows")]
     Win32(win32::Win32Impl),
@@ -123,48 +105,21 @@ impl GraphicsContext {
         raw_display_handle: RawDisplayHandle,
     ) -> Result<Self, SoftBufferError> {
         let imple: Dispatch = match (raw_window_handle, raw_display_handle) {
-            #[cfg(all(
-                feature = "x11",
-                any(
-                    target_os = "linux",
-                    target_os = "freebsd",
-                    target_os = "dragonfly",
-                    target_os = "netbsd",
-                    target_os = "openbsd"
-                )
-            ))]
+            #[cfg(x11_platform)]
             (
                 RawWindowHandle::Xlib(xlib_window_handle),
                 RawDisplayHandle::Xlib(xlib_display_handle),
             ) => Dispatch::X11(unsafe {
                 x11::X11Impl::from_xlib(xlib_window_handle, xlib_display_handle)?
             }),
-            #[cfg(all(
-                feature = "x11",
-                any(
-                    target_os = "linux",
-                    target_os = "freebsd",
-                    target_os = "dragonfly",
-                    target_os = "netbsd",
-                    target_os = "openbsd"
-                )
-            ))]
+            #[cfg(x11_platform)]
             (
                 RawWindowHandle::Xcb(xcb_window_handle),
                 RawDisplayHandle::Xcb(xcb_display_handle),
             ) => Dispatch::X11(unsafe {
                 x11::X11Impl::from_xcb(xcb_window_handle, xcb_display_handle)?
             }),
-            #[cfg(all(
-                feature = "wayland",
-                any(
-                    target_os = "linux",
-                    target_os = "freebsd",
-                    target_os = "dragonfly",
-                    target_os = "netbsd",
-                    target_os = "openbsd"
-                )
-            ))]
+            #[cfg(wayland_platform)]
             (
                 RawWindowHandle::Wayland(wayland_window_handle),
                 RawDisplayHandle::Wayland(wayland_display_handle),
