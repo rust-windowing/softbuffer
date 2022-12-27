@@ -1,6 +1,5 @@
 use crate::{error::unwrap, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
-use std::collections::VecDeque;
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
@@ -18,8 +17,7 @@ pub struct WaylandImpl {
     qh: QueueHandle<State>,
     surface: wl_surface::WlSurface,
     shm: wl_shm::WlShm,
-    // 0-2 buffers
-    buffers: VecDeque<WaylandBuffer>,
+    buffers: Option<(WaylandBuffer, WaylandBuffer)>,
 }
 
 impl WaylandImpl {
@@ -61,24 +59,22 @@ impl WaylandImpl {
         })
     }
 
-    // Allocate or reuse a buffer of the given size
     fn buffer(&mut self, width: i32, height: i32) -> &WaylandBuffer {
-        let buffer = if let Some(mut buffer) = self.buffers.pop_front() {
-            if buffer.released() {
-                buffer.resize(width, height);
-                buffer
-            } else {
-                // If we have more than 1 unreleased buffer, destroy it
-                if self.buffers.is_empty() {
-                    self.buffers.push_back(buffer);
-                }
-                WaylandBuffer::new(&self.shm, width, height, &self.qh)
+        self.buffers = Some(if let Some((front, mut back)) = self.buffers.take() {
+            // Swap buffers; block if back buffer not released yet
+            while !back.released() {
+                self.event_queue.blocking_dispatch(&mut State).unwrap();
             }
+            back.resize(width, height);
+            (back, front)
         } else {
-            WaylandBuffer::new(&self.shm, width, height, &self.qh)
-        };
-        self.buffers.push_back(buffer);
-        self.buffers.back().unwrap()
+            // Allocate front and back buffer
+            (
+                WaylandBuffer::new(&self.shm, width, height, &self.qh),
+                WaylandBuffer::new(&self.shm, width, height, &self.qh),
+            )
+        });
+        &self.buffers.as_ref().unwrap().0
     }
 
     pub(super) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
