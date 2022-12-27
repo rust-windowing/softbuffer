@@ -4,7 +4,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
-pub enum SwBufError {
+pub enum SoftBufferError {
     #[error(
         "The provided window returned an unsupported platform: {human_readable_window_platform_name}, {human_readable_display_platform_name}."
     )]
@@ -29,10 +29,10 @@ pub enum SwBufError {
 pub(crate) fn unwrap<T, E: std::error::Error + 'static>(
     res: Result<T, E>,
     str: &str,
-) -> Result<T, SwBufError> {
+) -> Result<T, SoftBufferError> {
     match res {
         Ok(t) => Ok(t),
-        Err(e) => Err(SwBufError::PlatformError(
+        Err(e) => Err(SoftBufferError::PlatformError(
             Some(str.into()),
             Some(Box::new(e)),
         )),

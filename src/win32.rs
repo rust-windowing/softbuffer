@@ -2,7 +2,7 @@
 //!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
-use crate::SwBufError;
+use crate::SoftBufferError;
 use raw_window_handle::Win32WindowHandle;
 
 use std::io;
@@ -37,10 +37,10 @@ impl Win32Impl {
     /// # Safety
     ///
     /// The `Win32WindowHandle` must be a valid window handle.
-    pub unsafe fn new(handle: &Win32WindowHandle) -> Result<Self, crate::SwBufError> {
+    pub unsafe fn new(handle: &Win32WindowHandle) -> Result<Self, crate::SoftBufferError> {
         // It is valid for the window handle to be null here. Error out if it is.
         if handle.hwnd.is_null() {
-            return Err(SwBufError::IncompleteWindowHandle);
+            return Err(SoftBufferError::IncompleteWindowHandle);
         }
 
         // Get the handle to the device context.
@@ -50,7 +50,7 @@ impl Win32Impl {
 
         // GetDC returns null if there is a platform error.
         if dc == 0 {
-            return Err(SwBufError::PlatformError(
+            return Err(SoftBufferError::PlatformError(
                 Some("Device Context is null".into()),
                 Some(Box::new(io::Error::last_os_error())),
             ));

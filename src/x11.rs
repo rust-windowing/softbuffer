@@ -4,7 +4,7 @@
 //! drawn. A more effective implementation would use shared memory instead of the wire. In
 //! addition, we may also want to blit to a pixmap instead of a window.
 
-use crate::SwBufError;
+use crate::SoftBufferError;
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::fmt;
 
@@ -39,7 +39,7 @@ impl X11Impl {
     pub unsafe fn from_xlib(
         window_handle: XlibWindowHandle,
         display_handle: XlibDisplayHandle,
-    ) -> Result<Self, SwBufError> {
+    ) -> Result<Self, SoftBufferError> {
         // TODO: We should cache the shared libraries.
 
         // Try to open the XlibXCB shared library.
@@ -47,7 +47,7 @@ impl X11Impl {
 
         // Validate the display handle to ensure we can use it.
         if display_handle.display.is_null() {
-            return Err(SwBufError::IncompleteDisplayHandle);
+            return Err(SoftBufferError::IncompleteDisplayHandle);
         }
 
         // Get the underlying XCB connection.
@@ -76,14 +76,14 @@ impl X11Impl {
     pub(crate) unsafe fn from_xcb(
         window_handle: XcbWindowHandle,
         display_handle: XcbDisplayHandle,
-    ) -> Result<Self, SwBufError> {
+    ) -> Result<Self, SoftBufferError> {
         // Check that the handles are valid.
         if display_handle.connection.is_null() {
-            return Err(SwBufError::IncompleteDisplayHandle);
+            return Err(SoftBufferError::IncompleteDisplayHandle);
         }
 
         if window_handle.window == 0 {
-            return Err(SwBufError::IncompleteWindowHandle);
+            return Err(SoftBufferError::IncompleteWindowHandle);
         }
 
         // Wrap the display handle in an x11rb connection.
@@ -160,15 +160,15 @@ impl Drop for X11Impl {
     }
 }
 
-/// Convenient wrapper to cast errors into SwBufError.
+/// Convenient wrapper to cast errors into SoftBufferError.
 trait ResultExt<T, E> {
-    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SwBufError>;
+    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError>;
 }
 
 impl<T, E: fmt::Debug + fmt::Display + 'static> ResultExt<T, E> for Result<T, E> {
-    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SwBufError> {
+    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError> {
         self.map_err(|e| {
-            SwBufError::PlatformError(Some(msg.into()), Some(Box::new(LibraryError(e))))
+            SoftBufferError::PlatformError(Some(msg.into()), Some(Box::new(LibraryError(e))))
         })
     }
 }

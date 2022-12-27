@@ -1,7 +1,7 @@
 use raw_window_handle::OrbitalWindowHandle;
 use std::{cmp, slice, str};
 
-use crate::SwBufError;
+use crate::SoftBufferError;
 
 struct OrbitalMap {
     address: usize,
@@ -45,7 +45,7 @@ pub struct OrbitalImpl {
 }
 
 impl OrbitalImpl {
-    pub fn new(handle: OrbitalWindowHandle) -> Result<Self, SwBufError> {
+    pub fn new(handle: OrbitalWindowHandle) -> Result<Self, SoftBufferError> {
         Ok(Self { handle })
     }
 
