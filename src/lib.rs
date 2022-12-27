@@ -110,7 +110,14 @@ impl GraphicsContext {
                 RawWindowHandle::Xlib(xlib_window_handle),
                 RawDisplayHandle::Xlib(xlib_display_handle),
             ) => Dispatch::X11(unsafe {
-                x11::X11Impl::new(xlib_window_handle, xlib_display_handle)?
+                x11::X11Impl::from_xlib(xlib_window_handle, xlib_display_handle)?
+            }),
+            #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
+            (
+                RawWindowHandle::Xcb(xcb_window_handle),
+                RawDisplayHandle::Xcb(xcb_display_handle),
+            ) => Dispatch::X11(unsafe {
+                x11::X11Impl::from_xcb(xcb_window_handle, xcb_display_handle)?
             }),
             #[cfg(all(feature = "wayland", any(target_os = "linux", target_os = "freebsd")))]
             (

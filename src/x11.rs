@@ -5,29 +5,29 @@
 //! addition, we may also want to blit to a pixmap instead of a window.
 
 use crate::SwBufError;
-use raw_window_handle::{XlibDisplayHandle, XlibWindowHandle};
-use std::os::raw::{c_char, c_uint};
-use x11_dl::xlib::{Display, Visual, Xlib, ZPixmap, GC};
+use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
+use std::fmt;
+
+use x11_dl::xlib::Display;
+use x11_dl::xlib_xcb::Xlib_xcb;
+
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::{self, ConnectionExt as _, Gcontext, Window};
+use x11rb::xcb_ffi::XCBConnection;
 
 /// The handle to an X11 drawing context.
 pub struct X11Impl {
-    /// The window handle.
-    window_handle: XlibWindowHandle,
+    /// The handle to the XCB connection.
+    connection: XCBConnection,
 
-    /// The display handle.
-    display_handle: XlibDisplayHandle,
+    /// The window to draw to.
+    window: Window,
 
-    /// Reference to the X11 shared library.
-    lib: Xlib,
-
-    /// The graphics context for drawing.
-    gc: GC,
-
-    /// Information about the screen to use for drawing.
-    visual: *mut Visual,
+    /// The graphics context to use when drawing.
+    gc: Gcontext,
 
     /// The depth (bits per pixel) of the drawing context.
-    depth: i32,
+    depth: u8,
 }
 
 impl X11Impl {
@@ -36,23 +36,49 @@ impl X11Impl {
     /// # Safety
     ///
     /// The `XlibWindowHandle` and `XlibDisplayHandle` must be valid.
-    pub unsafe fn new(
+    pub unsafe fn from_xlib(
         window_handle: XlibWindowHandle,
         display_handle: XlibDisplayHandle,
     ) -> Result<Self, SwBufError> {
-        // Try to open the X11 shared library.
-        let lib = match Xlib::open() {
-            Ok(lib) => lib,
-            Err(e) => {
-                return Err(SwBufError::PlatformError(
-                    Some("Failed to open Xlib".into()),
-                    Some(Box::new(e)),
-                ))
-            }
-        };
+        // TODO: We should cache the shared libraries.
 
-        // Validate the handles to ensure that they aren't incomplete.
+        // Try to open the XlibXCB shared library.
+        let lib_xcb = Xlib_xcb::open().swbuf_err("Failed to open XlibXCB shared library")?;
+
+        // Validate the display handle to ensure we can use it.
         if display_handle.display.is_null() {
+            return Err(SwBufError::IncompleteDisplayHandle);
+        }
+
+        // Get the underlying XCB connection.
+        // SAFETY: The user has asserted that the display handle is valid.
+        let connection =
+            unsafe { (lib_xcb.XGetXCBConnection)(display_handle.display as *mut Display) };
+
+        // Construct the equivalent XCB display and window handles.
+        let mut xcb_display_handle = XcbDisplayHandle::empty();
+        xcb_display_handle.connection = connection;
+        xcb_display_handle.screen = display_handle.screen;
+
+        let mut xcb_window_handle = XcbWindowHandle::empty();
+        xcb_window_handle.window = window_handle.window as _;
+        xcb_window_handle.visual_id = window_handle.visual_id as _;
+
+        // SAFETY: If the user passed in valid Xlib handles, then these are valid XCB handles.
+        unsafe { Self::from_xcb(xcb_window_handle, xcb_display_handle) }
+    }
+
+    /// Create a new `X11Impl` from a `XcbWindowHandle` and `XcbDisplayHandle`.
+    ///
+    /// # Safety
+    ///
+    /// The `XcbWindowHandle` and `XcbDisplayHandle` must be valid.
+    pub(crate) unsafe fn from_xcb(
+        window_handle: XcbWindowHandle,
+        display_handle: XcbDisplayHandle,
+    ) -> Result<Self, SwBufError> {
+        // Check that the handles are valid.
+        if display_handle.connection.is_null() {
             return Err(SwBufError::IncompleteDisplayHandle);
         }
 
@@ -60,66 +86,109 @@ impl X11Impl {
             return Err(SwBufError::IncompleteWindowHandle);
         }
 
-        // Get the screen number from the handle.
-        // NOTE: By default, XlibDisplayHandle sets the screen number to 0. If we see a zero,
-        // it could mean either screen index zero, or that the screen number was not set. We
-        // can't tell which, so we'll just assume that the screen number was not set.
-        let screen = match display_handle.screen {
-            0 => unsafe { (lib.XDefaultScreen)(display_handle.display as *mut Display) },
-            screen => screen,
+        // Wrap the display handle in an x11rb connection.
+        // SAFETY: We don't own the connection, so don't drop it. We also assert that the connection is valid.
+        let connection = {
+            let result =
+                unsafe { XCBConnection::from_raw_xcb_connection(display_handle.connection, false) };
+
+            result.swbuf_err("Failed to wrap XCB connection")?
         };
 
-        // Use the default graphics context, visual and depth for this screen.
-        let gc = unsafe { (lib.XDefaultGC)(display_handle.display as *mut Display, screen) };
-        let visual =
-            unsafe { (lib.XDefaultVisual)(display_handle.display as *mut Display, screen) };
-        let depth = unsafe { (lib.XDefaultDepth)(display_handle.display as *mut Display, screen) };
+        let window = window_handle.window;
+
+        // Start getting the depth of the window.
+        let geometry_token = connection
+            .get_geometry(window)
+            .swbuf_err("Failed to send geometry request")?;
+
+        // Create a new graphics context to draw to.
+        let gc = connection
+            .generate_id()
+            .swbuf_err("Failed to generate GC ID")?;
+        connection
+            .create_gc(
+                gc,
+                window,
+                &xproto::CreateGCAux::new().graphics_exposures(0),
+            )
+            .swbuf_err("Failed to send GC creation request")?
+            .check()
+            .swbuf_err("Failed to create GC")?;
+
+        // Finish getting the depth of the window.
+        let geometry_reply = geometry_token
+            .reply()
+            .swbuf_err("Failed to get geometry reply")?;
 
         Ok(Self {
-            window_handle,
-            display_handle,
-            lib,
+            connection,
+            window,
             gc,
-            visual,
-            depth,
+            depth: geometry_reply.depth,
         })
     }
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        // Create the image from the buffer.
-        let image = unsafe {
-            (self.lib.XCreateImage)(
-                self.display_handle.display as *mut Display,
-                self.visual,
-                self.depth as u32,
-                ZPixmap,
-                0,
-                (buffer.as_ptr()) as *mut c_char,
-                width as u32,
-                height as u32,
-                32,
-                (width * 4) as i32,
-            )
-        };
+        // Draw the image to the buffer.
+        let result = self.connection.put_image(
+            xproto::ImageFormat::Z_PIXMAP,
+            self.window,
+            self.gc,
+            width,
+            height,
+            0,
+            0,
+            0,
+            self.depth,
+            bytemuck::cast_slice(buffer),
+        );
 
-        // Draw the image to the window.
-        unsafe {
-            (self.lib.XPutImage)(
-                self.display_handle.display as *mut Display,
-                self.window_handle.window,
-                self.gc,
-                image,
-                0,
-                0,
-                0,
-                0,
-                width as c_uint,
-                height as c_uint,
-            )
-        };
-
-        // Delete the image data.
-        unsafe { (*image).data = std::ptr::null_mut() };
-        unsafe { (self.lib.XDestroyImage)(image) };
+        match result {
+            Err(e) => log::error!("Failed to draw image to window: {}", e),
+            Ok(token) => token.ignore_error(),
+        }
     }
 }
+
+impl Drop for X11Impl {
+    fn drop(&mut self) {
+        // Close the graphics context that we created.
+        if let Ok(token) = self.connection.free_gc(self.gc) {
+            token.ignore_error();
+        }
+    }
+}
+
+/// Convenient wrapper to cast errors into SwBufError.
+trait ResultExt<T, E> {
+    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SwBufError>;
+}
+
+impl<T, E: fmt::Debug + fmt::Display + 'static> ResultExt<T, E> for Result<T, E> {
+    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SwBufError> {
+        self.map_err(|e| {
+            SwBufError::PlatformError(Some(msg.into()), Some(Box::new(LibraryError(e))))
+        })
+    }
+}
+
+/// A wrapper around a library error.
+///
+/// This prevents `x11-dl` and `x11rb` from becoming public dependencies, since users cannot downcast
+/// to this type.
+struct LibraryError<E>(E);
+
+impl<E: fmt::Debug> fmt::Debug for LibraryError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl<E: fmt::Display> fmt::Display for LibraryError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl<E: fmt::Debug + fmt::Display> std::error::Error for LibraryError<E> {}
