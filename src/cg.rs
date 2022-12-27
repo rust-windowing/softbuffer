@@ -1,4 +1,4 @@
-use crate::SwBufError;
+use crate::SoftBufferError;
 use core_graphics::base::{
     kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
 };
@@ -19,7 +19,7 @@ pub struct CGImpl {
 }
 
 impl CGImpl {
-    pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SwBufError> {
+    pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SoftBufferError> {
         let window = handle.ns_window as id;
         let view = handle.ns_view as id;
         let layer = CALayer::new();

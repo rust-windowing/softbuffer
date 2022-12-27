@@ -21,7 +21,7 @@ mod x11;
 
 mod error;
 
-pub use error::SwBufError;
+pub use error::SoftBufferError;
 
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
@@ -90,7 +90,7 @@ impl GraphicsContext {
     pub unsafe fn new<W: HasRawWindowHandle, D: HasRawDisplayHandle>(
         window: &W,
         display: &D,
-    ) -> Result<Self, SwBufError> {
+    ) -> Result<Self, SoftBufferError> {
         unsafe { Self::from_raw(window.raw_window_handle(), display.raw_display_handle()) }
     }
 
@@ -103,7 +103,7 @@ impl GraphicsContext {
     pub unsafe fn from_raw(
         raw_window_handle: RawWindowHandle,
         raw_display_handle: RawDisplayHandle,
-    ) -> Result<Self, SwBufError> {
+    ) -> Result<Self, SoftBufferError> {
         let imple: Dispatch = match (raw_window_handle, raw_display_handle) {
             #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
             (
@@ -141,7 +141,7 @@ impl GraphicsContext {
                 Dispatch::Orbital(orbital::OrbitalImpl::new(orbital_handle)?)
             }
             (unimplemented_window_handle, unimplemented_display_handle) => {
-                return Err(SwBufError::UnsupportedPlatform {
+                return Err(SoftBufferError::UnsupportedPlatform {
                     human_readable_window_platform_name: window_handle_type_name(
                         &unimplemented_window_handle,
                     ),

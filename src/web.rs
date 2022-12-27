@@ -5,7 +5,7 @@ use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
 
-use crate::SwBufError;
+use crate::SoftBufferError;
 
 pub struct WebImpl {
     canvas: HtmlCanvasElement,
@@ -13,17 +13,17 @@ pub struct WebImpl {
 }
 
 impl WebImpl {
-    pub fn new(handle: WebWindowHandle) -> Result<Self, SwBufError> {
+    pub fn new(handle: WebWindowHandle) -> Result<Self, SoftBufferError> {
         let canvas: HtmlCanvasElement = web_sys::window()
             .ok_or_else(|| {
-                SwBufError::PlatformError(
+                SoftBufferError::PlatformError(
                     Some("`window` is not present in this runtime".into()),
                     None,
                 )
             })?
             .document()
             .ok_or_else(|| {
-                SwBufError::PlatformError(
+                SoftBufferError::PlatformError(
                     Some("`document` is not present in this runtime".into()),
                     None,
                 )
@@ -32,7 +32,10 @@ impl WebImpl {
             // `querySelector` only throws an error if the selector is invalid.
             .unwrap()
             .ok_or_else(|| {
-                SwBufError::PlatformError(Some("No canvas found with the given id".into()), None)
+                SoftBufferError::PlatformError(
+                    Some("No canvas found with the given id".into()),
+                    None,
+                )
             })?
             // We already made sure this was a canvas in `querySelector`.
             .unchecked_into();
@@ -40,13 +43,13 @@ impl WebImpl {
         let ctx = canvas
         .get_context("2d")
         .map_err(|_| {
-            SwBufError::PlatformError(
+            SoftBufferError::PlatformError(
                 Some("Canvas already controlled using `OffscreenCanvas`".into()),
                 None,
             )
         })?
         .ok_or_else(|| {
-            SwBufError::PlatformError(
+            SoftBufferError::PlatformError(
                 Some("A canvas context other than `CanvasRenderingContext2d` was already created".into()),
                 None,
             )

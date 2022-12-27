@@ -1,4 +1,4 @@
-use crate::{error::unwrap, SwBufError};
+use crate::{error::unwrap, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
 use std::collections::VecDeque;
 use wayland_client::{
@@ -26,7 +26,7 @@ impl WaylandImpl {
     pub unsafe fn new(
         window_handle: WaylandWindowHandle,
         display_handle: WaylandDisplayHandle,
-    ) -> Result<Self, SwBufError> {
+    ) -> Result<Self, SoftBufferError> {
         // SAFETY: Ensured by user
         let backend = unsafe { Backend::from_foreign_display(display_handle.display as *mut _) };
         let conn = Connection::from_backend(backend);
