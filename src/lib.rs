@@ -182,6 +182,20 @@ impl GraphicsContext {
     /// R: Red channel
     /// G: Green channel
     /// B: Blue channel
+    ///
+    /// # Platform dependent behavior
+    ///
+    /// This section of the documentation details how some platforms may behave when [`set_buffer`](GraphicsContext::set_buffer)
+    /// is called.
+    ///
+    /// ## Wayland
+    ///
+    /// On Wayland, calling this function may send requests to the underlying `wl_surface`. The
+    /// graphics context may issue `wl_surface.attach`, `wl_surface.damage`, `wl_surface.damage_buffer`
+    /// and `wl_surface.commit` requests when presenting the buffer.
+    ///
+    /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
+    /// Wayland compositor before calling this function.
     #[inline]
     pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         if (width as usize) * (height as usize) != buffer.len() {
