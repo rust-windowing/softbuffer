@@ -1,4 +1,3 @@
-use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
 use std::{
     ffi::CStr,
     fs::File,
@@ -15,6 +14,50 @@ use wayland_client::{
 
 use super::State;
 
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn create_memfile() -> File {
+    use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
+
+    let name = unsafe { CStr::from_bytes_with_nul_unchecked("softbuffer\0".as_bytes()) };
+    let fd = memfd_create(name, MemFdCreateFlag::MFD_CLOEXEC)
+        .expect("Failed to create memfd to store buffer.");
+    unsafe { File::from_raw_fd(fd) }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+fn create_memfile() -> File {
+    use nix::{
+        errno::Errno,
+        fcntl::OFlag,
+        sys::{
+            mman::{shm_open, shm_unlink},
+            stat::Mode,
+        },
+    };
+    use std::iter;
+
+    for _ in 0..=4 {
+        let mut name = String::from("softbuffer-");
+        name.extend(iter::repeat_with(fastrand::alphanumeric).take(7));
+        name.push('\0');
+
+        let name = unsafe { CStr::from_bytes_with_nul_unchecked(name.as_bytes()) };
+        // `CLOEXEC` is implied with `shm_open`
+        let fd = shm_open(
+            name,
+            OFlag::O_RDWR | OFlag::O_CREAT | OFlag::O_EXCL,
+            Mode::S_IRWXU,
+        );
+        if fd != Err(Errno::EEXIST) {
+            let fd = fd.expect("Failed to create POSIX shm to store buffer.");
+            let _ = shm_unlink(name);
+            return unsafe { File::from_raw_fd(fd) };
+        }
+    }
+
+    panic!("Failed to generate non-existant shm name")
+}
+
 pub(super) struct WaylandBuffer {
     qh: QueueHandle<State>,
     tempfile: File,
@@ -28,10 +71,7 @@ pub(super) struct WaylandBuffer {
 
 impl WaylandBuffer {
     pub fn new(shm: &wl_shm::WlShm, width: i32, height: i32, qh: &QueueHandle<State>) -> Self {
-        let name = unsafe { CStr::from_bytes_with_nul_unchecked("softbuffer\0".as_bytes()) };
-        let tempfile_fd = memfd_create(name, MemFdCreateFlag::MFD_CLOEXEC)
-            .expect("Failed to create memfd to store buffer.");
-        let tempfile = unsafe { File::from_raw_fd(tempfile_fd) };
+        let tempfile = create_memfile();
         let pool_size = width * height * 4;
         let pool = shm.create_pool(tempfile.as_raw_fd(), pool_size, qh, ());
         let released = Arc::new(AtomicBool::new(true));
