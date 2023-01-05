@@ -1,21 +1,23 @@
 //! Implementation of software buffering for X11.
 //!
 //! This module converts the input buffer into an XImage and then sends it over the wire to be
-//! drawn. A more effective implementation would use shared memory instead of the wire. In
-//! addition, we may also want to blit to a pixmap instead of a window.
+//! drawn by the X server. The SHM extension is used if available.
+
+#![allow(clippy::uninlined_format_args)]
 
 use crate::SoftBufferError;
-use nix::libc::{shmget, shmat, shmdt, shmctl, IPC_PRIVATE, IPC_RMID};
+use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
+use std::ptr::{null_mut, NonNull};
 use std::{fmt, io};
-use std::ptr::{NonNull, null_mut};
 
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
 
 use x11rb::connection::Connection;
+use x11rb::errors::{ConnectionError, ReplyError, ReplyOrIdError};
 use x11rb::protocol::shm::{self, ConnectionExt as _};
-use x11rb::protocol::xproto::{self, ConnectionExt as _, Gcontext, Window};
+use x11rb::protocol::xproto::{self, ConnectionExt as _};
 use x11rb::xcb_ffi::XCBConnection;
 
 /// The handle to an X11 drawing context.
@@ -24,20 +26,21 @@ pub struct X11Impl {
     connection: XCBConnection,
 
     /// The window to draw to.
-    window: Window,
+    window: xproto::Window,
 
     /// The graphics context to use when drawing.
-    gc: Gcontext,
+    gc: xproto::Gcontext,
 
     /// The depth (bits per pixel) of the drawing context.
     depth: u8,
 
     /// Information about SHM, if it is available.
-    shm: Option<ShmInfo>
+    shm: Option<ShmInfo>,
 }
 
 struct ShmInfo {
-
+    /// The shared memory segment, paired with its ID.
+    seg: Option<(ShmSegment, shm::Seg)>,
 }
 
 impl X11Impl {
@@ -107,10 +110,13 @@ impl X11Impl {
 
         let window = window_handle.window;
 
-        // Start getting the depth of the window.
+        // Run in parallel: start getting the window depth and the SHM extension.
         let geometry_token = connection
             .get_geometry(window)
             .swbuf_err("Failed to send geometry request")?;
+        let query_token = connection
+            .query_extension(shm::X11_EXTENSION_NAME.as_bytes())
+            .swbuf_err("Failed to send SHM query request")?;
 
         // Create a new graphics context to draw to.
         let gc = connection
@@ -131,33 +137,170 @@ impl X11Impl {
             .reply()
             .swbuf_err("Failed to get geometry reply")?;
 
+        // See if SHM is available.
+        let shm_info = {
+            let present = query_token
+                .reply()
+                .swbuf_err("Failed to get SHM query reply")?
+                .present;
+
+            if present {
+                // SHM is available.
+                Some(ShmInfo { seg: None })
+            } else {
+                None
+            }
+        };
+
         Ok(Self {
             connection,
             window,
             gc,
             depth: geometry_reply.depth,
+            shm: shm_info,
         })
     }
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         // Draw the image to the buffer.
-        let result = self.connection.put_image(
-            xproto::ImageFormat::Z_PIXMAP,
-            self.window,
-            self.gc,
-            width,
-            height,
-            0,
-            0,
-            0,
-            self.depth,
-            bytemuck::cast_slice(buffer),
-        );
+        let result = unsafe { self.set_buffer_shm(buffer, width, height) }.and_then(|had_shm| {
+            if had_shm {
+                Ok(())
+            } else {
+                log::debug!("Falling back to non-SHM method");
+                self.set_buffer_fallback(buffer, width, height)
+            }
+        });
 
-        match result {
-            Err(e) => log::error!("Failed to draw image to window: {}", e),
-            Ok(token) => token.ignore_error(),
+        if let Err(e) = result {
+            log::error!("Failed to draw image to window: {}", e);
         }
+    }
+
+    /// Put the given buffer into the window using the SHM method.
+    ///
+    /// Returns `false` if SHM is not available.
+    ///
+    /// # Safety
+    ///
+    /// The buffer's length must be `width * height`.
+    unsafe fn set_buffer_shm(
+        &mut self,
+        buffer: &[u32],
+        width: u16,
+        height: u16,
+    ) -> Result<bool, PushBufferError> {
+        let shm_info = match self.shm {
+            Some(ref mut info) => info,
+            None => return Ok(false),
+        };
+
+        // Get the SHM segment to use.
+        let necessary_size = (width as usize) * (height as usize) * 4;
+        let (segment, segment_id) = shm_info.segment(&self.connection, necessary_size)?;
+
+        // Copy the buffer into the segment.
+        // SAFETY: The buffer is properly sized.
+        unsafe {
+            segment.copy(buffer);
+        }
+
+        // Put the image into the window.
+        self.connection
+            .shm_put_image(
+                self.window,
+                self.gc,
+                width,
+                height,
+                0,
+                0,
+                width,
+                height,
+                0,
+                0,
+                self.depth,
+                xproto::ImageFormat::Z_PIXMAP.into(),
+                false,
+                segment_id,
+                0,
+            )?
+            .ignore_error();
+
+        Ok(true)
+    }
+
+    /// Put the given buffer into the window using the fallback wire transfer method.
+    fn set_buffer_fallback(
+        &mut self,
+        buffer: &[u32],
+        width: u16,
+        height: u16,
+    ) -> Result<(), PushBufferError> {
+        self.connection
+            .put_image(
+                xproto::ImageFormat::Z_PIXMAP,
+                self.window,
+                self.gc,
+                width,
+                height,
+                0,
+                0,
+                0,
+                self.depth,
+                bytemuck::cast_slice(buffer),
+            )?
+            .ignore_error();
+
+        Ok(())
+    }
+}
+
+impl ShmInfo {
+    /// Allocate a new `ShmSegment` of the given size.
+    fn segment(
+        &mut self,
+        conn: &impl Connection,
+        size: usize,
+    ) -> Result<(&mut ShmSegment, shm::Seg), PushBufferError> {
+        // Get the size of the segment currently in use.
+        let needs_realloc = match self.seg {
+            Some((ref seg, _)) => seg.size() < size,
+            None => true,
+        };
+
+        // Reallocate if necessary.
+        if needs_realloc {
+            let new_seg = ShmSegment::new(size)?;
+            self.associate(conn, new_seg)?;
+        }
+
+        // Get the segment and ID.
+        Ok(self
+            .seg
+            .as_mut()
+            .map(|(ref mut seg, id)| (seg, *id))
+            .unwrap())
+    }
+
+    /// Associate an SHM segment with the server.
+    fn associate(
+        &mut self,
+        conn: &impl Connection,
+        seg: ShmSegment,
+    ) -> Result<(), PushBufferError> {
+        // Register the guard.
+        let new_id = conn.generate_id()?;
+        conn.shm_attach(new_id, seg.id(), true)?.ignore_error();
+
+        // Take out the old one and detach it.
+        if let Some((old_seg, old_id)) = self.seg.replace((seg, new_id)) {
+            conn.shm_detach(old_id)?.ignore_error();
+
+            // Drop the old segment.
+            drop(old_seg);
+        }
+
+        Ok(())
     }
 }
 
@@ -190,6 +333,33 @@ impl ShmSegment {
             Ok(Self { id, ptr, size })
         }
     }
+
+    /// Copy data into this shared memory segment.
+    ///
+    /// # Safety
+    ///
+    /// This function assumes that the size of `self`'s buffer is larger than or equal to `data.len()`.
+    unsafe fn copy(&mut self, data: &[impl bytemuck::NoUninit]) {
+        let incoming_data = bytemuck::cast_slice::<_, u8>(data);
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                incoming_data.as_ptr(),
+                self.ptr.as_ptr() as *mut u8,
+                incoming_data.len(),
+            )
+        }
+    }
+
+    /// Get the size of this shared memory segment.
+    fn size(&self) -> usize {
+        self.size
+    }
+
+    /// Get the shared memory ID.
+    fn id(&self) -> u32 {
+        self.id as _
+    }
 }
 
 impl Drop for ShmSegment {
@@ -213,12 +383,65 @@ impl Drop for X11Impl {
     }
 }
 
+/// An error that can occur when pushing a buffer to the window.
+#[derive(Debug)]
+enum PushBufferError {
+    /// We encountered an X11 error.
+    X11(ReplyError),
+
+    /// We exhausted the XID space.
+    XidExhausted,
+
+    /// A system error occurred while creating the shared memory segment.
+    System(io::Error),
+}
+
+impl fmt::Display for PushBufferError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::X11(e) => write!(f, "X11 error: {}", e),
+            Self::XidExhausted => write!(f, "XID space exhausted"),
+            Self::System(e) => write!(f, "System error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for PushBufferError {}
+
+impl From<ConnectionError> for PushBufferError {
+    fn from(e: ConnectionError) -> Self {
+        Self::X11(ReplyError::ConnectionError(e))
+    }
+}
+
+impl From<ReplyError> for PushBufferError {
+    fn from(e: ReplyError) -> Self {
+        Self::X11(e)
+    }
+}
+
+impl From<ReplyOrIdError> for PushBufferError {
+    fn from(e: ReplyOrIdError) -> Self {
+        match e {
+            ReplyOrIdError::ConnectionError(e) => Self::X11(ReplyError::ConnectionError(e)),
+            ReplyOrIdError::X11Error(e) => Self::X11(ReplyError::X11Error(e)),
+            ReplyOrIdError::IdsExhausted => Self::XidExhausted,
+        }
+    }
+}
+
+impl From<io::Error> for PushBufferError {
+    fn from(e: io::Error) -> Self {
+        Self::System(e)
+    }
+}
+
 /// Convenient wrapper to cast errors into SoftBufferError.
 trait ResultExt<T, E> {
     fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError>;
 }
 
-impl<T, E: fmt::Debug + fmt::Display + 'static> ResultExt<T, E> for Result<T, E> {
+impl<T, E: std::error::Error + 'static> ResultExt<T, E> for Result<T, E> {
     fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError> {
         self.map_err(|e| {
             SoftBufferError::PlatformError(Some(msg.into()), Some(Box::new(LibraryError(e))))
