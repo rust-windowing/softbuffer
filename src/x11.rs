@@ -283,6 +283,9 @@ impl ShmInfo {
         conn: &impl Connection,
         size: usize,
     ) -> Result<(&mut ShmSegment, shm::Seg), PushBufferError> {
+        // Round the size up to the next power of two to prevent frequent reallocations.
+        let size = size.next_power_of_two();
+
         // Get the size of the segment currently in use.
         let needs_realloc = match self.seg {
             Some((ref seg, _)) => seg.size() < size,
@@ -360,13 +363,15 @@ impl ShmSegment {
                 return Err(io::Error::last_os_error());
             }
 
-            // Get the pointer it maps to.
-            let ptr = shmat(id, null_mut(), 0);
-            let ptr = match NonNull::new(ptr as *mut i8) {
-                Some(ptr) => ptr,
-                None => {
-                    shmctl(id, IPC_RMID, null_mut());
-                    return Err(io::Error::last_os_error());
+            // Map the SHM to our memory space.
+            let ptr = {
+                let ptr = shmat(id, null_mut(), 0);
+                match NonNull::new(ptr as *mut i8) {
+                    Some(ptr) => ptr,
+                    None => {
+                        shmctl(id, IPC_RMID, null_mut());
+                        return Err(io::Error::last_os_error());
+                    }
                 }
             };
 
