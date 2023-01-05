@@ -14,7 +14,8 @@ use std::{fmt, io};
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
 
-use x11rb::connection::{Connection, RequestConnection};
+use x11rb::connection::{Connection, RequestConnection, SequenceNumber};
+use x11rb::cookie::Cookie;
 use x11rb::errors::{ConnectionError, ReplyError, ReplyOrIdError};
 use x11rb::protocol::shm::{self, ConnectionExt as _};
 use x11rb::protocol::xproto::{self, ConnectionExt as _};
@@ -41,6 +42,20 @@ pub struct X11Impl {
 struct ShmInfo {
     /// The shared memory segment, paired with its ID.
     seg: Option<(ShmSegment, shm::Seg)>,
+
+    /// A cookie indicating that the shared memory segment is ready to be used.
+    ///
+    /// We can't soundly read from or write to the SHM segment until the X server is done processing the
+    /// `shm::PutImage` request. However, the X server handles requests in order, which means that, if
+    /// we send a very small request after the `shm::PutImage` request, then the X server will have to
+    /// process that request before it can process the `shm::PutImage` request. Therefore, we can use
+    /// the reply to that small request to determine when the `shm::PutImage` request is done.
+    ///
+    /// In this case, we use `GetInputFocus` since it is a very small request.
+    ///
+    /// We store the sequence number instead of the `Cookie` since we cannot hold a self-referential
+    /// reference to the `connection` field.
+    done_processing: Option<SequenceNumber>,
 }
 
 impl X11Impl {
@@ -143,7 +158,10 @@ impl X11Impl {
 
             if present {
                 // SHM is available.
-                Some(ShmInfo { seg: None })
+                Some(ShmInfo {
+                    seg: None,
+                    done_processing: None,
+                })
             } else {
                 None
             }
@@ -192,12 +210,15 @@ impl X11Impl {
             None => return Ok(false),
         };
 
+        // If the X server is still processing the last image, wait for it to finish.
+        shm_info.finish_wait(&self.connection)?;
+
         // Get the SHM segment to use.
         let necessary_size = (width as usize) * (height as usize) * 4;
         let (segment, segment_id) = shm_info.segment(&self.connection, necessary_size)?;
 
         // Copy the buffer into the segment.
-        // SAFETY: The buffer is properly sized.
+        // SAFETY: The buffer is properly sized and we've ensured that the X server isn't reading from it.
         unsafe {
             segment.copy(buffer);
         }
@@ -222,6 +243,9 @@ impl X11Impl {
                 0,
             )?
             .ignore_error();
+
+        // Send a short request to act as a notification for when the X server is done processing the image.
+        shm_info.begin_wait(&self.connection)?;
 
         Ok(true)
     }
@@ -299,6 +323,25 @@ impl ShmInfo {
 
         Ok(())
     }
+
+    /// Begin waiting for the SHM processing to finish.
+    fn begin_wait(&mut self, c: &impl Connection) -> Result<(), PushBufferError> {
+        let cookie = c.get_input_focus()?.sequence_number();
+        let old_cookie = self.done_processing.replace(cookie);
+        debug_assert!(old_cookie.is_none());
+        Ok(())
+    }
+
+    /// Wait for the SHM processing to finish.
+    fn finish_wait(&mut self, c: &impl Connection) -> Result<(), PushBufferError> {
+        if let Some(done_processing) = self.done_processing.take() {
+            // Cast to a cookie and wait on it.
+            let cookie = Cookie::<_, xproto::GetInputFocusReply>::new(c, done_processing);
+            cookie.reply()?;
+        }
+
+        Ok(())
+    }
 }
 
 struct ShmSegment {
@@ -336,6 +379,7 @@ impl ShmSegment {
     /// # Safety
     ///
     /// This function assumes that the size of `self`'s buffer is larger than or equal to `data.len()`.
+    /// In addition, no other processes should be reading from or writing to this memory.
     unsafe fn copy<T: bytemuck::NoUninit>(&mut self, data: &[T]) {
         debug_assert!(data.len() * std::mem::size_of::<T>() <= self.size,);
         let incoming_data = bytemuck::cast_slice::<_, u8>(data);
@@ -375,16 +419,18 @@ impl Drop for ShmSegment {
 impl Drop for X11Impl {
     fn drop(&mut self) {
         // If we used SHM, make sure it's detached from the server.
-        if let Some(ShmInfo {
-            seg: Some((segment, seg_id)),
-        }) = self.shm.take()
-        {
-            if let Ok(token) = self.connection.shm_detach(seg_id) {
-                token.ignore_error();
-            }
+        if let Some(mut shm) = self.shm.take() {
+            // If we were in the middle of processing a buffer, wait for it to finish.
+            shm.finish_wait(&self.connection).ok();
 
-            // Drop the segment.
-            drop(segment);
+            if let Some((segment, seg_id)) = shm.seg.take() {
+                if let Ok(token) = self.connection.shm_detach(seg_id) {
+                    token.ignore_error();
+                }
+
+                // Drop the segment.
+                drop(segment);
+            }
         }
 
         // Close the graphics context that we created.
