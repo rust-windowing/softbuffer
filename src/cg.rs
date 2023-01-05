@@ -9,7 +9,7 @@ use raw_window_handle::AppKitWindowHandle;
 
 use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable, NSWindow};
 use cocoa::base::{id, nil};
-use cocoa::quartzcore::{CALayer, ContentsGravity};
+use cocoa::quartzcore::{transaction, CALayer, ContentsGravity};
 use foreign_types::ForeignType;
 
 use std::sync::Arc;
@@ -55,6 +55,15 @@ impl CGImpl {
             false,
             kCGRenderingIntentDefault,
         );
+
+        // The CALayer has a default action associated with a change in the layer contents, causing
+        // a quarter second fade transition to happen every time a new buffer is applied. This can
+        // be mitigated by wrapping the operation in a transaction and disabling all actions.
+        transaction::begin();
+        transaction::set_disable_actions(true);
+
         unsafe { self.layer.set_contents(image.as_ptr() as id) };
+
+        transaction::commit();
     }
 }
