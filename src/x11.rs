@@ -14,7 +14,7 @@ use std::{fmt, io};
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
 
-use x11rb::connection::Connection;
+use x11rb::connection::{Connection, RequestConnection};
 use x11rb::errors::{ConnectionError, ReplyError, ReplyOrIdError};
 use x11rb::protocol::shm::{self, ConnectionExt as _};
 use x11rb::protocol::xproto::{self, ConnectionExt as _};
@@ -114,8 +114,8 @@ impl X11Impl {
         let geometry_token = connection
             .get_geometry(window)
             .swbuf_err("Failed to send geometry request")?;
-        let query_token = connection
-            .query_extension(shm::X11_EXTENSION_NAME.as_bytes())
+        connection
+            .prefetch_extension_information(shm::X11_EXTENSION_NAME)
             .swbuf_err("Failed to send SHM query request")?;
 
         // Create a new graphics context to draw to.
@@ -139,10 +139,7 @@ impl X11Impl {
 
         // See if SHM is available.
         let shm_info = {
-            let present = query_token
-                .reply()
-                .swbuf_err("Failed to get SHM query reply")?
-                .present;
+            let present = is_shm_available(&connection);
 
             if present {
                 // SHM is available.
@@ -339,7 +336,8 @@ impl ShmSegment {
     /// # Safety
     ///
     /// This function assumes that the size of `self`'s buffer is larger than or equal to `data.len()`.
-    unsafe fn copy(&mut self, data: &[impl bytemuck::NoUninit]) {
+    unsafe fn copy<T: bytemuck::NoUninit>(&mut self, data: &[T]) {
+        debug_assert!(data.len() * std::mem::size_of::<T>() <= self.size,);
         let incoming_data = bytemuck::cast_slice::<_, u8>(data);
 
         unsafe {
@@ -376,11 +374,52 @@ impl Drop for ShmSegment {
 
 impl Drop for X11Impl {
     fn drop(&mut self) {
+        // If we used SHM, make sure it's detached from the server.
+        if let Some(ShmInfo {
+            seg: Some((segment, seg_id)),
+        }) = self.shm.take()
+        {
+            if let Ok(token) = self.connection.shm_detach(seg_id) {
+                token.ignore_error();
+            }
+
+            // Drop the segment.
+            drop(segment);
+        }
+
         // Close the graphics context that we created.
         if let Ok(token) = self.connection.free_gc(self.gc) {
             token.ignore_error();
         }
     }
+}
+
+/// Test to see if SHM is available.
+fn is_shm_available(c: &impl Connection) -> bool {
+    // Create a small SHM segment.
+    let seg = match ShmSegment::new(0x1000) {
+        Ok(seg) => seg,
+        Err(_) => return false,
+    };
+
+    // Attach and detach it.
+    let seg_id = match c.generate_id() {
+        Ok(id) => id,
+        Err(_) => return false,
+    };
+
+    let (attach, detach) = {
+        let attach = c.shm_attach(seg_id, seg.id(), false);
+        let detach = c.shm_detach(seg_id);
+
+        match (attach, detach) {
+            (Ok(attach), Ok(detach)) => (attach, detach),
+            _ => return false,
+        }
+    };
+
+    // Check the replies.
+    matches!((attach.check(), detach.check()), (Ok(()), Ok(())))
 }
 
 /// An error that can occur when pushing a buffer to the window.
