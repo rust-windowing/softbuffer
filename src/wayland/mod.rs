@@ -1,5 +1,6 @@
 use crate::{error::unwrap, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
+use std::sync::{Arc, Mutex};
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
@@ -12,19 +13,15 @@ use buffer::WaylandBuffer;
 
 struct State;
 
-pub struct WaylandImpl {
-    event_queue: EventQueue<State>,
+pub struct WaylandDisplayImpl {
+    conn: Connection,
+    event_queue: Mutex<EventQueue<State>>,
     qh: QueueHandle<State>,
-    surface: wl_surface::WlSurface,
     shm: wl_shm::WlShm,
-    buffers: Option<(WaylandBuffer, WaylandBuffer)>,
 }
 
-impl WaylandImpl {
-    pub unsafe fn new(
-        window_handle: WaylandWindowHandle,
-        display_handle: WaylandDisplayHandle,
-    ) -> Result<Self, SoftBufferError> {
+impl WaylandDisplayImpl {
+    pub unsafe fn new(display_handle: WaylandDisplayHandle) -> Result<Self, SoftBufferError> {
         // SAFETY: Ensured by user
         let backend = unsafe { Backend::from_foreign_display(display_handle.display as *mut _) };
         let conn = Connection::from_backend(backend);
@@ -37,6 +34,27 @@ impl WaylandImpl {
             globals.bind(&qh, 1..=1, ()),
             "Failed to instantiate Wayland Shm",
         )?;
+        Ok(Self {
+            conn,
+            event_queue: Mutex::new(event_queue),
+            qh,
+            shm,
+        })
+    }
+}
+
+pub struct WaylandImpl {
+    display: Arc<WaylandDisplayImpl>,
+    surface: wl_surface::WlSurface,
+    buffers: Option<(WaylandBuffer, WaylandBuffer)>,
+}
+
+impl WaylandImpl {
+    pub unsafe fn new(
+        window_handle: WaylandWindowHandle,
+        display: Arc<WaylandDisplayImpl>,
+    ) -> Result<Self, SoftBufferError> {
+        // SAFETY: Ensured by user
         let surface_id = unwrap(
             unsafe {
                 ObjectId::from_ptr(
@@ -47,14 +65,12 @@ impl WaylandImpl {
             "Failed to create proxy for surface ID.",
         )?;
         let surface = unwrap(
-            wl_surface::WlSurface::from_id(&conn, surface_id),
+            wl_surface::WlSurface::from_id(&display.conn, surface_id),
             "Failed to create proxy for surface ID.",
         )?;
         Ok(Self {
-            event_queue,
-            qh,
+            display,
             surface,
-            shm,
             buffers: Default::default(),
         })
     }
@@ -62,23 +78,31 @@ impl WaylandImpl {
     fn buffer(&mut self, width: i32, height: i32) -> &WaylandBuffer {
         self.buffers = Some(if let Some((front, mut back)) = self.buffers.take() {
             // Swap buffers; block if back buffer not released yet
-            while !back.released() {
-                self.event_queue.blocking_dispatch(&mut State).unwrap();
+            if !back.released() {
+                let mut event_queue = self.display.event_queue.lock().unwrap();
+                while !back.released() {
+                    event_queue.blocking_dispatch(&mut State).unwrap();
+                }
             }
             back.resize(width, height);
             (back, front)
         } else {
             // Allocate front and back buffer
             (
-                WaylandBuffer::new(&self.shm, width, height, &self.qh),
-                WaylandBuffer::new(&self.shm, width, height, &self.qh),
+                WaylandBuffer::new(&self.display.shm, width, height, &self.display.qh),
+                WaylandBuffer::new(&self.display.shm, width, height, &self.display.qh),
             )
         });
         &self.buffers.as_ref().unwrap().0
     }
 
     pub(super) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        let _ = self.event_queue.dispatch_pending(&mut State);
+        let _ = self
+            .display
+            .event_queue
+            .lock()
+            .unwrap()
+            .dispatch_pending(&mut State);
 
         let surface = self.surface.clone();
         let wayland_buffer = self.buffer(width.into(), height.into());
@@ -101,7 +125,7 @@ impl WaylandImpl {
         }
         self.surface.commit();
 
-        let _ = self.event_queue.flush();
+        let _ = self.display.event_queue.lock().unwrap().flush();
     }
 }
 

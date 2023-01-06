@@ -1,4 +1,3 @@
-use softbuffer::GraphicsContext;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -24,7 +23,8 @@ fn main() {
             .unwrap();
     }
 
-    let mut graphics_context = unsafe { GraphicsContext::new(&window, &window) }.unwrap();
+    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
+    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -45,7 +45,7 @@ fn main() {
                     })
                     .collect::<Vec<_>>();
 
-                graphics_context.set_buffer(&buffer, BUFFER_WIDTH as u16, BUFFER_HEIGHT as u16);
+                surface.set_buffer(&buffer, BUFFER_WIDTH as u16, BUFFER_HEIGHT as u16);
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

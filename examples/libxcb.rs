@@ -3,7 +3,6 @@
 #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
 mod example {
     use raw_window_handle::{RawDisplayHandle, RawWindowHandle, XcbDisplayHandle, XcbWindowHandle};
-    use softbuffer::GraphicsContext;
     use x11rb::{
         connection::Connection,
         protocol::{
@@ -54,13 +53,12 @@ mod example {
 
         // Create a new softbuffer context.
         // SAFETY: The display and window handles outlive the context.
-        let mut context = unsafe {
-            GraphicsContext::from_raw(
-                RawWindowHandle::Xcb(window_handle),
-                RawDisplayHandle::Xcb(display_handle),
-            )
-        }
-        .unwrap();
+        let context =
+            unsafe { softbuffer::Context::from_raw(RawDisplayHandle::Xcb(display_handle)) }
+                .unwrap();
+        let mut surface =
+            unsafe { softbuffer::Surface::from_raw(&context, RawWindowHandle::Xcb(window_handle)) }
+                .unwrap();
 
         // Register an atom for closing the window.
         let wm_protocols_atom = conn
@@ -104,7 +102,7 @@ mod example {
                         .collect::<Vec<_>>();
 
                     // Draw the buffer.
-                    context.set_buffer(&source, width, height);
+                    surface.set_buffer(&source, width, height);
                 }
                 Event::ConfigureNotify(configure_notify) => {
                     width = configure_notify.width;

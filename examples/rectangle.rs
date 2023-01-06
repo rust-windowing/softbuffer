@@ -1,4 +1,3 @@
-use softbuffer::GraphicsContext;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -41,7 +40,8 @@ fn main() {
             .unwrap();
     }
 
-    let mut graphics_context = unsafe { GraphicsContext::new(&window, &window) }.unwrap();
+    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
+    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
     let mut buffer = Vec::new();
     let mut flag = false;
@@ -66,7 +66,7 @@ fn main() {
                 redraw(&mut buffer, width, height, flag);
 
                 // Blit the offscreen buffer to the window's client area
-                graphics_context.set_buffer(&buffer, width as u16, height as u16);
+                surface.set_buffer(&buffer, width as u16, height as u16);
             }
 
             Event::WindowEvent {
