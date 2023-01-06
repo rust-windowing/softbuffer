@@ -103,13 +103,4 @@ fn main() {
 Changelog
 ---------
 
-See git tags for associated commits.
-
-0.1.1
------
- - Added WASM support (Thanks to [Liamolucko](https://github.com/Liamolucko)!)
- - CALayer is now used for Mac OS backend, which is more flexible about what happens in the windowing library (Thanks to [lunixbochs](https://github.com/lunixbochs)!)
-
-0.1.0
------
-Initial published version with support for Linux (X11 and Wayland), Mac OS (but buggy), and WIndows.
+See the [changelog][./CHANGELOG.md] for a list of this package's versions and the changes made in each version.
