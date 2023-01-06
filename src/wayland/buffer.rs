@@ -16,11 +16,22 @@ use super::State;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn create_memfile() -> File {
-    use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
+    use nix::{
+        fcntl::{fcntl, FcntlArg, SealFlag},
+        sys::memfd::{memfd_create, MemFdCreateFlag},
+    };
 
     let name = unsafe { CStr::from_bytes_with_nul_unchecked("softbuffer\0".as_bytes()) };
-    let fd = memfd_create(name, MemFdCreateFlag::MFD_CLOEXEC)
-        .expect("Failed to create memfd to store buffer.");
+    let fd = memfd_create(
+        name,
+        MemFdCreateFlag::MFD_CLOEXEC | MemFdCreateFlag::MFD_ALLOW_SEALING,
+    )
+    .expect("Failed to create memfd to store buffer.");
+    let _ = fcntl(
+        fd,
+        FcntlArg::F_ADD_SEALS(SealFlag::F_SEAL_SHRINK | SealFlag::F_SEAL_SEAL),
+    )
+    .expect("Failed to seal memfd.");
     unsafe { File::from_raw_fd(fd) }
 }
 
