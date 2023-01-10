@@ -47,6 +47,8 @@ pub struct WaylandImpl {
     display: Arc<WaylandDisplayImpl>,
     surface: wl_surface::WlSurface,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
+    width: i32,
+    height: i32,
 }
 
 impl WaylandImpl {
@@ -72,31 +74,44 @@ impl WaylandImpl {
             display,
             surface,
             buffers: Default::default(),
+            width: 0,
+            height: 0,
         })
     }
 
-    fn buffer(&mut self, width: i32, height: i32) -> &WaylandBuffer {
-        self.buffers = Some(if let Some((front, mut back)) = self.buffers.take() {
-            // Swap buffers; block if back buffer not released yet
+    // Allocate front and back buffer
+    fn alloc_buffers(&mut self) {
+        self.buffers = Some((
+            WaylandBuffer::new(&self.display.shm, self.width, self.height, &self.display.qh),
+            WaylandBuffer::new(&self.display.shm, self.width, self.height, &self.display.qh),
+        ));
+    }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        self.width = width as i32;
+        self.height = height as i32;
+    }
+
+    fn buffer_mut(&mut self) -> &mut [u32] {
+        if let Some((_front, back)) = &mut self.buffers {
+            // Block if back buffer not released yet
             if !back.released() {
                 let mut event_queue = self.display.event_queue.lock().unwrap();
                 while !back.released() {
                     event_queue.blocking_dispatch(&mut State).unwrap();
                 }
             }
-            back.resize(width, height);
-            (back, front)
+
+            // Resize, if buffer isn't large enough
+            back.resize(self.width, self.height);
         } else {
-            // Allocate front and back buffer
-            (
-                WaylandBuffer::new(&self.display.shm, width, height, &self.display.qh),
-                WaylandBuffer::new(&self.display.shm, width, height, &self.display.qh),
-            )
-        });
-        &self.buffers.as_ref().unwrap().0
+            self.alloc_buffers();
+        };
+
+        unsafe { self.buffers.as_mut().unwrap().1.mapped_mut() }
     }
 
-    pub(super) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+    fn present(&mut self) {
         let _ = self
             .display
             .event_queue
@@ -104,28 +119,36 @@ impl WaylandImpl {
             .unwrap()
             .dispatch_pending(&mut State);
 
-        let surface = self.surface.clone();
-        let wayland_buffer = self.buffer(width.into(), height.into());
-        wayland_buffer.write(buffer);
-        wayland_buffer.attach(&surface);
+        if let Some((front, back)) = &mut self.buffers {
+            // Swap front and back buffer
+            std::mem::swap(front, back);
 
-        // FIXME: Proper damaging mechanism.
-        //
-        // In order to propagate changes on compositors which track damage, for now damage the entire surface.
-        if self.surface.version() < 4 {
-            // FIXME: Accommodate scale factor since wl_surface::damage is in terms of surface coordinates while
-            // wl_surface::damage_buffer is in buffer coordinates.
+            front.attach(&self.surface);
+
+            // FIXME: Proper damaging mechanism.
             //
-            // i32::MAX is a valid damage box (most compositors interpret the damage box as "the entire surface")
-            self.surface.damage(0, 0, i32::MAX, i32::MAX);
-        } else {
-            // Introduced in version 4, it is an error to use this request in version 3 or lower.
-            self.surface
-                .damage_buffer(0, 0, width as i32, height as i32);
+            // In order to propagate changes on compositors which track damage, for now damage the entire surface.
+            if self.surface.version() < 4 {
+                // FIXME: Accommodate scale factor since wl_surface::damage is in terms of surface coordinates while
+                // wl_surface::damage_buffer is in buffer coordinates.
+                //
+                // i32::MAX is a valid damage box (most compositors interpret the damage box as "the entire surface")
+                self.surface.damage(0, 0, i32::MAX, i32::MAX);
+            } else {
+                // Introduced in version 4, it is an error to use this request in version 3 or lower.
+                self.surface.damage_buffer(0, 0, self.width, self.height);
+            }
+
+            self.surface.commit();
         }
-        self.surface.commit();
 
         let _ = self.display.event_queue.lock().unwrap().flush();
+    }
+
+    pub unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+        self.resize(width.into(), height.into());
+        self.buffer_mut().copy_from_slice(buffer);
+        self.present();
     }
 }
 
