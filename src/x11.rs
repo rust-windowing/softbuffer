@@ -231,7 +231,12 @@ impl X11Impl {
 
     /// Resize the internal buffer to the given width and height.
     pub(crate) fn resize(&mut self, width: u32, height: u32) {
-        log::trace!("resize: window={:X}, size={}x{}", self.window, width, height);
+        log::trace!(
+            "resize: window={:X}, size={}x{}",
+            self.window,
+            width,
+            height
+        );
 
         // Width and height should fit in u16.
         let width: u16 = width.try_into().expect("Width too large");
@@ -392,7 +397,6 @@ impl ShmBuffer {
             let new_seg = ShmSegment::new(size)?;
             self.associate(conn, new_seg)?;
         }
-
 
         Ok(())
     }
