@@ -71,6 +71,33 @@ macro_rules! make_dispatch {
         }
 
         impl SurfaceDispatch {
+            pub fn resize(&mut self, width: u32, height: u32) {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.resize(width, height),
+                    )*
+                }
+            }
+
+            pub fn buffer_mut(&mut self) -> &mut [u32] {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.buffer_mut(),
+                    )*
+                }
+            }
+
+            pub fn present(&mut self) {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.present(),
+                    )*
+                }
+            }
+
             unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
                 match self {
                     $(
@@ -233,6 +260,18 @@ impl Surface {
         Ok(Self {
             surface_impl: Box::new(imple),
         })
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.surface_impl.resize(width, height);
+    }
+
+    pub fn buffer_mut(&mut self) -> &mut [u32] {
+        self.surface_impl.buffer_mut()
+    }
+
+    pub fn present(&mut self) {
+        self.surface_impl.present();
     }
 
     /// Shows the given buffer with the given width and height on the window corresponding to this

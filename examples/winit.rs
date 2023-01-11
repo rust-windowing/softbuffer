@@ -32,21 +32,21 @@ fn main() {
                     let size = window.inner_size();
                     (size.width, size.height)
                 };
-                let buffer = (0..((width * height) as usize))
-                    .map(|index| {
-                        let y = index / (width as usize);
-                        let x = index % (width as usize);
-                        let red = x % 255;
-                        let green = y % 255;
-                        let blue = (x * y) % 255;
 
-                        let color = blue | (green << 8) | (red << 16);
+                surface.resize(width, height);
 
-                        color as u32
-                    })
-                    .collect::<Vec<_>>();
+                let buffer = surface.buffer_mut();
+                for index in 0..(width * height) {
+                    let y = index as u32 / width;
+                    let x = index as u32 % width;
+                    let red = x % 255;
+                    let green = y % 255;
+                    let blue = (x * y) % 255;
 
-                surface.set_buffer(&buffer, width as u16, height as u16);
+                    buffer[index as usize] = blue | (green << 8) | (red << 16);
+                }
+
+                surface.present();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

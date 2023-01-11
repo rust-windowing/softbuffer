@@ -87,12 +87,12 @@ impl WaylandImpl {
         ));
     }
 
-    fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32) {
         self.width = width as i32;
         self.height = height as i32;
     }
 
-    fn buffer_mut(&mut self) -> &mut [u32] {
+    pub fn buffer_mut(&mut self) -> &mut [u32] {
         if let Some((_front, back)) = &mut self.buffers {
             // Block if back buffer not released yet
             if !back.released() {
@@ -111,7 +111,7 @@ impl WaylandImpl {
         unsafe { self.buffers.as_mut().unwrap().1.mapped_mut() }
     }
 
-    fn present(&mut self) {
+    pub fn present(&mut self) {
         let _ = self
             .display
             .event_queue
