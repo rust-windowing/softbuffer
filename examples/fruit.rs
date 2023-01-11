@@ -1,5 +1,4 @@
 use image::GenericImageView;
-use softbuffer::GraphicsContext;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -38,14 +37,15 @@ fn main() {
             .unwrap();
     }
 
-    let mut graphics_context = unsafe { GraphicsContext::new(&window, &window) }.unwrap();
+    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
+    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                graphics_context.set_buffer(&buffer, fruit.width() as u16, fruit.height() as u16);
+                surface.set_buffer(&buffer, fruit.width() as u16, fruit.height() as u16);
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

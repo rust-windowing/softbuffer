@@ -21,6 +21,9 @@ mod x11;
 
 mod error;
 
+#[cfg(any(wayland_platform, x11_platform))]
+use std::sync::Arc;
+
 pub use error::SoftBufferError;
 
 use raw_window_handle::{
@@ -29,12 +32,9 @@ use raw_window_handle::{
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
-pub struct GraphicsContext {
+pub struct Context {
     /// The inner static dispatch object.
-    ///
-    /// This is boxed so that `GraphicsContext` is the same size on every platform, which should
-    /// hopefully prevent surprises.
-    graphics_context_impl: Box<Dispatch>,
+    context_impl: ContextDispatch,
 }
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
@@ -42,17 +42,35 @@ macro_rules! make_dispatch {
     (
         $(
             $(#[$attr:meta])*
-            $name: ident ($inner_ty: ty),
+            $name: ident ($context_inner: ty, $surface_inner : ty),
         )*
     ) => {
-        enum Dispatch {
+        enum ContextDispatch {
             $(
                 $(#[$attr])*
-                $name($inner_ty),
+                $name($context_inner),
             )*
         }
 
-        impl Dispatch {
+        impl ContextDispatch {
+            fn variant_name(&self) -> &'static str {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(_) => stringify!($name),
+                    )*
+                }
+            }
+        }
+
+        enum SurfaceDispatch {
+            $(
+                $(#[$attr])*
+                $name($surface_inner),
+            )*
+        }
+
+        impl SurfaceDispatch {
             unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
                 match self {
                     $(
@@ -67,31 +85,91 @@ macro_rules! make_dispatch {
 
 make_dispatch! {
     #[cfg(x11_platform)]
-    X11(x11::X11Impl),
+    X11(Arc<x11::X11DisplayImpl>, x11::X11Impl),
     #[cfg(wayland_platform)]
-    Wayland(wayland::WaylandImpl),
+    Wayland(std::sync::Arc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl),
     #[cfg(target_os = "windows")]
-    Win32(win32::Win32Impl),
+    Win32((), win32::Win32Impl),
     #[cfg(target_os = "macos")]
-    CG(cg::CGImpl),
+    CG((), cg::CGImpl),
     #[cfg(target_arch = "wasm32")]
-    Web(web::WebImpl),
+    Web((), web::WebImpl),
     #[cfg(target_os = "redox")]
-    Orbital(orbital::OrbitalImpl),
+    Orbital((), orbital::OrbitalImpl),
 }
 
-impl GraphicsContext {
+impl Context {
+    /// Creates a new instance of this struct, using the provided display.
+    ///
+    /// # Safety
+    ///
+    ///  - Ensure that the provided object is valid for the lifetime of the Context
+    pub unsafe fn new<D: HasRawDisplayHandle>(display: &D) -> Result<Self, SoftBufferError> {
+        unsafe { Self::from_raw(display.raw_display_handle()) }
+    }
+
+    /// Creates a new instance of this struct, using the provided display handles
+    ///
+    /// # Safety
+    ///
+    ///  - Ensure that the provided handle is valid for the lifetime of the Context
+    pub unsafe fn from_raw(raw_display_handle: RawDisplayHandle) -> Result<Self, SoftBufferError> {
+        let imple: ContextDispatch = match raw_display_handle {
+            #[cfg(x11_platform)]
+            RawDisplayHandle::Xlib(xlib_handle) => unsafe {
+                ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
+            },
+            #[cfg(x11_platform)]
+            RawDisplayHandle::Xcb(xcb_handle) => unsafe {
+                ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xcb(xcb_handle)?))
+            },
+            #[cfg(wayland_platform)]
+            RawDisplayHandle::Wayland(wayland_handle) => unsafe {
+                ContextDispatch::Wayland(Arc::new(wayland::WaylandDisplayImpl::new(
+                    wayland_handle,
+                )?))
+            },
+            #[cfg(target_os = "windows")]
+            RawDisplayHandle::Windows(_) => ContextDispatch::Win32(()),
+            #[cfg(target_os = "macos")]
+            RawDisplayHandle::AppKit(_) => ContextDispatch::CG(()),
+            #[cfg(target_arch = "wasm32")]
+            RawDisplayHandle::Web(_) => ContextDispatch::Web(()),
+            #[cfg(target_os = "redox")]
+            RawDisplayHandle::Orbital(_) => ContextDispatch::Orbital(()),
+            unimplemented_display_handle => {
+                return Err(SoftBufferError::UnsupportedDisplayPlatform {
+                    human_readable_display_platform_name: display_handle_type_name(
+                        &unimplemented_display_handle,
+                    ),
+                    display_handle: unimplemented_display_handle,
+                })
+            }
+        };
+
+        Ok(Self {
+            context_impl: imple,
+        })
+    }
+}
+
+pub struct Surface {
+    /// This is boxed so that `Surface` is the same size on every platform.
+    surface_impl: Box<SurfaceDispatch>,
+}
+
+impl Surface {
     /// Creates a new instance of this struct, using the provided window and display.
     ///
     /// # Safety
     ///
     ///  - Ensure that the provided objects are valid to draw a 2D buffer to, and are valid for the
-    ///    lifetime of the GraphicsContext
-    pub unsafe fn new<W: HasRawWindowHandle, D: HasRawDisplayHandle>(
+    ///    lifetime of the Context
+    pub unsafe fn new<W: HasRawWindowHandle>(
+        context: &Context,
         window: &W,
-        display: &D,
     ) -> Result<Self, SoftBufferError> {
-        unsafe { Self::from_raw(window.raw_window_handle(), display.raw_display_handle()) }
+        unsafe { Self::from_raw(context, window.raw_window_handle()) }
     }
 
     /// Creates a new instance of this struct, using the provided raw window and display handles
@@ -99,63 +177,61 @@ impl GraphicsContext {
     /// # Safety
     ///
     ///  - Ensure that the provided handles are valid to draw a 2D buffer to, and are valid for the
-    ///    lifetime of the GraphicsContext
+    ///    lifetime of the Context
     pub unsafe fn from_raw(
+        context: &Context,
         raw_window_handle: RawWindowHandle,
-        raw_display_handle: RawDisplayHandle,
     ) -> Result<Self, SoftBufferError> {
-        let imple: Dispatch = match (raw_window_handle, raw_display_handle) {
+        let imple: SurfaceDispatch = match (&context.context_impl, raw_window_handle) {
             #[cfg(x11_platform)]
             (
+                ContextDispatch::X11(xcb_display_handle),
                 RawWindowHandle::Xlib(xlib_window_handle),
-                RawDisplayHandle::Xlib(xlib_display_handle),
-            ) => Dispatch::X11(unsafe {
-                x11::X11Impl::from_xlib(xlib_window_handle, xlib_display_handle)?
+            ) => SurfaceDispatch::X11(unsafe {
+                x11::X11Impl::from_xlib(xlib_window_handle, xcb_display_handle.clone())?
             }),
             #[cfg(x11_platform)]
-            (
-                RawWindowHandle::Xcb(xcb_window_handle),
-                RawDisplayHandle::Xcb(xcb_display_handle),
-            ) => Dispatch::X11(unsafe {
-                x11::X11Impl::from_xcb(xcb_window_handle, xcb_display_handle)?
-            }),
+            (ContextDispatch::X11(xcb_display_handle), RawWindowHandle::Xcb(xcb_window_handle)) => {
+                SurfaceDispatch::X11(unsafe {
+                    x11::X11Impl::from_xcb(xcb_window_handle, xcb_display_handle.clone())?
+                })
+            }
             #[cfg(wayland_platform)]
             (
+                ContextDispatch::Wayland(wayland_display_impl),
                 RawWindowHandle::Wayland(wayland_window_handle),
-                RawDisplayHandle::Wayland(wayland_display_handle),
-            ) => Dispatch::Wayland(unsafe {
-                wayland::WaylandImpl::new(wayland_window_handle, wayland_display_handle)?
+            ) => SurfaceDispatch::Wayland(unsafe {
+                wayland::WaylandImpl::new(wayland_window_handle, wayland_display_impl.clone())?
             }),
             #[cfg(target_os = "windows")]
-            (RawWindowHandle::Win32(win32_handle), _) => {
-                Dispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
+            (ContextDispatch::Win32(()), RawWindowHandle::Win32(win32_handle)) => {
+                SurfaceDispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
             }
             #[cfg(target_os = "macos")]
-            (RawWindowHandle::AppKit(appkit_handle), _) => {
-                Dispatch::CG(unsafe { cg::CGImpl::new(appkit_handle)? })
+            (ContextDispatch::CG(()), RawWindowHandle::AppKit(appkit_handle)) => {
+                SurfaceDispatch::CG(unsafe { cg::CGImpl::new(appkit_handle)? })
             }
             #[cfg(target_arch = "wasm32")]
-            (RawWindowHandle::Web(web_handle), _) => Dispatch::Web(web::WebImpl::new(web_handle)?),
-            #[cfg(target_os = "redox")]
-            (RawWindowHandle::Orbital(orbital_handle), _) => {
-                Dispatch::Orbital(orbital::OrbitalImpl::new(orbital_handle)?)
+            (ContextDispatch::Web(()), RawWindowHandle::Web(web_handle)) => {
+                SurfaceDispatch::Web(web::WebImpl::new(web_handle)?)
             }
-            (unimplemented_window_handle, unimplemented_display_handle) => {
-                return Err(SoftBufferError::UnsupportedPlatform {
+            #[cfg(target_os = "redox")]
+            (ContextDispatch::Orbital(()), RawWindowHandle::Orbital(orbital_handle)) => {
+                SurfaceDispatch::Orbital(orbital::OrbitalImpl::new(orbital_handle)?)
+            }
+            (unsupported_display_impl, unimplemented_window_handle) => {
+                return Err(SoftBufferError::UnsupportedWindowPlatform {
                     human_readable_window_platform_name: window_handle_type_name(
                         &unimplemented_window_handle,
                     ),
-                    human_readable_display_platform_name: display_handle_type_name(
-                        &unimplemented_display_handle,
-                    ),
+                    human_readable_display_platform_name: unsupported_display_impl.variant_name(),
                     window_handle: unimplemented_window_handle,
-                    display_handle: unimplemented_display_handle,
                 })
             }
         };
 
         Ok(Self {
-            graphics_context_impl: Box::new(imple),
+            surface_impl: Box::new(imple),
         })
     }
 
@@ -185,7 +261,7 @@ impl GraphicsContext {
     ///
     /// # Platform dependent behavior
     ///
-    /// This section of the documentation details how some platforms may behave when [`set_buffer`](GraphicsContext::set_buffer)
+    /// This section of the documentation details how some platforms may behave when [`set_buffer`](Surface::set_buffer)
     /// is called.
     ///
     /// ## Wayland
@@ -203,7 +279,7 @@ impl GraphicsContext {
         }
 
         unsafe {
-            self.graphics_context_impl.set_buffer(buffer, width, height);
+            self.surface_impl.set_buffer(buffer, width, height);
         }
     }
 }

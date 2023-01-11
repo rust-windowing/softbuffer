@@ -1,7 +1,6 @@
 use instant::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
-use softbuffer::GraphicsContext;
 use std::f64::consts::PI;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -25,7 +24,8 @@ fn main() {
             .unwrap();
     }
 
-    let mut graphics_context = unsafe { GraphicsContext::new(&window, &window) }.unwrap();
+    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
+    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
     let mut old_size = (0, 0);
     let mut frames = pre_render_frames(0, 0);
@@ -48,7 +48,7 @@ fn main() {
                 };
 
                 let buffer = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
-                graphics_context.set_buffer(buffer.as_slice(), width as u16, height as u16);
+                surface.set_buffer(buffer.as_slice(), width as u16, height as u16);
             }
             Event::MainEventsCleared => {
                 window.request_redraw();

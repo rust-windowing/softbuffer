@@ -6,13 +6,19 @@ use thiserror::Error;
 #[non_exhaustive]
 pub enum SoftBufferError {
     #[error(
+        "The provided display returned an unsupported platform: {human_readable_display_platform_name}."
+    )]
+    UnsupportedDisplayPlatform {
+        human_readable_display_platform_name: &'static str,
+        display_handle: RawDisplayHandle,
+    },
+    #[error(
         "The provided window returned an unsupported platform: {human_readable_window_platform_name}, {human_readable_display_platform_name}."
     )]
-    UnsupportedPlatform {
+    UnsupportedWindowPlatform {
         human_readable_window_platform_name: &'static str,
         human_readable_display_platform_name: &'static str,
         window_handle: RawWindowHandle,
-        display_handle: RawDisplayHandle,
     },
 
     #[error("The provided window handle is null.")]
