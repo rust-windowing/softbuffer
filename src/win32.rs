@@ -7,7 +7,7 @@ use raw_window_handle::Win32WindowHandle;
 
 use std::io;
 use std::mem;
-use std::ptr;
+use std::ptr::{self, NonNull};
 use std::slice;
 
 use windows_sys::Win32::Foundation::HWND;
@@ -23,7 +23,7 @@ const ZERO_QUAD: Gdi::RGBQUAD = Gdi::RGBQUAD {
 struct Buffer {
     dc: Gdi::HDC,
     bitmap: Gdi::HBITMAP,
-    pixels: *mut u32,
+    pixels: NonNull<u32>,
     width: i32,
     height: i32,
 }
@@ -88,6 +88,7 @@ impl Buffer {
             )
         };
         assert!(bitmap != 0);
+        let pixels = NonNull::new(pixels).unwrap();
 
         unsafe {
             Gdi::SelectObject(dc, bitmap);
@@ -104,7 +105,10 @@ impl Buffer {
 
     fn pixels_mut(&mut self) -> &mut [u32] {
         unsafe {
-            slice::from_raw_parts_mut(self.pixels, self.width as usize * self.height as usize * 4)
+            slice::from_raw_parts_mut(
+                self.pixels.as_ptr(),
+                self.width as usize * self.height as usize * 4,
+            )
         }
     }
 }

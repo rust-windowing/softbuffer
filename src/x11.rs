@@ -9,7 +9,7 @@ use crate::SoftBufferError;
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
-use std::{fmt, io, sync::Arc};
+use std::{fmt, io, mem, sync::Arc};
 
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
@@ -80,6 +80,9 @@ impl X11DisplayImpl {
         };
 
         let is_shm_available = is_shm_available(&connection);
+        if !is_shm_available {
+            log::warn!("SHM extension is not available. Performance may be poor.");
+        }
 
         Ok(Self {
             connection,
@@ -102,11 +105,26 @@ pub struct X11Impl {
     /// The depth (bits per pixel) of the drawing context.
     depth: u8,
 
-    /// Information about SHM, if it is available.
-    shm: Option<ShmInfo>,
+    /// The buffer we draw to.
+    buffer: Buffer,
+
+    /// The current buffer width.
+    width: u16,
+
+    /// The current buffer height.
+    height: u16,
 }
 
-struct ShmInfo {
+/// The buffer that is being drawn to.
+enum Buffer {
+    /// A buffer implemented using shared memory to prevent unnecessary copying.
+    Shm(ShmBuffer),
+
+    /// A normal buffer that we send over the wire.
+    Wire(Vec<u32>),
+}
+
+struct ShmBuffer {
     /// The shared memory segment, paired with its ID.
     seg: Option<(ShmSegment, shm::Seg)>,
 
@@ -152,6 +170,8 @@ impl X11Impl {
         window_handle: XcbWindowHandle,
         display: Arc<X11DisplayImpl>,
     ) -> Result<Self, SoftBufferError> {
+        log::trace!("new: window_handle={:X}", window_handle.window,);
+
         // Check that the handle is valid.
         if window_handle.window == 0 {
             return Err(SoftBufferError::IncompleteWindowHandle);
@@ -187,18 +207,15 @@ impl X11Impl {
             .swbuf_err("Failed to get geometry reply")?;
 
         // See if SHM is available.
-        let shm_info = {
-            let present = display.is_shm_available;
-
-            if present {
-                // SHM is available.
-                Some(ShmInfo {
-                    seg: None,
-                    done_processing: None,
-                })
-            } else {
-                None
-            }
+        let buffer = if display.is_shm_available {
+            // SHM is available.
+            Buffer::Shm(ShmBuffer {
+                seg: None,
+                done_processing: None,
+            })
+        } else {
+            // SHM is not available.
+            Buffer::Wire(Vec::new())
         };
 
         Ok(Self {
@@ -206,119 +223,161 @@ impl X11Impl {
             window,
             gc,
             depth: geometry_reply.depth,
-            shm: shm_info,
+            buffer,
+            width: 0,
+            height: 0,
         })
     }
 
-    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        // Draw the image to the buffer.
-        let result = unsafe { self.set_buffer_shm(buffer, width, height) }.and_then(|had_shm| {
-            if had_shm {
-                Ok(())
-            } else {
-                log::debug!("Falling back to non-SHM method");
-                self.set_buffer_fallback(buffer, width, height)
+    /// Resize the internal buffer to the given width and height.
+    pub(crate) fn resize(&mut self, width: u32, height: u32) {
+        log::trace!("resize: window={:X}, size={}x{}", self.window, width, height);
+
+        // Width and height should fit in u16.
+        let width: u16 = width.try_into().expect("Width too large");
+        let height: u16 = height.try_into().expect("Height too large");
+
+        if width == self.width && height == self.height {
+            // Nothing to do.
+            return;
+        }
+
+        match self.buffer.resize(&self.display.connection, width, height) {
+            Ok(()) => {
+                // We successfully resized the buffer.
+                self.width = width;
+                self.height = height;
             }
-        });
+
+            Err(e) => {
+                log::error!("Failed to resize window: {}", e);
+            }
+        }
+    }
+
+    /// Get a mutable reference to the buffer.
+    pub(crate) fn buffer_mut(&mut self) -> &mut [u32] {
+        log::trace!("buffer_mut: window={:X}", self.window);
+
+        let buffer = self
+            .buffer
+            .buffer_mut(&self.display.connection)
+            .expect("Failed to get buffer");
+
+        // Crop it down to the window size.
+        &mut buffer[..total_len(self.width, self.height) / 4]
+    }
+
+    /// Push the buffer to the window.
+    pub(crate) fn present(&mut self) {
+        log::trace!("present: window={:X}", self.window);
+
+        let result = match self.buffer {
+            Buffer::Wire(ref wire) => {
+                // This is a suboptimal strategy, raise a stink in the debug logs.
+                log::debug!("Falling back to non-SHM method for window drawing.");
+
+                self.display
+                    .connection
+                    .put_image(
+                        xproto::ImageFormat::Z_PIXMAP,
+                        self.window,
+                        self.gc,
+                        self.width,
+                        self.height,
+                        0,
+                        0,
+                        0,
+                        self.depth,
+                        bytemuck::cast_slice(wire),
+                    )
+                    .map(|c| c.ignore_error())
+                    .push_err()
+            }
+
+            Buffer::Shm(ref mut shm) => {
+                // If the X server is still processing the last image, wait for it to finish.
+                shm.finish_wait(&self.display.connection)
+                    .and_then(|()| {
+                        // Put the image into the window.
+                        if let Some((_, segment_id)) = shm.seg {
+                            self.display
+                                .connection
+                                .shm_put_image(
+                                    self.window,
+                                    self.gc,
+                                    self.width,
+                                    self.height,
+                                    0,
+                                    0,
+                                    self.width,
+                                    self.height,
+                                    0,
+                                    0,
+                                    self.depth,
+                                    xproto::ImageFormat::Z_PIXMAP.into(),
+                                    false,
+                                    segment_id,
+                                    0,
+                                )
+                                .push_err()
+                                .map(|c| c.ignore_error())
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .and_then(|()| {
+                        // Send a short request to act as a notification for when the X server is done processing the image.
+                        shm.begin_wait(&self.display.connection)
+                    })
+            }
+        };
 
         if let Err(e) = result {
             log::error!("Failed to draw image to window: {}", e);
         }
     }
 
-    /// Put the given buffer into the window using the SHM method.
-    ///
-    /// Returns `false` if SHM is not available.
-    ///
-    /// # Safety
-    ///
-    /// The buffer's length must be `width * height`.
-    unsafe fn set_buffer_shm(
-        &mut self,
-        buffer: &[u32],
-        width: u16,
-        height: u16,
-    ) -> Result<bool, PushBufferError> {
-        let shm_info = match self.shm {
-            Some(ref mut info) => info,
-            None => return Ok(false),
-        };
-
-        // If the X server is still processing the last image, wait for it to finish.
-        shm_info.finish_wait(&self.display.connection)?;
-
-        // Get the SHM segment to use.
-        let necessary_size = (width as usize) * (height as usize) * 4;
-        let (segment, segment_id) = shm_info.segment(&self.display.connection, necessary_size)?;
-
-        // Copy the buffer into the segment.
-        // SAFETY: The buffer is properly sized and we've ensured that the X server isn't reading from it.
-        unsafe {
-            segment.copy(buffer);
-        }
-
-        // Put the image into the window.
-        self.display
-            .connection
-            .shm_put_image(
-                self.window,
-                self.gc,
-                width,
-                height,
-                0,
-                0,
-                width,
-                height,
-                0,
-                0,
-                self.depth,
-                xproto::ImageFormat::Z_PIXMAP.into(),
-                false,
-                segment_id,
-                0,
-            )?
-            .ignore_error();
-
-        // Send a short request to act as a notification for when the X server is done processing the image.
-        shm_info.begin_wait(&self.display.connection)?;
-
-        Ok(true)
-    }
-
-    /// Put the given buffer into the window using the fallback wire transfer method.
-    fn set_buffer_fallback(
-        &mut self,
-        buffer: &[u32],
-        width: u16,
-        height: u16,
-    ) -> Result<(), PushBufferError> {
-        self.display
-            .connection
-            .put_image(
-                xproto::ImageFormat::Z_PIXMAP,
-                self.window,
-                self.gc,
-                width,
-                height,
-                0,
-                0,
-                0,
-                self.depth,
-                bytemuck::cast_slice(buffer),
-            )?
-            .ignore_error();
-
-        Ok(())
+    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+        self.resize(width.into(), height.into());
+        self.buffer_mut().copy_from_slice(buffer);
+        self.present();
     }
 }
 
-impl ShmInfo {
+impl Buffer {
+    /// Resize the buffer to the given size.
+    fn resize(
+        &mut self,
+        conn: &impl Connection,
+        width: u16,
+        height: u16,
+    ) -> Result<(), PushBufferError> {
+        match self {
+            Buffer::Shm(ref mut shm) => shm.alloc_segment(conn, total_len(width, height)),
+            Buffer::Wire(wire) => {
+                wire.resize(total_len(width, height), 0);
+                Ok(())
+            }
+        }
+    }
+
+    /// Get a mutable reference to the buffer.
+    fn buffer_mut(&mut self, conn: &impl Connection) -> Result<&mut [u32], PushBufferError> {
+        match self {
+            Buffer::Shm(ref mut shm) => shm.as_mut(conn),
+            Buffer::Wire(wire) => Ok(wire),
+        }
+    }
+}
+
+impl ShmBuffer {
     /// Allocate a new `ShmSegment` of the given size.
-    fn segment(
+    fn alloc_segment(
         &mut self,
         conn: &impl Connection,
         size: usize,
-    ) -> Result<(&mut ShmSegment, shm::Seg), PushBufferError> {
+    ) -> Result<(), PushBufferError> {
         // Round the size up to the next power of two to prevent frequent reallocations.
         let size = size.next_power_of_two();
 
@@ -334,12 +393,26 @@ impl ShmInfo {
             self.associate(conn, new_seg)?;
         }
 
-        // Get the segment and ID.
-        Ok(self
-            .seg
-            .as_mut()
-            .map(|(ref mut seg, id)| (seg, *id))
-            .unwrap())
+
+        Ok(())
+    }
+
+    /// Get the SHM buffer as a mutable reference.
+    fn as_mut(&mut self, conn: &impl Connection) -> Result<&mut [u32], PushBufferError> {
+        // Make sure that, if we're waiting for the X server to finish processing the last image,
+        // that we finish the wait.
+        self.finish_wait(conn)?;
+
+        match self.seg.as_mut() {
+            Some((seg, _)) => {
+                // SAFETY: No other code should be able to access the segment.
+                Ok(bytemuck::cast_slice_mut(unsafe { seg.as_mut() }))
+            }
+            None => {
+                // Nothing has been allocated yet.
+                Ok(&mut [])
+            }
+        }
     }
 
     /// Associate an SHM segment with the server.
@@ -354,6 +427,9 @@ impl ShmInfo {
 
         // Take out the old one and detach it.
         if let Some((old_seg, old_id)) = self.seg.replace((seg, new_id)) {
+            // Wait for the old segment to finish processing.
+            self.finish_wait(conn)?;
+
             conn.shm_detach(old_id)?.ignore_error();
 
             // Drop the old segment.
@@ -415,23 +491,13 @@ impl ShmSegment {
         }
     }
 
-    /// Copy data into this shared memory segment.
+    /// Get this shared memory segment as a mutable reference.
     ///
     /// # Safety
     ///
-    /// This function assumes that the size of `self`'s buffer is larger than or equal to `data.len()`.
-    /// In addition, no other processes should be reading from or writing to this memory.
-    unsafe fn copy<T: bytemuck::NoUninit>(&mut self, data: &[T]) {
-        debug_assert!(data.len() * std::mem::size_of::<T>() <= self.size,);
-        let incoming_data = bytemuck::cast_slice::<_, u8>(data);
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                incoming_data.as_ptr(),
-                self.ptr.as_ptr() as *mut u8,
-                incoming_data.len(),
-            )
-        }
+    /// One must ensure that no other processes are reading from or writing to this memory.
+    unsafe fn as_mut(&mut self) -> &mut [i8] {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.size) }
     }
 
     /// Get the size of this shared memory segment.
@@ -460,7 +526,7 @@ impl Drop for ShmSegment {
 impl Drop for X11Impl {
     fn drop(&mut self) {
         // If we used SHM, make sure it's detached from the server.
-        if let Some(mut shm) = self.shm.take() {
+        if let Buffer::Shm(mut shm) = mem::replace(&mut self.buffer, Buffer::Wire(Vec::new())) {
             // If we were in the middle of processing a buffer, wait for it to finish.
             shm.finish_wait(&self.display.connection).ok();
 
@@ -563,15 +629,26 @@ impl From<io::Error> for PushBufferError {
 }
 
 /// Convenient wrapper to cast errors into SoftBufferError.
-trait ResultExt<T, E> {
+trait SwResultExt<T, E> {
     fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError>;
 }
 
-impl<T, E: std::error::Error + 'static> ResultExt<T, E> for Result<T, E> {
+impl<T, E: std::error::Error + 'static> SwResultExt<T, E> for Result<T, E> {
     fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError> {
         self.map_err(|e| {
             SoftBufferError::PlatformError(Some(msg.into()), Some(Box::new(LibraryError(e))))
         })
+    }
+}
+
+/// Convenient wrapper to cast errors into PushBufferError.
+trait PushResultExt<T, E> {
+    fn push_err(self) -> Result<T, PushBufferError>;
+}
+
+impl<T, E: Into<PushBufferError>> PushResultExt<T, E> for Result<T, E> {
+    fn push_err(self) -> Result<T, PushBufferError> {
+        self.map_err(Into::into)
     }
 }
 
@@ -594,3 +671,15 @@ impl<E: fmt::Display> fmt::Display for LibraryError<E> {
 }
 
 impl<E: fmt::Debug + fmt::Display> std::error::Error for LibraryError<E> {}
+
+/// Get the length that a slice needs to be to hold a buffer of the given dimensions.
+#[inline(always)]
+fn total_len(width: u16, height: u16) -> usize {
+    let width: usize = width.into();
+    let height: usize = height.into();
+
+    width
+        .checked_mul(height)
+        .and_then(|len| len.checked_mul(4))
+        .unwrap_or_else(|| panic!("Dimensions are too large: ({} x {})", width, height))
+}
