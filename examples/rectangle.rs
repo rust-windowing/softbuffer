@@ -43,7 +43,6 @@ fn main() {
     let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
     let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
-    let mut buffer = Vec::new();
     let mut flag = false;
 
     event_loop.run(move |event, _, control_flow| {
@@ -54,19 +53,16 @@ fn main() {
                 // Grab the window's client area dimensions
                 let (width, height) = {
                     let size = window.inner_size();
-                    (size.width as usize, size.height as usize)
+                    (size.width, size.height)
                 };
 
-                // Resize the off-screen buffer if the window size has changed
-                if buffer.len() != width * height {
-                    buffer.resize(width * height, 0);
-                }
+                // Resize surface if needed
+                surface.resize(width, height);
 
-                // Draw something in the offscreen buffer
-                redraw(&mut buffer, width, height, flag);
-
-                // Blit the offscreen buffer to the window's client area
-                surface.set_buffer(&buffer, width as u16, height as u16);
+                // Draw something in the window
+                let buffer = surface.buffer_mut();
+                redraw(buffer, width as usize, height as usize, flag);
+                surface.present();
             }
 
             Event::WindowEvent {

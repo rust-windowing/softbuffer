@@ -37,8 +37,8 @@ fn main() {
 
                 let buffer = surface.buffer_mut();
                 for index in 0..(width * height) {
-                    let y = index as u32 / width;
-                    let x = index as u32 % width;
+                    let y = index / width;
+                    let x = index % width;
                     let red = x % 255;
                     let green = y % 255;
                     let blue = (x * y) % 255;

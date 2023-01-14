@@ -12,6 +12,8 @@ mod example {
         xcb_ffi::XCBConnection,
     };
 
+    const RED: u32 = 255 << 16;
+
     pub(crate) fn run() {
         // Create a new XCB connection
         let (conn, screen) = XCBConnection::connect(None).expect("Failed to connect to X server");
@@ -96,13 +98,10 @@ mod example {
             match event {
                 Event::Expose(_) => {
                     // Draw a width x height red rectangle.
-                    let red = 255 << 16;
-                    let source = std::iter::repeat(red)
-                        .take((width as usize * height as usize) as _)
-                        .collect::<Vec<_>>();
-
-                    // Draw the buffer.
-                    surface.set_buffer(&source, width, height);
+                    surface.resize(width.into(), height.into());
+                    let buffer = surface.buffer_mut();
+                    buffer.fill(RED);
+                    surface.present();
                 }
                 Event::ConfigureNotify(configure_notify) => {
                     width = configure_notify.width;
