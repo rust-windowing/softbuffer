@@ -107,7 +107,7 @@ impl Buffer {
         unsafe {
             slice::from_raw_parts_mut(
                 self.pixels.as_ptr(),
-                self.width as usize * self.height as usize * 4,
+                self.width as usize * self.height as usize,
             )
         }
     }
