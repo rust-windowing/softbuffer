@@ -16,25 +16,26 @@ use std::sync::Arc;
 
 pub struct CGImpl {
     layer: CALayer,
+    window: id,
 }
 
 impl CGImpl {
     pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SoftBufferError> {
         let window = handle.ns_window as id;
+        let window: id = msg_send![window, retain];
         let view = handle.ns_view as id;
         let layer = CALayer::new();
         unsafe {
             let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));
             layer.set_contents_gravity(ContentsGravity::TopLeft);
             layer.set_needs_display_on_bounds_change(false);
-            layer.set_contents_scale(window.backingScaleFactor());
             subview.setLayer(layer.id());
             subview.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
 
             view.addSubview_(subview); // retains subview (+1) = 2
             let _: () = msg_send![subview, release]; // releases subview (-1) = 1
         }
-        Ok(Self { layer })
+        Ok(Self { layer, window })
     }
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
@@ -62,8 +63,20 @@ impl CGImpl {
         transaction::begin();
         transaction::set_disable_actions(true);
 
-        unsafe { self.layer.set_contents(image.as_ptr() as id) };
+        unsafe {
+            self.layer
+                .set_contents_scale(self.window.backingScaleFactor());
+            self.layer.set_contents(image.as_ptr() as id);
+        };
 
         transaction::commit();
+    }
+}
+
+impl Drop for CGImpl {
+    fn drop(&mut self) {
+        unsafe {
+            let _: () = msg_send![self.window, release];
+        }
     }
 }
