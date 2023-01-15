@@ -22,6 +22,7 @@ pub struct CGImpl {
 impl CGImpl {
     pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SoftBufferError> {
         let window = handle.ns_window as id;
+        let window: id = msg_send![window, retain];
         let view = handle.ns_view as id;
         let layer = CALayer::new();
         unsafe {
@@ -69,5 +70,13 @@ impl CGImpl {
         };
 
         transaction::commit();
+    }
+}
+
+impl Drop for CGImpl {
+    fn drop(&mut self) {
+        unsafe {
+            let _: () = msg_send![self.window, release];
+        }
     }
 }
