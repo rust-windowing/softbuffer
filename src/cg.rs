@@ -24,6 +24,7 @@ impl AsRef<[u8]> for Buffer {
 
 pub struct CGImpl {
     layer: CALayer,
+    window: id,
     color_space: CGColorSpace,
     buffer: Option<Vec<u32>>,
     width: u32,
@@ -33,13 +34,13 @@ pub struct CGImpl {
 impl CGImpl {
     pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SoftBufferError> {
         let window = handle.ns_window as id;
+        let window: id = msg_send![window, retain];
         let view = handle.ns_view as id;
         let layer = CALayer::new();
         unsafe {
             let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));
             layer.set_contents_gravity(ContentsGravity::TopLeft);
             layer.set_needs_display_on_bounds_change(false);
-            layer.set_contents_scale(window.backingScaleFactor());
             subview.setLayer(layer.id());
             subview.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
 
@@ -49,6 +50,7 @@ impl CGImpl {
         let color_space = CGColorSpace::create_device_rgb();
         Ok(Self {
             layer,
+            window,
             color_space,
             width: 0,
             height: 0,
@@ -92,7 +94,11 @@ impl CGImpl {
             transaction::begin();
             transaction::set_disable_actions(true);
 
-            unsafe { self.layer.set_contents(image.as_ptr() as id) };
+            unsafe {
+                self.layer
+                    .set_contents_scale(self.window.backingScaleFactor());
+                self.layer.set_contents(image.as_ptr() as id);
+            };
 
             transaction::commit();
         }
@@ -102,5 +108,13 @@ impl CGImpl {
         self.resize(width.into(), height.into());
         self.buffer_mut().copy_from_slice(buffer);
         self.present();
+    }
+}
+
+impl Drop for CGImpl {
+    fn drop(&mut self) {
+        unsafe {
+            let _: () = msg_send![self.window, release];
+        }
     }
 }

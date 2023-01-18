@@ -120,7 +120,7 @@ make_dispatch! {
     #[cfg(target_os = "macos")]
     CG((), cg::CGImpl),
     #[cfg(target_arch = "wasm32")]
-    Web((), web::WebImpl),
+    Web(web::WebDisplayImpl, web::WebImpl),
     #[cfg(target_os = "redox")]
     Orbital((), orbital::OrbitalImpl),
 }
@@ -161,7 +161,7 @@ impl Context {
             #[cfg(target_os = "macos")]
             RawDisplayHandle::AppKit(_) => ContextDispatch::CG(()),
             #[cfg(target_arch = "wasm32")]
-            RawDisplayHandle::Web(_) => ContextDispatch::Web(()),
+            RawDisplayHandle::Web(_) => ContextDispatch::Web(web::WebDisplayImpl::new()?),
             #[cfg(target_os = "redox")]
             RawDisplayHandle::Orbital(_) => ContextDispatch::Orbital(()),
             unimplemented_display_handle => {
@@ -239,8 +239,8 @@ impl Surface {
                 SurfaceDispatch::CG(unsafe { cg::CGImpl::new(appkit_handle)? })
             }
             #[cfg(target_arch = "wasm32")]
-            (ContextDispatch::Web(()), RawWindowHandle::Web(web_handle)) => {
-                SurfaceDispatch::Web(web::WebImpl::new(web_handle)?)
+            (ContextDispatch::Web(context), RawWindowHandle::Web(web_handle)) => {
+                SurfaceDispatch::Web(web::WebImpl::new(context, web_handle)?)
             }
             #[cfg(target_os = "redox")]
             (ContextDispatch::Orbital(()), RawWindowHandle::Orbital(orbital_handle)) => {
