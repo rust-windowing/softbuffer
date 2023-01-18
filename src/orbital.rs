@@ -42,14 +42,37 @@ impl Drop for OrbitalMap {
 
 pub struct OrbitalImpl {
     handle: OrbitalWindowHandle,
+    width: u32,
+    height: u32,
+    buffer: Vec<u32>,
 }
 
 impl OrbitalImpl {
     pub fn new(handle: OrbitalWindowHandle) -> Result<Self, SoftBufferError> {
-        Ok(Self { handle })
+        Ok(Self {
+            handle,
+            width: 0,
+            height: 0,
+            buffer: Vec::new(),
+        })
     }
 
-    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width_u16: u16, height_u16: u16) {
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.width = width;
+        self.height = height;
+    }
+
+    pub fn buffer_mut(&mut self) -> &mut [u32] {
+        self.buffer
+            .resize(self.width as usize * self.height as usize, 0);
+        &mut self.buffer
+    }
+
+    pub fn present(&mut self) {
+        unsafe { self.set_buffer(&self.buffer, self.width as u16, self.height as u16) };
+    }
+
+    pub unsafe fn set_buffer(&self, buffer: &[u32], width_u16: u16, height_u16: u16) {
         let window_fd = self.handle.window as usize;
 
         // Read the current width and size
