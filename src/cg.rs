@@ -68,7 +68,7 @@ impl CGImpl {
             self.buffer = Some(Vec::new());
         }
         let buffer = self.buffer.as_mut().unwrap();
-        buffer.resize(self.width as usize * self.height as usize * 4, 0);
+        buffer.resize(self.width as usize * self.height as usize, 0);
         buffer.as_mut()
     }
 
