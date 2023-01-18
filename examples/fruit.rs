@@ -6,16 +6,6 @@ use winit::window::WindowBuilder;
 fn main() {
     //see fruit.jpg.license for the license of fruit.jpg
     let fruit = image::load_from_memory(include_bytes!("fruit.jpg")).unwrap();
-    let buffer = fruit
-        .pixels()
-        .map(|(_x, _y, pixel)| {
-            let red = pixel.0[0] as u32;
-            let green = pixel.0[1] as u32;
-            let blue = pixel.0[2] as u32;
-
-            blue | (green << 8) | (red << 16)
-        })
-        .collect::<Vec<_>>();
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -45,7 +35,20 @@ fn main() {
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                surface.set_buffer(&buffer, fruit.width() as u16, fruit.height() as u16);
+                surface.resize(fruit.width(), fruit.height());
+
+                let buffer = surface.buffer_mut();
+                let width = fruit.width() as usize;
+                for (x, y, pixel) in fruit.pixels() {
+                    let red = pixel.0[0] as u32;
+                    let green = pixel.0[1] as u32;
+                    let blue = pixel.0[2] as u32;
+
+                    let color = blue | (green << 8) | (red << 16);
+                    buffer[y as usize * width + x as usize] = color;
+                }
+
+                surface.present();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
