@@ -21,6 +21,7 @@ mod x11;
 
 mod error;
 
+use std::marker::PhantomData;
 #[cfg(any(wayland_platform, x11_platform))]
 use std::sync::Arc;
 
@@ -35,6 +36,7 @@ use raw_window_handle::{
 pub struct Context {
     /// The inner static dispatch object.
     context_impl: ContextDispatch,
+    _marker: PhantomData<*mut ()>,
 }
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
@@ -167,6 +169,7 @@ impl Context {
 
         Ok(Self {
             context_impl: imple,
+            _marker: PhantomData,
         })
     }
 }
@@ -174,6 +177,7 @@ impl Context {
 pub struct Surface {
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch>,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl Surface {
@@ -250,6 +254,7 @@ impl Surface {
 
         Ok(Self {
             surface_impl: Box::new(imple),
+            _marker: PhantomData,
         })
     }
 
