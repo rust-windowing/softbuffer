@@ -118,18 +118,12 @@ impl WebImpl {
             .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
             .collect();
 
-        // This should only throw an error if the buffer we pass's size is incorrect, which is checked in the outer `set_buffer` call.
+        // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data =
             ImageData::new_with_u8_clamped_array(Clamped(&bitmap), self.width).unwrap();
 
         // This can only throw an error if `data` is detached, which is impossible.
         self.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
-    }
-
-    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        self.resize(width.into(), height.into());
-        self.buffer.copy_from_slice(buffer);
-        self.present();
     }
 }
 

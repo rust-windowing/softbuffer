@@ -97,15 +97,6 @@ macro_rules! make_dispatch {
                     )*
                 }
             }
-
-            unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => unsafe { inner.set_buffer(buffer, width, height) },
-                    )*
-                }
-            }
         }
     };
 }
@@ -262,23 +253,19 @@ impl Surface {
         })
     }
 
+    /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
+    ///
+    /// If the size of the buffer does not match the size of the window, the buffer is drawn
+    /// in the upper-left corner of the window. It is recommended in most production use cases
+    /// to have the buffer fill the entire window. Use your windowing library to find the size
+    /// of the window.
     pub fn resize(&mut self, width: u32, height: u32) {
         self.surface_impl.resize(width, height);
     }
 
-    pub fn buffer_mut(&mut self) -> &mut [u32] {
-        self.surface_impl.buffer_mut()
-    }
-
-    pub fn present(&mut self) {
-        self.surface_impl.present();
-    }
-
-    /// Shows the given buffer with the given width and height on the window corresponding to this
-    /// graphics context. Panics if buffer.len() ≠ width*height. If the size of the buffer does
-    /// not match the size of the window, the buffer is drawn in the upper-left corner of the window.
-    /// It is recommended in most production use cases to have the buffer fill the entire window.
-    /// Use your windowing library to find the size of the window.
+    /// Return a mutable slice to the buffer that the next frame should be rendered into. The size
+    /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
+    /// may contain a previous frame.
     ///
     /// The format of the buffer is as follows. There is one u32 in the buffer for each pixel in
     /// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
@@ -297,10 +284,15 @@ impl Surface {
     /// R: Red channel
     /// G: Green channel
     /// B: Blue channel
+    pub fn buffer_mut(&mut self) -> &mut [u32] {
+        self.surface_impl.buffer_mut()
+    }
+
+    /// Presents buffer returned by [`Surface::buffer_mut`] to the window.
     ///
     /// # Platform dependent behavior
     ///
-    /// This section of the documentation details how some platforms may behave when [`set_buffer`](Surface::set_buffer)
+    /// This section of the documentation details how some platforms may behave when [`present`](Surface::present)
     /// is called.
     ///
     /// ## Wayland
@@ -311,15 +303,8 @@ impl Surface {
     ///
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
-    #[inline]
-    pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        if (width as usize) * (height as usize) != buffer.len() {
-            panic!("The size of the passed buffer is not the correct size. Its length must be exactly width*height.");
-        }
-
-        unsafe {
-            self.surface_impl.set_buffer(buffer, width, height);
-        }
+    pub fn present(&mut self) {
+        self.surface_impl.present();
     }
 }
 

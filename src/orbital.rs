@@ -69,10 +69,10 @@ impl OrbitalImpl {
     }
 
     pub fn present(&mut self) {
-        unsafe { self.set_buffer(&self.buffer, self.width as u16, self.height as u16) };
+        self.set_buffer(&self.buffer, self.width, self.height);
     }
 
-    pub unsafe fn set_buffer(&self, buffer: &[u32], width_u16: u16, height_u16: u16) {
+    fn set_buffer(&self, buffer: &[u32], width_u32: u32, height_u32: u32) {
         let window_fd = self.handle.window as usize;
 
         // Read the current width and size
@@ -107,8 +107,8 @@ impl OrbitalImpl {
             };
 
             // Copy each line, cropping to fit
-            let width = width_u16 as usize;
-            let height = height_u16 as usize;
+            let width = width_u32 as usize;
+            let height = height_u32 as usize;
             let min_width = cmp::min(width, window_width);
             let min_height = cmp::min(height, window_height);
             for y in 0..min_height {

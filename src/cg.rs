@@ -103,12 +103,6 @@ impl CGImpl {
             transaction::commit();
         }
     }
-
-    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        self.resize(width.into(), height.into());
-        self.buffer_mut().copy_from_slice(buffer);
-        self.present();
-    }
 }
 
 impl Drop for CGImpl {

@@ -47,8 +47,11 @@ fn main() {
                     frames = pre_render_frames(width as usize, height as usize);
                 };
 
-                let buffer = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
-                surface.set_buffer(buffer.as_slice(), width as u16, height as u16);
+                let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
+
+                surface.resize(width, height);
+                surface.buffer_mut().copy_from_slice(frame);
+                surface.present();
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
