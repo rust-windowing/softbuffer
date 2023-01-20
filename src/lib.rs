@@ -91,7 +91,7 @@ macro_rules! make_dispatch {
                 }
             }
 
-            pub fn present(&mut self) {
+            pub fn present(&mut self) -> Result<(), SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -306,8 +306,8 @@ impl Surface {
     ///
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
-    pub fn present(&mut self) {
-        self.surface_impl.present();
+    pub fn present(&mut self) -> Result<(), SoftBufferError> {
+        self.surface_impl.present()
     }
 }
 

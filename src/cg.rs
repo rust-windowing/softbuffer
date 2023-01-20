@@ -72,7 +72,7 @@ impl CGImpl {
         buffer.as_mut()
     }
 
-    pub fn present(&mut self) {
+    pub fn present(&mut self) -> Result<(), SoftBufferError> {
         if let Some(buffer) = self.buffer.take() {
             let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(buffer)));
             let image = CGImage::new(
@@ -102,6 +102,8 @@ impl CGImpl {
 
             transaction::commit();
         }
+
+        Ok(())
     }
 }
 

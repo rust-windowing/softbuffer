@@ -111,7 +111,7 @@ impl WaylandImpl {
         unsafe { self.buffers.as_mut().unwrap().1.mapped_mut() }
     }
 
-    pub fn present(&mut self) {
+    pub fn present(&mut self) -> Result<(), SoftBufferError> {
         let _ = self
             .display
             .event_queue
@@ -142,6 +142,8 @@ impl WaylandImpl {
         }
 
         let _ = self.display.event_queue.borrow_mut().flush();
+
+        Ok(())
     }
 }
 

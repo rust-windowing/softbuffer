@@ -181,7 +181,7 @@ impl Win32Impl {
         self.buffer.as_mut().map_or(&mut [], Buffer::pixels_mut)
     }
 
-    pub fn present(&mut self) {
+    pub fn present(&mut self) -> Result<(), SoftBufferError> {
         if let Some(buffer) = &self.buffer {
             unsafe {
                 Gdi::BitBlt(
@@ -200,5 +200,7 @@ impl Win32Impl {
                 Gdi::ValidateRect(self.window, ptr::null_mut());
             }
         }
+
+        Ok(())
     }
 }

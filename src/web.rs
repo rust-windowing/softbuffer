@@ -109,7 +109,7 @@ impl WebImpl {
     }
 
     /// Push the buffer to the canvas.
-    pub(crate) fn present(&mut self) {
+    pub(crate) fn present(&mut self) -> Result<(), SoftBufferError> {
         // Create a bitmap from the buffer.
         let bitmap: Vec<_> = self
             .buffer
@@ -124,6 +124,8 @@ impl WebImpl {
 
         // This can only throw an error if `data` is detached, which is impossible.
         self.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+
+        Ok(())
     }
 }
 

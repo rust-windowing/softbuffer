@@ -68,8 +68,9 @@ impl OrbitalImpl {
         &mut self.buffer
     }
 
-    pub fn present(&mut self) {
+    pub fn present(&mut self) -> Result<(), SoftBufferError> {
         self.set_buffer(&self.buffer, self.width, self.height);
+        Ok(())
     }
 
     fn set_buffer(&self, buffer: &[u32], width_u32: u32, height_u32: u32) {

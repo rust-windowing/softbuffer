@@ -274,7 +274,7 @@ impl X11Impl {
     }
 
     /// Push the buffer to the window.
-    pub(crate) fn present(&mut self) {
+    pub(crate) fn present(&mut self) -> Result<(), SoftBufferError> {
         log::trace!("present: window={:X}", self.window);
 
         let result = match self.buffer {
@@ -338,9 +338,12 @@ impl X11Impl {
             }
         };
 
-        if let Err(e) = result {
-            log::error!("Failed to draw image to window: {}", e);
-        }
+        result.map_err(|err| {
+            SoftBufferError::PlatformError(
+                Some("Failed to draw image to window".to_string()),
+                Some(Box::new(err)),
+            )
+        })
     }
 }
 
