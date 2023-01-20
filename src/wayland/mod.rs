@@ -1,6 +1,6 @@
 use crate::{error::unwrap, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
-use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc};
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
@@ -15,7 +15,7 @@ struct State;
 
 pub struct WaylandDisplayImpl {
     conn: Connection,
-    event_queue: Mutex<EventQueue<State>>,
+    event_queue: RefCell<EventQueue<State>>,
     qh: QueueHandle<State>,
     shm: wl_shm::WlShm,
 }
@@ -36,7 +36,7 @@ impl WaylandDisplayImpl {
         )?;
         Ok(Self {
             conn,
-            event_queue: Mutex::new(event_queue),
+            event_queue: RefCell::new(event_queue),
             qh,
             shm,
         })
@@ -44,7 +44,7 @@ impl WaylandDisplayImpl {
 }
 
 pub struct WaylandImpl {
-    display: Arc<WaylandDisplayImpl>,
+    display: Rc<WaylandDisplayImpl>,
     surface: wl_surface::WlSurface,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
     width: i32,
@@ -54,7 +54,7 @@ pub struct WaylandImpl {
 impl WaylandImpl {
     pub unsafe fn new(
         window_handle: WaylandWindowHandle,
-        display: Arc<WaylandDisplayImpl>,
+        display: Rc<WaylandDisplayImpl>,
     ) -> Result<Self, SoftBufferError> {
         // SAFETY: Ensured by user
         let surface_id = unwrap(
@@ -96,7 +96,7 @@ impl WaylandImpl {
         if let Some((_front, back)) = &mut self.buffers {
             // Block if back buffer not released yet
             if !back.released() {
-                let mut event_queue = self.display.event_queue.lock().unwrap();
+                let mut event_queue = self.display.event_queue.borrow_mut();
                 while !back.released() {
                     event_queue.blocking_dispatch(&mut State).unwrap();
                 }
@@ -115,8 +115,7 @@ impl WaylandImpl {
         let _ = self
             .display
             .event_queue
-            .lock()
-            .unwrap()
+            .borrow_mut()
             .dispatch_pending(&mut State);
 
         if let Some((front, back)) = &mut self.buffers {
@@ -142,7 +141,7 @@ impl WaylandImpl {
             self.surface.commit();
         }
 
-        let _ = self.display.event_queue.lock().unwrap().flush();
+        let _ = self.display.event_queue.borrow_mut().flush();
     }
 }
 

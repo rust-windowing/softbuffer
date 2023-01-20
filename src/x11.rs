@@ -9,7 +9,7 @@ use crate::SoftBufferError;
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
-use std::{fmt, io, mem, sync::Arc};
+use std::{fmt, io, mem, rc::Rc};
 
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
@@ -94,7 +94,7 @@ impl X11DisplayImpl {
 /// The handle to an X11 drawing context.
 pub struct X11Impl {
     /// X display this window belongs to.
-    display: Arc<X11DisplayImpl>,
+    display: Rc<X11DisplayImpl>,
 
     /// The window to draw to.
     window: xproto::Window,
@@ -151,7 +151,7 @@ impl X11Impl {
     /// The `XlibWindowHandle` and `XlibDisplayHandle` must be valid.
     pub unsafe fn from_xlib(
         window_handle: XlibWindowHandle,
-        display: Arc<X11DisplayImpl>,
+        display: Rc<X11DisplayImpl>,
     ) -> Result<Self, SoftBufferError> {
         let mut xcb_window_handle = XcbWindowHandle::empty();
         xcb_window_handle.window = window_handle.window as _;
@@ -168,7 +168,7 @@ impl X11Impl {
     /// The `XcbWindowHandle` and `XcbDisplayHandle` must be valid.
     pub(crate) unsafe fn from_xcb(
         window_handle: XcbWindowHandle,
-        display: Arc<X11DisplayImpl>,
+        display: Rc<X11DisplayImpl>,
     ) -> Result<Self, SoftBufferError> {
         log::trace!("new: window_handle={:X}", window_handle.window,);
 

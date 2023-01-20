@@ -23,7 +23,7 @@ mod error;
 
 use std::marker::PhantomData;
 #[cfg(any(wayland_platform, x11_platform))]
-use std::sync::Arc;
+use std::rc::Rc;
 
 pub use error::SoftBufferError;
 
@@ -105,9 +105,9 @@ macro_rules! make_dispatch {
 
 make_dispatch! {
     #[cfg(x11_platform)]
-    X11(Arc<x11::X11DisplayImpl>, x11::X11Impl),
+    X11(Rc<x11::X11DisplayImpl>, x11::X11Impl),
     #[cfg(wayland_platform)]
-    Wayland(std::sync::Arc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl),
+    Wayland(Rc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl),
     #[cfg(target_os = "windows")]
     Win32((), win32::Win32Impl),
     #[cfg(target_os = "macos")]
@@ -137,17 +137,15 @@ impl Context {
         let imple: ContextDispatch = match raw_display_handle {
             #[cfg(x11_platform)]
             RawDisplayHandle::Xlib(xlib_handle) => unsafe {
-                ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
+                ContextDispatch::X11(Rc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
             },
             #[cfg(x11_platform)]
             RawDisplayHandle::Xcb(xcb_handle) => unsafe {
-                ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xcb(xcb_handle)?))
+                ContextDispatch::X11(Rc::new(x11::X11DisplayImpl::from_xcb(xcb_handle)?))
             },
             #[cfg(wayland_platform)]
             RawDisplayHandle::Wayland(wayland_handle) => unsafe {
-                ContextDispatch::Wayland(Arc::new(wayland::WaylandDisplayImpl::new(
-                    wayland_handle,
-                )?))
+                ContextDispatch::Wayland(Rc::new(wayland::WaylandDisplayImpl::new(wayland_handle)?))
             },
             #[cfg(target_os = "windows")]
             RawDisplayHandle::Windows(_) => ContextDispatch::Win32(()),
