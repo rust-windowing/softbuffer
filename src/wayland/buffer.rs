@@ -131,6 +131,8 @@ impl WaylandBuffer {
                 &self.qh,
                 self.released.clone(),
             );
+            self.width = width;
+            self.height = height;
         }
     }
 
