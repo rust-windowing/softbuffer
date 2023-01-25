@@ -57,15 +57,16 @@ impl OrbitalImpl {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         self.width = width;
         self.height = height;
+        Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> &mut [u32] {
+    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
         self.buffer
             .resize(self.width as usize * self.height as usize, 0);
-        &mut self.buffer
+        Ok(&mut self.buffer)
     }
 
     pub fn present(&mut self) -> Result<(), SoftBufferError> {

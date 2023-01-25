@@ -58,18 +58,19 @@ impl CGImpl {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         self.width = width;
         self.height = height;
+        Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> &mut [u32] {
+    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
         if self.buffer.is_none() {
             self.buffer = Some(Vec::new());
         }
         let buffer = self.buffer.as_mut().unwrap();
         buffer.resize(self.width as usize * self.height as usize, 0);
-        buffer.as_mut()
+        Ok(buffer.as_mut())
     }
 
     pub fn present(&mut self) -> Result<(), SoftBufferError> {

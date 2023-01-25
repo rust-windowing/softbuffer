@@ -35,9 +35,9 @@ fn main() {
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                surface.resize(fruit.width(), fruit.height());
+                surface.resize(fruit.width(), fruit.height()).unwrap();
 
-                let buffer = surface.buffer_mut();
+                let buffer = surface.buffer_mut().unwrap();
                 let width = fruit.width() as usize;
                 for (x, y, pixel) in fruit.pixels() {
                     let red = pixel.0[0] as u32;

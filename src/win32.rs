@@ -7,6 +7,7 @@ use raw_window_handle::Win32WindowHandle;
 
 use std::io;
 use std::mem;
+use std::num::NonZeroI32;
 use std::ptr::{self, NonNull};
 use std::slice;
 
@@ -24,8 +25,8 @@ struct Buffer {
     dc: Gdi::HDC,
     bitmap: Gdi::HBITMAP,
     pixels: NonNull<u32>,
-    width: i32,
-    height: i32,
+    width: NonZeroI32,
+    height: NonZeroI32,
 }
 
 impl Drop for Buffer {
@@ -38,7 +39,7 @@ impl Drop for Buffer {
 }
 
 impl Buffer {
-    fn new(window_dc: Gdi::HDC, width: i32, height: i32) -> Self {
+    fn new(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
         let dc = unsafe { Gdi::CreateCompatibleDC(window_dc) };
         assert!(dc != 0);
 
@@ -46,8 +47,8 @@ impl Buffer {
         let bitmap_info = BitmapInfo {
             bmi_header: Gdi::BITMAPINFOHEADER {
                 biSize: mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32,
-                biWidth: width,
-                biHeight: -height,
+                biWidth: width.into(),
+                biHeight: -i32::from(height),
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: Gdi::BI_BITFIELDS,
@@ -107,7 +108,7 @@ impl Buffer {
         unsafe {
             slice::from_raw_parts_mut(
                 self.pixels.as_ptr(),
-                self.width as usize * self.height as usize,
+                i32::from(self.width) as usize * i32::from(self.height) as usize,
             )
         }
     }
@@ -163,42 +164,53 @@ impl Win32Impl {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        let (width, height) = (|| {
+            let width = NonZeroI32::new(i32::try_from(width).ok()?)?;
+            let height = NonZeroI32::new(i32::try_from(height).ok()?)?;
+            Some((width, height))
+        })()
+        .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
+
         if let Some(buffer) = self.buffer.as_ref() {
-            if buffer.width == width as i32 && buffer.height == height as i32 {
-                return;
+            if buffer.width == width && buffer.height == height {
+                return Ok(());
             }
         }
 
-        self.buffer = if width != 0 && height != 0 {
-            Some(Buffer::new(self.dc, width as i32, height as i32))
-        } else {
-            None
-        }
+        self.buffer = Some(Buffer::new(self.dc, width, height));
+
+        Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> &mut [u32] {
-        self.buffer.as_mut().map_or(&mut [], Buffer::pixels_mut)
+    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
+        Ok(self
+            .buffer
+            .as_mut()
+            .expect("Must set size of surface before calling `buffer_mut()`")
+            .pixels_mut())
     }
 
     pub fn present(&mut self) -> Result<(), SoftBufferError> {
-        if let Some(buffer) = &self.buffer {
-            unsafe {
-                Gdi::BitBlt(
-                    self.dc,
-                    0,
-                    0,
-                    buffer.width,
-                    buffer.height,
-                    buffer.dc,
-                    0,
-                    0,
-                    Gdi::SRCCOPY,
-                );
+        let buffer = self
+            .buffer
+            .as_ref()
+            .expect("Must set size of surface before calling `present()`");
+        unsafe {
+            Gdi::BitBlt(
+                self.dc,
+                0,
+                0,
+                buffer.width.into(),
+                buffer.height.into(),
+                buffer.dc,
+                0,
+                0,
+                Gdi::SRCCOPY,
+            );
 
-                // Validate the window.
-                Gdi::ValidateRect(self.window, ptr::null_mut());
-            }
+            // Validate the window.
+            Gdi::ValidateRect(self.window, ptr::null_mut());
         }
 
         Ok(())

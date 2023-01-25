@@ -49,8 +49,8 @@ fn main() {
 
                 let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
 
-                surface.resize(width, height);
-                surface.buffer_mut().copy_from_slice(frame);
+                surface.resize(width, height).unwrap();
+                surface.buffer_mut().unwrap().copy_from_slice(frame);
                 surface.present().unwrap();
             }
             Event::MainEventsCleared => {

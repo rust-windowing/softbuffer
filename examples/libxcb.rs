@@ -98,8 +98,8 @@ mod example {
             match event {
                 Event::Expose(_) => {
                     // Draw a width x height red rectangle.
-                    surface.resize(width.into(), height.into());
-                    let buffer = surface.buffer_mut();
+                    surface.resize(width.into(), height.into()).unwrap();
+                    let buffer = surface.buffer_mut().unwrap();
                     buffer.fill(RED);
                     surface.present().unwrap();
                 }

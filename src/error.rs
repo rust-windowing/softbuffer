@@ -27,6 +27,9 @@ pub enum SoftBufferError {
     #[error("The provided display handle is null.")]
     IncompleteDisplayHandle,
 
+    #[error("Surface size {width}x{height} out of range for backend.")]
+    SizeOutOfRange { width: u32, height: u32 },
+
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>),
 }

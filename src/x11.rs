@@ -230,7 +230,7 @@ impl X11Impl {
     }
 
     /// Resize the internal buffer to the given width and height.
-    pub(crate) fn resize(&mut self, width: u32, height: u32) {
+    pub(crate) fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         log::trace!(
             "resize: window={:X}, size={}x{}",
             self.window,
@@ -239,38 +239,48 @@ impl X11Impl {
         );
 
         // Width and height should fit in u16.
-        let width: u16 = width.try_into().expect("Width too large");
-        let height: u16 = height.try_into().expect("Height too large");
+        let width: u16 = width
+            .try_into()
+            .or(Err(SoftBufferError::SizeOutOfRange { width, height }))?;
+        let height: u16 = height.try_into().or(Err(SoftBufferError::SizeOutOfRange {
+            width: width.into(),
+            height,
+        }))?;
 
-        if width == self.width && height == self.height {
-            // Nothing to do.
-            return;
+        if width != self.width || height != self.height {
+            self.buffer
+                .resize(&self.display.connection, width, height)
+                .map_err(|err| {
+                    SoftBufferError::PlatformError(
+                        Some("Failed to resize X11 buffer".to_string()),
+                        Some(Box::new(err)),
+                    )
+                })?;
+
+            // We successfully resized the buffer.
+            self.width = width;
+            self.height = height;
         }
 
-        match self.buffer.resize(&self.display.connection, width, height) {
-            Ok(()) => {
-                // We successfully resized the buffer.
-                self.width = width;
-                self.height = height;
-            }
-
-            Err(e) => {
-                log::error!("Failed to resize window: {}", e);
-            }
-        }
+        Ok(())
     }
 
     /// Get a mutable reference to the buffer.
-    pub(crate) fn buffer_mut(&mut self) -> &mut [u32] {
+    pub(crate) fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
         log::trace!("buffer_mut: window={:X}", self.window);
 
         let buffer = self
             .buffer
             .buffer_mut(&self.display.connection)
-            .expect("Failed to get buffer");
+            .map_err(|err| {
+                SoftBufferError::PlatformError(
+                    Some("Failed to get mutable X11 buffer".to_string()),
+                    Some(Box::new(err)),
+                )
+            })?;
 
         // Crop it down to the window size.
-        &mut buffer[..total_len(self.width, self.height) / 4]
+        Ok(&mut buffer[..total_len(self.width, self.height) / 4])
     }
 
     /// Push the buffer to the window.

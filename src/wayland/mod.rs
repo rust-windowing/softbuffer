@@ -1,6 +1,6 @@
 use crate::{error::unwrap, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, num::NonZeroI32, rc::Rc};
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
@@ -47,8 +47,7 @@ pub struct WaylandImpl {
     display: Rc<WaylandDisplayImpl>,
     surface: wl_surface::WlSurface,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
-    width: i32,
-    height: i32,
+    size: Option<(NonZeroI32, NonZeroI32)>,
 }
 
 impl WaylandImpl {
@@ -74,44 +73,69 @@ impl WaylandImpl {
             display,
             surface,
             buffers: Default::default(),
-            width: 0,
-            height: 0,
+            size: None,
         })
     }
 
-    // Allocate front and back buffer
-    fn alloc_buffers(&mut self) {
-        self.buffers = Some((
-            WaylandBuffer::new(&self.display.shm, self.width, self.height, &self.display.qh),
-            WaylandBuffer::new(&self.display.shm, self.width, self.height, &self.display.qh),
-        ));
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        self.size = Some(
+            (|| {
+                let width = NonZeroI32::new(i32::try_from(width).ok()?)?;
+                let height = NonZeroI32::new(i32::try_from(height).ok()?)?;
+                Some((width, height))
+            })()
+            .ok_or(SoftBufferError::SizeOutOfRange { width, height })?,
+        );
+        Ok(())
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.width = width as i32;
-        self.height = height as i32;
-    }
+    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
+        let (width, height) = self
+            .size
+            .expect("Must set size of surface before calling `buffer_mut()`");
 
-    pub fn buffer_mut(&mut self) -> &mut [u32] {
         if let Some((_front, back)) = &mut self.buffers {
             // Block if back buffer not released yet
             if !back.released() {
                 let mut event_queue = self.display.event_queue.borrow_mut();
                 while !back.released() {
-                    event_queue.blocking_dispatch(&mut State).unwrap();
+                    event_queue.blocking_dispatch(&mut State).map_err(|err| {
+                        SoftBufferError::PlatformError(
+                            Some("Wayland dispatch failure".to_string()),
+                            Some(Box::new(err)),
+                        )
+                    })?;
                 }
             }
 
             // Resize, if buffer isn't large enough
-            back.resize(self.width, self.height);
+            back.resize(width.into(), height.into());
         } else {
-            self.alloc_buffers();
+            // Allocate front and back buffer
+            self.buffers = Some((
+                WaylandBuffer::new(
+                    &self.display.shm,
+                    width.into(),
+                    height.into(),
+                    &self.display.qh,
+                ),
+                WaylandBuffer::new(
+                    &self.display.shm,
+                    width.into(),
+                    height.into(),
+                    &self.display.qh,
+                ),
+            ));
         };
 
-        unsafe { self.buffers.as_mut().unwrap().1.mapped_mut() }
+        Ok(unsafe { self.buffers.as_mut().unwrap().1.mapped_mut() })
     }
 
     pub fn present(&mut self) -> Result<(), SoftBufferError> {
+        let (width, height) = self
+            .size
+            .expect("Must set size of surface before calling `present()`");
+
         let _ = self
             .display
             .event_queue
@@ -135,7 +159,8 @@ impl WaylandImpl {
                 self.surface.damage(0, 0, i32::MAX, i32::MAX);
             } else {
                 // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                self.surface.damage_buffer(0, 0, self.width, self.height);
+                self.surface
+                    .damage_buffer(0, 0, width.into(), height.into());
             }
 
             self.surface.commit();

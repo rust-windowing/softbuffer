@@ -33,9 +33,9 @@ fn main() {
                     (size.width, size.height)
                 };
 
-                surface.resize(width, height);
+                surface.resize(width, height).unwrap();
 
-                let buffer = surface.buffer_mut();
+                let buffer = surface.buffer_mut().unwrap();
                 for index in 0..(width * height) {
                     let y = index / width;
                     let x = index % width;

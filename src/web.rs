@@ -96,16 +96,17 @@ impl WebImpl {
     }
 
     /// Resize the canvas to the given dimensions.
-    pub(crate) fn resize(&mut self, width: u32, height: u32) {
+    pub(crate) fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         self.buffer.resize(total_len(width, height), 0);
         self.canvas.set_width(width);
         self.canvas.set_height(height);
         self.width = width;
+        Ok(())
     }
 
     /// Get a pointer to the mutable buffer.
-    pub(crate) fn buffer_mut(&mut self) -> &mut [u32] {
-        &mut self.buffer
+    pub(crate) fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
+        Ok(&mut self.buffer)
     }
 
     /// Push the buffer to the canvas.

@@ -57,10 +57,10 @@ fn main() {
                 };
 
                 // Resize surface if needed
-                surface.resize(width, height);
+                surface.resize(width, height).unwrap();
 
                 // Draw something in the window
-                let buffer = surface.buffer_mut();
+                let buffer = surface.buffer_mut().unwrap();
                 redraw(buffer, width as usize, height as usize, flag);
                 surface.present().unwrap();
             }

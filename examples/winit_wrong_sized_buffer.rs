@@ -31,9 +31,11 @@ fn main() {
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                surface.resize(BUFFER_WIDTH as u32, BUFFER_HEIGHT as u32);
+                surface
+                    .resize(BUFFER_WIDTH as u32, BUFFER_HEIGHT as u32)
+                    .unwrap();
 
-                let buffer = surface.buffer_mut();
+                let buffer = surface.buffer_mut().unwrap();
                 for y in 0..BUFFER_HEIGHT {
                     for x in 0..BUFFER_WIDTH {
                         let red = x as u32 % 255;

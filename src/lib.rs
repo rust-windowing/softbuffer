@@ -73,7 +73,7 @@ macro_rules! make_dispatch {
         }
 
         impl SurfaceDispatch {
-            pub fn resize(&mut self, width: u32, height: u32) {
+            pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -82,7 +82,7 @@ macro_rules! make_dispatch {
                 }
             }
 
-            pub fn buffer_mut(&mut self) -> &mut [u32] {
+            pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -262,8 +262,8 @@ impl Surface {
     /// in the upper-left corner of the window. It is recommended in most production use cases
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.surface_impl.resize(width, height);
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        self.surface_impl.resize(width, height)
     }
 
     /// Return a mutable slice to the buffer that the next frame should be rendered into. The size
@@ -287,7 +287,7 @@ impl Surface {
     /// R: Red channel
     /// G: Green channel
     /// B: Blue channel
-    pub fn buffer_mut(&mut self) -> &mut [u32] {
+    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
         self.surface_impl.buffer_mut()
     }
 
