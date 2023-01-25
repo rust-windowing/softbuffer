@@ -45,7 +45,7 @@ fn main() {
                     }
                 }
 
-                surface.present();
+                surface.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

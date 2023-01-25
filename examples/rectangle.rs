@@ -62,7 +62,7 @@ fn main() {
                 // Draw something in the window
                 let buffer = surface.buffer_mut();
                 redraw(buffer, width as usize, height as usize, flag);
-                surface.present();
+                surface.present().unwrap();
             }
 
             Event::WindowEvent {

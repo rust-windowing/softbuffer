@@ -48,7 +48,7 @@ fn main() {
                     buffer[y as usize * width + x as usize] = color;
                 }
 
-                surface.present();
+                surface.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

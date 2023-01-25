@@ -101,7 +101,7 @@ mod example {
                     surface.resize(width.into(), height.into());
                     let buffer = surface.buffer_mut();
                     buffer.fill(RED);
-                    surface.present();
+                    surface.present().unwrap();
                 }
                 Event::ConfigureNotify(configure_notify) => {
                     width = configure_notify.width;

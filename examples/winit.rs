@@ -46,7 +46,7 @@ fn main() {
                     buffer[index as usize] = blue | (green << 8) | (red << 16);
                 }
 
-                surface.present();
+                surface.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

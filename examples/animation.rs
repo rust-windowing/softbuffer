@@ -51,7 +51,7 @@ fn main() {
 
                 surface.resize(width, height);
                 surface.buffer_mut().copy_from_slice(frame);
-                surface.present();
+                surface.present().unwrap();
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
