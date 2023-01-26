@@ -103,4 +103,4 @@ fn main() {
 Changelog
 ---------
 
-See the [changelog][./CHANGELOG.md] for a list of this package's versions and the changes made in each version.
+See the [changelog](CHANGELOG.md) for a list of this package's versions and the changes made in each version.
