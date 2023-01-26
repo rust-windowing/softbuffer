@@ -37,7 +37,7 @@ fn main() {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 surface.resize(fruit.width(), fruit.height()).unwrap();
 
-                let buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.buffer_mut().unwrap();
                 let width = fruit.width() as usize;
                 for (x, y, pixel) in fruit.pixels() {
                     let red = pixel.0[0] as u32;
@@ -48,7 +48,7 @@ fn main() {
                     buffer[y as usize * width + x as usize] = color;
                 }
 
-                surface.present().unwrap();
+                buffer.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

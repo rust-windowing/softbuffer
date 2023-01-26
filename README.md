@@ -74,7 +74,7 @@ fn main() {
                 };
                 surface.resize(width, height).unwrap();
 
-                let buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.buffer_mut().unwrap();
                 for index in 0..(width * height) {
                     let y = index / width;
                     let x = index % width;
@@ -85,7 +85,7 @@ fn main() {
                     buffer[index as usize] = blue | (green << 8) | (red << 16);
                 }
 
-		surface.present().unwrap();
+		buffer.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

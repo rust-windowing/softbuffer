@@ -35,7 +35,7 @@ fn main() {
                     .resize(BUFFER_WIDTH as u32, BUFFER_HEIGHT as u32)
                     .unwrap();
 
-                let buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.buffer_mut().unwrap();
                 for y in 0..BUFFER_HEIGHT {
                     for x in 0..BUFFER_WIDTH {
                         let red = x as u32 % 255;
@@ -46,8 +46,7 @@ fn main() {
                         buffer[y * BUFFER_WIDTH + x] = color;
                     }
                 }
-
-                surface.present().unwrap();
+                buffer.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

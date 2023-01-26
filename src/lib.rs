@@ -20,8 +20,10 @@ mod win32;
 mod x11;
 
 mod error;
+mod util;
 
 use std::marker::PhantomData;
+use std::ops;
 #[cfg(any(wayland_platform, x11_platform))]
 use std::rc::Rc;
 
@@ -44,7 +46,7 @@ macro_rules! make_dispatch {
     (
         $(
             $(#[$attr:meta])*
-            $name: ident ($context_inner: ty, $surface_inner : ty),
+            $name: ident ($context_inner: ty, $surface_inner: ty, $buffer_inner: ty),
         )*
     ) => {
         enum ContextDispatch {
@@ -82,16 +84,43 @@ macro_rules! make_dispatch {
                 }
             }
 
-            pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
+            pub fn buffer_mut(&mut self) -> Result<BufferDispatch, SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => inner.buffer_mut(),
+                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.buffer_mut()?)),
+                    )*
+                }
+            }
+        }
+
+        enum BufferDispatch<'a> {
+            $(
+                $(#[$attr])*
+                $name($buffer_inner),
+            )*
+        }
+
+        impl<'a> BufferDispatch<'a> {
+            pub fn pixels(&self) -> &[u32] {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.pixels(),
                     )*
                 }
             }
 
-            pub fn present(&mut self) -> Result<(), SoftBufferError> {
+            pub fn pixels_mut(&mut self) -> &mut [u32] {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.pixels_mut(),
+                    )*
+                }
+            }
+
+            pub fn present(self) -> Result<(), SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -103,19 +132,22 @@ macro_rules! make_dispatch {
     };
 }
 
+// XXX empty enum with generic bound is invalid?
+// XXX deref
+
 make_dispatch! {
     #[cfg(x11_platform)]
-    X11(Rc<x11::X11DisplayImpl>, x11::X11Impl),
+    X11(Rc<x11::X11DisplayImpl>, x11::X11Impl, x11::BufferImpl<'a>),
     #[cfg(wayland_platform)]
-    Wayland(Rc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl),
+    Wayland(Rc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl, wayland::BufferImpl<'a>),
     #[cfg(target_os = "windows")]
-    Win32((), win32::Win32Impl),
+    Win32((), win32::Win32Impl, win32::BufferImpl<'a>),
     #[cfg(target_os = "macos")]
-    CG((), cg::CGImpl),
+    CG((), cg::CGImpl, cg::BufferImpl<'a>),
     #[cfg(target_arch = "wasm32")]
-    Web(web::WebDisplayImpl, web::WebImpl),
+    Web(web::WebDisplayImpl, web::WebImpl, web::BufferImpl<'a>),
     #[cfg(target_os = "redox")]
-    Orbital((), orbital::OrbitalImpl),
+    Orbital((), orbital::OrbitalImpl, orbital::BufferImpl<'a>),
 }
 
 impl Context {
@@ -287,10 +319,20 @@ impl Surface {
     /// R: Red channel
     /// G: Green channel
     /// B: Blue channel
-    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
-        self.surface_impl.buffer_mut()
+    pub fn buffer_mut(&mut self) -> Result<Buffer, SoftBufferError> {
+        Ok(Buffer {
+            buffer_impl: self.surface_impl.buffer_mut()?,
+            _marker: PhantomData,
+        })
     }
+}
 
+pub struct Buffer<'a> {
+    buffer_impl: BufferDispatch<'a>,
+    _marker: PhantomData<*mut ()>,
+}
+
+impl<'a> Buffer<'a> {
     /// Presents buffer returned by [`Surface::buffer_mut`] to the window.
     ///
     /// # Platform dependent behavior
@@ -306,8 +348,22 @@ impl Surface {
     ///
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
-    pub fn present(&mut self) -> Result<(), SoftBufferError> {
-        self.surface_impl.present()
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        self.buffer_impl.present()
+    }
+}
+
+impl<'a> ops::Deref for Buffer<'a> {
+    type Target = [u32];
+
+    fn deref(&self) -> &[u32] {
+        self.buffer_impl.pixels()
+    }
+}
+
+impl<'a> ops::DerefMut for Buffer<'a> {
+    fn deref_mut(&mut self) -> &mut [u32] {
+        self.buffer_impl.pixels_mut()
     }
 }
 

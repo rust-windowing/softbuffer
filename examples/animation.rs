@@ -50,8 +50,9 @@ fn main() {
                 let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
 
                 surface.resize(width, height).unwrap();
-                surface.buffer_mut().unwrap().copy_from_slice(frame);
-                surface.present().unwrap();
+                let mut buffer = surface.buffer_mut().unwrap();
+                buffer.copy_from_slice(frame);
+                buffer.present().unwrap();
             }
             Event::MainEventsCleared => {
                 window.request_redraw();

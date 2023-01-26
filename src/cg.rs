@@ -26,7 +26,6 @@ pub struct CGImpl {
     layer: CALayer,
     window: id,
     color_space: CGColorSpace,
-    buffer: Option<Vec<u32>>,
     width: u32,
     height: u32,
 }
@@ -54,7 +53,6 @@ impl CGImpl {
             color_space,
             width: 0,
             height: 0,
-            buffer: None,
         })
     }
 
@@ -64,45 +62,57 @@ impl CGImpl {
         Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
-        if self.buffer.is_none() {
-            self.buffer = Some(Vec::new());
-        }
-        let buffer = self.buffer.as_mut().unwrap();
-        buffer.resize(self.width as usize * self.height as usize, 0);
-        Ok(buffer.as_mut())
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+        Ok(BufferImpl {
+            buffer: vec![0; self.width as usize * self.height as usize],
+            imp: self,
+        })
+    }
+}
+
+pub struct BufferImpl<'a> {
+    imp: &'a mut CGImpl,
+    buffer: Vec<u32>,
+}
+
+impl<'a> BufferImpl<'a> {
+    pub fn pixels(&self) -> &[u32] {
+        &self.buffer
     }
 
-    pub fn present(&mut self) -> Result<(), SoftBufferError> {
-        if let Some(buffer) = self.buffer.take() {
-            let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(buffer)));
-            let image = CGImage::new(
-                self.width as usize,
-                self.height as usize,
-                8,
-                32,
-                (self.width * 4) as usize,
-                &self.color_space,
-                kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
-                &data_provider,
-                false,
-                kCGRenderingIntentDefault,
-            );
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        &mut self.buffer
+    }
 
-            // The CALayer has a default action associated with a change in the layer contents, causing
-            // a quarter second fade transition to happen every time a new buffer is applied. This can
-            // be mitigated by wrapping the operation in a transaction and disabling all actions.
-            transaction::begin();
-            transaction::set_disable_actions(true);
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
+        let image = CGImage::new(
+            self.imp.width as usize,
+            self.imp.height as usize,
+            8,
+            32,
+            (self.imp.width * 4) as usize,
+            &self.imp.color_space,
+            kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
+            &data_provider,
+            false,
+            kCGRenderingIntentDefault,
+        );
 
-            unsafe {
-                self.layer
-                    .set_contents_scale(self.window.backingScaleFactor());
-                self.layer.set_contents(image.as_ptr() as id);
-            };
+        // The CALayer has a default action associated with a change in the layer contents, causing
+        // a quarter second fade transition to happen every time a new buffer is applied. This can
+        // be mitigated by wrapping the operation in a transaction and disabling all actions.
+        transaction::begin();
+        transaction::set_disable_actions(true);
 
-            transaction::commit();
-        }
+        unsafe {
+            self.imp
+                .layer
+                .set_contents_scale(self.imp.window.backingScaleFactor());
+            self.imp.layer.set_contents(image.as_ptr() as id);
+        };
+
+        transaction::commit();
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use crate::{error::unwrap, SoftBufferError};
+use crate::{error::unwrap, util, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
 use std::{cell::RefCell, num::NonZeroI32, rc::Rc};
 use wayland_client::{
@@ -89,7 +89,7 @@ impl WaylandImpl {
         Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `buffer_mut()`");
@@ -128,45 +128,60 @@ impl WaylandImpl {
             ));
         };
 
-        Ok(unsafe { self.buffers.as_mut().unwrap().1.mapped_mut() })
+        Ok(BufferImpl(util::BorrowStack::new(self, |buffer| {
+            Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
+        })?))
+    }
+}
+
+pub struct BufferImpl<'a>(util::BorrowStack<'a, WaylandImpl, [u32]>);
+
+impl<'a> BufferImpl<'a> {
+    pub fn pixels(&self) -> &[u32] {
+        self.0.member()
     }
 
-    pub fn present(&mut self) -> Result<(), SoftBufferError> {
-        let (width, height) = self
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        self.0.member_mut()
+    }
+
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        let imp = self.0.into_container();
+
+        let (width, height) = imp
             .size
             .expect("Must set size of surface before calling `present()`");
 
-        let _ = self
+        let _ = imp
             .display
             .event_queue
             .borrow_mut()
             .dispatch_pending(&mut State);
 
-        if let Some((front, back)) = &mut self.buffers {
+        if let Some((front, back)) = &mut imp.buffers {
             // Swap front and back buffer
             std::mem::swap(front, back);
 
-            front.attach(&self.surface);
+            front.attach(&imp.surface);
 
             // FIXME: Proper damaging mechanism.
             //
             // In order to propagate changes on compositors which track damage, for now damage the entire surface.
-            if self.surface.version() < 4 {
+            if imp.surface.version() < 4 {
                 // FIXME: Accommodate scale factor since wl_surface::damage is in terms of surface coordinates while
                 // wl_surface::damage_buffer is in buffer coordinates.
                 //
                 // i32::MAX is a valid damage box (most compositors interpret the damage box as "the entire surface")
-                self.surface.damage(0, 0, i32::MAX, i32::MAX);
+                imp.surface.damage(0, 0, i32::MAX, i32::MAX);
             } else {
                 // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                self.surface
-                    .damage_buffer(0, 0, width.into(), height.into());
+                imp.surface.damage_buffer(0, 0, width.into(), height.into());
             }
 
-            self.surface.commit();
+            imp.surface.commit();
         }
 
-        let _ = self.display.event_queue.borrow_mut().flush();
+        let _ = imp.display.event_queue.borrow_mut().flush();
 
         Ok(())
     }

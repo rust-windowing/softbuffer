@@ -60,9 +60,9 @@ fn main() {
                 surface.resize(width, height).unwrap();
 
                 // Draw something in the window
-                let buffer = surface.buffer_mut().unwrap();
-                redraw(buffer, width as usize, height as usize, flag);
-                surface.present().unwrap();
+                let mut buffer = surface.buffer_mut().unwrap();
+                redraw(&mut buffer, width as usize, height as usize, flag);
+                buffer.present().unwrap();
             }
 
             Event::WindowEvent {

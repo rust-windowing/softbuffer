@@ -99,9 +99,9 @@ mod example {
                 Event::Expose(_) => {
                     // Draw a width x height red rectangle.
                     surface.resize(width.into(), height.into()).unwrap();
-                    let buffer = surface.buffer_mut().unwrap();
+                    let mut buffer = surface.buffer_mut().unwrap();
                     buffer.fill(RED);
-                    surface.present().unwrap();
+                    buffer.present().unwrap();
                 }
                 Event::ConfigureNotify(configure_notify) => {
                     width = configure_notify.width;

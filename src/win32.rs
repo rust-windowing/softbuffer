@@ -2,7 +2,7 @@
 //!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
-use crate::SoftBufferError;
+use crate::{util, SoftBufferError};
 use raw_window_handle::Win32WindowHandle;
 
 use std::io;
@@ -183,22 +183,34 @@ impl Win32Impl {
         Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
-        Ok(self
-            .buffer
-            .as_mut()
-            .expect("Must set size of surface before calling `buffer_mut()`")
-            .pixels_mut())
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+        Ok(BufferImpl(util::BorrowStack::new(self, |surface| {
+            Ok(surface
+                .buffer
+                .as_mut()
+                .expect("Must set size of surface before calling `buffer_mut()`")
+                .pixels_mut())
+        })?))
+    }
+}
+
+pub struct BufferImpl<'a>(util::BorrowStack<'a, Win32Impl, [u32]>);
+
+impl<'a> BufferImpl<'a> {
+    pub fn pixels(&self) -> &[u32] {
+        self.0.member()
     }
 
-    pub fn present(&mut self) -> Result<(), SoftBufferError> {
-        let buffer = self
-            .buffer
-            .as_ref()
-            .expect("Must set size of surface before calling `present()`");
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        self.0.member_mut()
+    }
+
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        let imp = self.0.into_container();
+        let buffer = imp.buffer.as_ref().unwrap();
         unsafe {
             Gdi::BitBlt(
-                self.dc,
+                imp.dc,
                 0,
                 0,
                 buffer.width.into(),
@@ -210,7 +222,7 @@ impl Win32Impl {
             );
 
             // Validate the window.
-            Gdi::ValidateRect(self.window, ptr::null_mut());
+            Gdi::ValidateRect(imp.window, ptr::null_mut());
         }
 
         Ok(())

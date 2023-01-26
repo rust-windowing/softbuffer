@@ -5,7 +5,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use crate::SoftBufferError;
+use crate::{util, SoftBufferError};
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
@@ -266,44 +266,60 @@ impl X11Impl {
     }
 
     /// Get a mutable reference to the buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
+    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
         log::trace!("buffer_mut: window={:X}", self.window);
 
-        let buffer = self
-            .buffer
-            .buffer_mut(&self.display.connection)
-            .map_err(|err| {
-                SoftBufferError::PlatformError(
-                    Some("Failed to get mutable X11 buffer".to_string()),
-                    Some(Box::new(err)),
-                )
-            })?;
+        Ok(BufferImpl(util::BorrowStack::new(self, |surface| {
+            let buffer = surface
+                .buffer
+                .buffer_mut(&surface.display.connection)
+                .map_err(|err| {
+                    SoftBufferError::PlatformError(
+                        Some("Failed to get mutable X11 buffer".to_string()),
+                        Some(Box::new(err)),
+                    )
+                })?;
 
-        // Crop it down to the window size.
-        Ok(&mut buffer[..total_len(self.width, self.height) / 4])
+            // Crop it down to the window size.
+            Ok(&mut buffer[..total_len(surface.width, surface.height) / 4])
+        })?))
+    }
+}
+
+pub struct BufferImpl<'a>(util::BorrowStack<'a, X11Impl, [u32]>);
+
+impl<'a> BufferImpl<'a> {
+    pub fn pixels(&self) -> &[u32] {
+        self.0.member()
+    }
+
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        self.0.member_mut()
     }
 
     /// Push the buffer to the window.
-    pub(crate) fn present(&mut self) -> Result<(), SoftBufferError> {
-        log::trace!("present: window={:X}", self.window);
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        let imp = self.0.into_container();
 
-        let result = match self.buffer {
+        log::trace!("present: window={:X}", imp.window);
+
+        let result = match imp.buffer {
             Buffer::Wire(ref wire) => {
                 // This is a suboptimal strategy, raise a stink in the debug logs.
                 log::debug!("Falling back to non-SHM method for window drawing.");
 
-                self.display
+                imp.display
                     .connection
                     .put_image(
                         xproto::ImageFormat::Z_PIXMAP,
-                        self.window,
-                        self.gc,
-                        self.width,
-                        self.height,
+                        imp.window,
+                        imp.gc,
+                        imp.width,
+                        imp.height,
                         0,
                         0,
                         0,
-                        self.depth,
+                        imp.depth,
                         bytemuck::cast_slice(wire),
                     )
                     .map(|c| c.ignore_error())
@@ -312,24 +328,24 @@ impl X11Impl {
 
             Buffer::Shm(ref mut shm) => {
                 // If the X server is still processing the last image, wait for it to finish.
-                shm.finish_wait(&self.display.connection)
+                shm.finish_wait(&imp.display.connection)
                     .and_then(|()| {
                         // Put the image into the window.
                         if let Some((_, segment_id)) = shm.seg {
-                            self.display
+                            imp.display
                                 .connection
                                 .shm_put_image(
-                                    self.window,
-                                    self.gc,
-                                    self.width,
-                                    self.height,
+                                    imp.window,
+                                    imp.gc,
+                                    imp.width,
+                                    imp.height,
                                     0,
                                     0,
-                                    self.width,
-                                    self.height,
+                                    imp.width,
+                                    imp.height,
                                     0,
                                     0,
-                                    self.depth,
+                                    imp.depth,
                                     xproto::ImageFormat::Z_PIXMAP.into(),
                                     false,
                                     segment_id,
@@ -343,7 +359,7 @@ impl X11Impl {
                     })
                     .and_then(|()| {
                         // Send a short request to act as a notification for when the X server is done processing the image.
-                        shm.begin_wait(&self.display.connection)
+                        shm.begin_wait(&imp.display.connection)
                     })
             }
         };

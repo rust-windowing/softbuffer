@@ -105,14 +105,29 @@ impl WebImpl {
     }
 
     /// Get a pointer to the mutable buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<&mut [u32], SoftBufferError> {
-        Ok(&mut self.buffer)
+    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+        Ok(BufferImpl { imp: self })
+    }
+}
+
+pub struct BufferImpl<'a> {
+    imp: &'a mut WebImpl,
+}
+
+impl<'a> BufferImpl<'a> {
+    pub fn pixels(&self) -> &[u32] {
+        &self.imp.buffer
+    }
+
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        &mut self.imp.buffer
     }
 
     /// Push the buffer to the canvas.
-    pub(crate) fn present(&mut self) -> Result<(), SoftBufferError> {
+    pub fn present(self) -> Result<(), SoftBufferError> {
         // Create a bitmap from the buffer.
         let bitmap: Vec<_> = self
+            .imp
             .buffer
             .iter()
             .copied()
@@ -121,10 +136,10 @@ impl WebImpl {
 
         // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data =
-            ImageData::new_with_u8_clamped_array(Clamped(&bitmap), self.width).unwrap();
+            ImageData::new_with_u8_clamped_array(Clamped(&bitmap), self.imp.width).unwrap();
 
         // This can only throw an error if `data` is detached, which is impossible.
-        self.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+        self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
 
         Ok(())
     }
