@@ -72,3 +72,8 @@ features = ["jpeg"]
 # Turn rayon back on everywhere else; creating the separate entry resets the features to default.
 image = "0.23.14"
 rayon = "1.5.1"
+
+[workspace]
+members = [
+    "run-wasm",
+]
