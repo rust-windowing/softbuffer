@@ -250,12 +250,7 @@ impl X11Impl {
         if width != self.width || height != self.height {
             self.buffer
                 .resize(&self.display.connection, width, height)
-                .map_err(|err| {
-                    SoftBufferError::PlatformError(
-                        Some("Failed to resize X11 buffer".to_string()),
-                        Some(Box::new(err)),
-                    )
-                })?;
+                .swbuf_err("Failed to resize X11 buffer")?;
 
             // We successfully resized the buffer.
             self.width = width;
@@ -273,12 +268,7 @@ impl X11Impl {
             let buffer = surface
                 .buffer
                 .buffer_mut(&surface.display.connection)
-                .map_err(|err| {
-                    SoftBufferError::PlatformError(
-                        Some("Failed to get mutable X11 buffer".to_string()),
-                        Some(Box::new(err)),
-                    )
-                })?;
+                .swbuf_err("Failed to get mutable X11 buffer")?;
 
             // Crop it down to the window size.
             Ok(&mut buffer[..total_len(surface.width, surface.height) / 4])
@@ -364,12 +354,7 @@ impl<'a> BufferImpl<'a> {
             }
         };
 
-        result.map_err(|err| {
-            SoftBufferError::PlatformError(
-                Some("Failed to draw image to window".to_string()),
-                Some(Box::new(err)),
-            )
-        })
+        result.swbuf_err("Failed to draw image to window")
     }
 }
 
