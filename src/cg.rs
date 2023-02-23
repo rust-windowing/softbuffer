@@ -76,10 +76,12 @@ pub struct BufferImpl<'a> {
 }
 
 impl<'a> BufferImpl<'a> {
+    #[inline]
     pub fn pixels(&self) -> &[u32] {
         &self.buffer
     }
 
+    #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
         &mut self.buffer
     }

@@ -137,10 +137,12 @@ impl WaylandImpl {
 pub struct BufferImpl<'a>(util::BorrowStack<'a, WaylandImpl, [u32]>);
 
 impl<'a> BufferImpl<'a> {
+    #[inline]
     pub fn pixels(&self) -> &[u32] {
         self.0.member()
     }
 
+    #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
         self.0.member_mut()
     }

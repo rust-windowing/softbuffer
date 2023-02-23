@@ -156,6 +156,7 @@ pub struct BufferImpl<'a> {
 }
 
 impl<'a> BufferImpl<'a> {
+    #[inline]
     pub fn pixels(&self) -> &[u32] {
         match &self.pixels {
             Pixels::Mapping(mapping) => unsafe { mapping.data() },
@@ -163,6 +164,7 @@ impl<'a> BufferImpl<'a> {
         }
     }
 
+    #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
         match &mut self.pixels {
             Pixels::Mapping(mapping) => unsafe { mapping.data_mut() },

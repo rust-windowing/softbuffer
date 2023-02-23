@@ -102,6 +102,7 @@ macro_rules! make_dispatch {
         }
 
         impl<'a> BufferDispatch<'a> {
+            #[inline]
             pub fn pixels(&self) -> &[u32] {
                 match self {
                     $(
@@ -111,6 +112,7 @@ macro_rules! make_dispatch {
                 }
             }
 
+            #[inline]
             pub fn pixels_mut(&mut self) -> &mut [u32] {
                 match self {
                     $(
@@ -133,7 +135,6 @@ macro_rules! make_dispatch {
 }
 
 // XXX empty enum with generic bound is invalid?
-// XXX deref
 
 make_dispatch! {
     #[cfg(x11_platform)]
@@ -356,12 +357,14 @@ impl<'a> Buffer<'a> {
 impl<'a> ops::Deref for Buffer<'a> {
     type Target = [u32];
 
+    #[inline]
     fn deref(&self) -> &[u32] {
         self.buffer_impl.pixels()
     }
 }
 
 impl<'a> ops::DerefMut for Buffer<'a> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut [u32] {
         self.buffer_impl.pixels_mut()
     }
