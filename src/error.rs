@@ -3,6 +3,7 @@ use std::error::Error;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(missing_docs)] // TODO
 #[non_exhaustive]
 pub enum SoftBufferError {
     #[error(

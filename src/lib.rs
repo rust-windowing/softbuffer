@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs)]
 
 #[cfg(target_os = "macos")]
 #[macro_use]
@@ -205,6 +206,7 @@ impl Context {
     }
 }
 
+/// A surface for drawing to a window with software buffers.
 pub struct Surface {
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch>,
@@ -212,7 +214,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    /// Creates a new instance of this struct, using the provided window and display.
+    /// Creates a new surface for the context for the provided window.
     ///
     /// # Safety
     ///
@@ -225,7 +227,7 @@ impl Surface {
         unsafe { Self::from_raw(context, window.raw_window_handle()) }
     }
 
-    /// Creates a new instance of this struct, using the provided raw window and display handles
+    /// Creates a new surface for the context for the provided raw window handle.
     ///
     /// # Safety
     ///
@@ -299,27 +301,9 @@ impl Surface {
         self.surface_impl.resize(width, height)
     }
 
-    /// Return a mutable slice to the buffer that the next frame should be rendered into. The size
+    /// Return a [`Buffer`] that the next frame should be rendered into. The size must
     /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
     /// may contain a previous frame.
-    ///
-    /// The format of the buffer is as follows. There is one u32 in the buffer for each pixel in
-    /// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
-    /// etc. (Row-major top to bottom left to right one u32 per pixel). Within each u32 the highest
-    /// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
-    /// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
-    /// one way to build this format using bitwise operations.
-    ///
-    /// --------
-    ///
-    /// Pixel format (u32):
-    ///
-    /// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
-    ///
-    /// 0: Bit is 0
-    /// R: Red channel
-    /// G: Green channel
-    /// B: Blue channel
     pub fn buffer_mut(&mut self) -> Result<Buffer, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
@@ -328,18 +312,41 @@ impl Surface {
     }
 }
 
+/// A buffer that can be written to by the CPU and presented to the window.
+///
+/// This derefs to a `[u32]`, which depending on the backend may be a mapping into shared memory
+/// accessible to the display server, so presentation doesn't require any (client-side) copying.
+///
+/// This trust the display server not to mutate the buffer, which could otherwise be unsound.
+///
+/// # Data representation
+///
+/// The format of the buffer is as follows. There is one `u32` in the buffer for each pixel in
+/// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
+/// etc. (Row-major top to bottom left to right one `u32` per pixel). Within each `u32` the highest
+/// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
+/// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
+/// one way to build this format using bitwise operations.
+///
+/// --------
+///
+/// Pixel format (`u32`):
+///
+/// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
+///
+/// 0: Bit is 0
+/// R: Red channel
+/// G: Green channel
+/// B: Blue channel
 pub struct Buffer<'a> {
     buffer_impl: BufferDispatch<'a>,
     _marker: PhantomData<*mut ()>,
 }
 
 impl<'a> Buffer<'a> {
-    /// Presents buffer returned by [`Surface::buffer_mut`] to the window.
+    /// Presents buffer to the window.
     ///
     /// # Platform dependent behavior
-    ///
-    /// This section of the documentation details how some platforms may behave when [`present`](Surface::present)
-    /// is called.
     ///
     /// ## Wayland
     ///
