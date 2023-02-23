@@ -50,6 +50,11 @@ For now, the priority for new platforms is:
  - Xcb ❌
  - Xlib ✅
 
+WebAssembly
+-----------
+
+To run an example with the web backend: `cargo run-wasm --example winit`
+
 Example
 ==
 ```rust,no_run
