@@ -235,6 +235,26 @@ impl Surface {
         })
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn from_canvas(canvas: web_sys::HtmlCanvasElement) -> Result<Self, SoftBufferError> {
+        let imple = SurfaceDispatch::Web(web::WebImpl::from_canvas(canvas)?);
+
+        Ok(Self {
+            surface_impl: Box::new(imple),
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn from_offscreen_canvas(
+        offscreen_canvas: web_sys::OffscreenCanvas,
+    ) -> Result<Self, SoftBufferError> {
+        let imple = SurfaceDispatch::Web(web::WebImpl::from_offscreen_canvas(offscreen_canvas)?);
+
+        Ok(Self {
+            surface_impl: Box::new(imple),
+        })
+    }
+
     /// Shows the given buffer with the given width and height on the window corresponding to this
     /// graphics context. Panics if buffer.len() ≠ width*height. If the size of the buffer does
     /// not match the size of the window, the buffer is drawn in the upper-left corner of the window.

@@ -4,6 +4,7 @@ use wasm_bindgen::JsCast;
 use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
+use web_sys::OffscreenCanvas;
 
 use crate::SoftBufferError;
 
@@ -35,8 +36,13 @@ impl WebDisplayImpl {
     }
 }
 
+enum Canvas {
+    HtmlCanvasElement(HtmlCanvasElement),
+    OffscreenCanvas(OffscreenCanvas),
+}
+
 pub struct WebImpl {
-    canvas: HtmlCanvasElement,
+    canvas: Canvas,
     ctx: CanvasRenderingContext2d,
 }
 
@@ -56,8 +62,26 @@ impl WebImpl {
             // We already made sure this was a canvas in `querySelector`.
             .unchecked_into();
 
-        let ctx = canvas
-        .get_context("2d")
+        Self::new_internal(Canvas::HtmlCanvasElement(canvas))
+    }
+
+    pub(crate) fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
+        Self::new_internal(Canvas::HtmlCanvasElement(canvas))
+    }
+
+    pub(crate) fn from_offscreen_canvas(
+        offscreen_canvas: OffscreenCanvas,
+    ) -> Result<Self, SoftBufferError> {
+        Self::new_internal(Canvas::OffscreenCanvas(offscreen_canvas))
+    }
+
+    fn new_internal(canvas: Canvas) -> Result<Self, SoftBufferError> {
+        let ctx = match &canvas {
+            Canvas::HtmlCanvasElement(canvas) => canvas.get_context("2d"),
+            Canvas::OffscreenCanvas(canvas) => canvas.get_context("2d"),
+        };
+
+        let ctx = ctx
         .map_err(|_| {
             SoftBufferError::PlatformError(
                 Some("Canvas already controlled using `OffscreenCanvas`".into()),
@@ -77,8 +101,16 @@ impl WebImpl {
     }
 
     pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        self.canvas.set_width(width.into());
-        self.canvas.set_height(height.into());
+        match &self.canvas {
+            Canvas::HtmlCanvasElement(canvas) => {
+                canvas.set_width(width.into());
+                canvas.set_height(height.into());
+            }
+            Canvas::OffscreenCanvas(canvas) => {
+                canvas.set_width(width.into());
+                canvas.set_height(height.into());
+            }
+        }
 
         let bitmap: Vec<_> = buffer
             .iter()
