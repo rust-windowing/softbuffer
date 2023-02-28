@@ -2,15 +2,20 @@
 
 #![allow(clippy::uninlined_format_args)]
 
+use js_sys::Object;
 use raw_window_handle::WebWindowHandle;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
+use web_sys::OffscreenCanvas;
 
 use crate::error::SwResultExt;
 use crate::SoftBufferError;
 use std::convert::TryInto;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
 /// Display implementation for the web platform.
@@ -31,18 +36,40 @@ impl WebDisplayImpl {
     }
 }
 
-pub struct WebImpl {
-    /// The handle to the canvas that we're drawing to.
-    canvas: HtmlCanvasElement,
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = OffscreenCanvasRenderingContext2D)]
+    pub type OffscreenCanvasRenderingContext2d;
 
-    /// The 2D rendering context for the canvas.
-    ctx: CanvasRenderingContext2d,
+    #[wasm_bindgen(catch, method, structural, js_class = "OffscreenCanvasRenderingContext2D", js_name = putImageData)]
+    fn put_image_data(
+        this: &OffscreenCanvasRenderingContext2d,
+        imagedata: &ImageData,
+        dx: f64,
+        dy: f64,
+    ) -> Result<(), JsValue>;
+}
+
+pub struct WebImpl {
+    /// The handle and context to the canvas that we're drawing to.
+    canvas: Canvas,
 
     /// The buffer that we're drawing to.
     buffer: Vec<u32>,
 
     /// The current width of the canvas.
     width: u32,
+}
+
+pub enum Canvas {
+    Canvas {
+        canvas: HtmlCanvasElement,
+        ctx: CanvasRenderingContext2d,
+    },
+    OffscreenCanvas {
+        canvas: OffscreenCanvas,
+        ctx: OffscreenCanvasRenderingContext2d,
+    },
 }
 
 impl WebImpl {
@@ -56,22 +83,45 @@ impl WebImpl {
             // We already made sure this was a canvas in `querySelector`.
             .unchecked_into();
 
-        let ctx = canvas
-            .get_context("2d")
-            .ok()
+        Self::from_canvas(canvas)
+    }
+
+    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
+        let ctx = Self::resolve_ctx(canvas.get_context("2d").ok(), "CanvasRenderingContext2d")?;
+
+        Ok(Self {
+            canvas: Canvas::Canvas { canvas, ctx },
+            buffer: Vec::new(),
+            width: 0,
+        })
+    }
+
+    fn from_offscreen_canvas(canvas: OffscreenCanvas) -> Result<Self, SoftBufferError> {
+        let ctx = Self::resolve_ctx(
+            canvas.get_context("2d").ok(),
+            "OffscreenCanvasRenderingContext2d",
+        )?;
+
+        Ok(Self {
+            canvas: Canvas::OffscreenCanvas { canvas, ctx },
+            buffer: Vec::new(),
+            width: 0,
+        })
+    }
+
+    fn resolve_ctx<T: JsCast>(
+        result: Option<Option<Object>>,
+        name: &str,
+    ) -> Result<T, SoftBufferError> {
+        let ctx = result
             .swbuf_err("Canvas already controlled using `OffscreenCanvas`")?
             .swbuf_err(
                 "A canvas context other than `CanvasRenderingContext2d` was already created",
             )?
             .dyn_into()
-            .expect("`getContext(\"2d\") didn't return a `CanvasRenderingContext2d`");
+            .unwrap_or_else(|_| panic!("`getContext(\"2d\") didn't return a `{name}`"));
 
-        Ok(Self {
-            canvas,
-            ctx,
-            buffer: Vec::new(),
-            width: 0,
-        })
+        Ok(ctx)
     }
 
     /// Resize the canvas to the given dimensions.
@@ -93,6 +143,58 @@ impl WebImpl {
     /// Get a pointer to the mutable buffer.
     pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
         Ok(BufferImpl { imp: self })
+    }
+}
+
+/// Extension methods for the Wasm target on [`Surface`](crate::Surface).
+pub trait SurfaceExtWeb: Sized {
+    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
+    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
+
+    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
+    fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError>;
+}
+
+impl SurfaceExtWeb for crate::Surface {
+    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
+        let imple = crate::SurfaceDispatch::Web(WebImpl::from_canvas(canvas)?);
+
+        Ok(Self {
+            surface_impl: Box::new(imple),
+            _marker: PhantomData,
+        })
+    }
+
+    fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError> {
+        let imple = crate::SurfaceDispatch::Web(WebImpl::from_offscreen_canvas(offscreen_canvas)?);
+
+        Ok(Self {
+            surface_impl: Box::new(imple),
+            _marker: PhantomData,
+        })
+    }
+}
+
+impl Canvas {
+    fn set_width(&self, width: u32) {
+        match self {
+            Self::Canvas { canvas, .. } => canvas.set_width(width),
+            Self::OffscreenCanvas { canvas, .. } => canvas.set_width(width),
+        }
+    }
+
+    fn set_height(&self, height: u32) {
+        match self {
+            Self::Canvas { canvas, .. } => canvas.set_height(height),
+            Self::OffscreenCanvas { canvas, .. } => canvas.set_height(height),
+        }
+    }
+
+    fn put_image_data(&self, imagedata: &ImageData, dx: f64, dy: f64) -> Result<(), JsValue> {
+        match self {
+            Self::Canvas { ctx, .. } => ctx.put_image_data(imagedata, dx, dy),
+            Self::OffscreenCanvas { ctx, .. } => ctx.put_image_data(imagedata, dx, dy),
+        }
     }
 }
 
@@ -123,8 +225,6 @@ impl<'a> BufferImpl<'a> {
         #[cfg(target_feature = "atomics")]
         let result = {
             use js_sys::{Uint8Array, Uint8ClampedArray};
-            use wasm_bindgen::prelude::wasm_bindgen;
-            use wasm_bindgen::JsValue;
 
             #[wasm_bindgen]
             extern "C" {
@@ -149,7 +249,10 @@ impl<'a> BufferImpl<'a> {
         let image_data = result.unwrap();
 
         // This can only throw an error if `data` is detached, which is impossible.
-        self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+        self.imp
+            .canvas
+            .put_image_data(&image_data, 0.0, 0.0)
+            .unwrap();
 
         Ok(())
     }

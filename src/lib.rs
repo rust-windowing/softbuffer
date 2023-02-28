@@ -35,6 +35,9 @@ use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 
+#[cfg(target_arch = "wasm32")]
+pub use self::web::SurfaceExtWeb;
+
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
 pub struct Context {
