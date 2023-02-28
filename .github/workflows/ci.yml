@@ -50,11 +50,14 @@ jobs:
           # We're using Windows rather than Ubuntu to run the wasm tests because caching cargo-web
           # doesn't currently work on Linux.
           - { target: wasm32-unknown-unknown,   os: windows-latest,  }
+        include:
+          - rust_version: nightly
+          - { target: wasm32-unknown-unknown,   os: windows-latest, options: -Zbuild-std=panic_abort,std, rustflags: -Ctarget-feature=+atomics }
 
     env:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
-      RUSTFLAGS: "-C debuginfo=0 --deny warnings"
+      RUSTFLAGS: "-C debuginfo=0 --deny warnings ${{ matrix.platform.rustflags }}"
       OPTIONS: ${{ matrix.platform.options }}
       FEATURES: ${{ format(',{0}', matrix.platform.features ) }}
       CMD: ${{ matrix.platform.cmd }}

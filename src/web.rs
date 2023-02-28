@@ -3,7 +3,6 @@
 #![allow(clippy::uninlined_format_args)]
 
 use raw_window_handle::WebWindowHandle;
-use wasm_bindgen::Clamped;
 use wasm_bindgen::JsCast;
 use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
@@ -142,9 +141,33 @@ impl<'a> BufferImpl<'a> {
             .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
             .collect();
 
+        #[cfg(target_feature = "atomics")]
+        let result = {
+            use js_sys::{Uint8Array, Uint8ClampedArray};
+            use wasm_bindgen::prelude::wasm_bindgen;
+            use wasm_bindgen::JsValue;
+
+            #[wasm_bindgen]
+            extern "C" {
+                #[wasm_bindgen(js_name = ImageData)]
+                type ImageDataExt;
+
+                #[wasm_bindgen(catch, constructor, js_class = ImageData)]
+                fn new(array: Uint8ClampedArray, sw: u32) -> Result<ImageDataExt, JsValue>;
+            }
+
+            let array = Uint8Array::new_with_length(bitmap.len() as u32);
+            array.copy_from(&bitmap);
+            let array = Uint8ClampedArray::new(&array);
+            ImageDataExt::new(array, self.imp.width)
+                .map(JsValue::from)
+                .map(ImageData::unchecked_from_js)
+        };
+        #[cfg(not(target_feature = "atomics"))]
+        let result =
+            ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(&bitmap), self.imp.width);
         // This should only throw an error if the buffer we pass's size is incorrect.
-        let image_data =
-            ImageData::new_with_u8_clamped_array(Clamped(&bitmap), self.imp.width).unwrap();
+        let image_data = result.unwrap();
 
         // This can only throw an error if `data` is detached, which is impossible.
         self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
