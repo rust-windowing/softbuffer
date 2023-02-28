@@ -235,6 +235,7 @@ impl Surface {
         })
     }
 
+    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`](web_sys::HtmlCanvasElement).
     #[cfg(target_arch = "wasm32")]
     pub fn from_canvas(canvas: web_sys::HtmlCanvasElement) -> Result<Self, SoftBufferError> {
         let imple = SurfaceDispatch::Web(web::WebImpl::from_canvas(canvas)?);
@@ -244,6 +245,7 @@ impl Surface {
         })
     }
 
+    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`](web_sys::OffscreenCanvas).
     #[cfg(target_arch = "wasm32")]
     pub fn from_offscreen_canvas(
         offscreen_canvas: web_sys::OffscreenCanvas,
