@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust_version: ['1.60.0', stable, nightly]
+        rust_version: ['1.64.0', stable, nightly]
         platform:
           - { target: x86_64-pc-windows-msvc,   os: windows-latest,  }
           - { target: i686-pc-windows-msvc,     os: windows-latest,  }
@@ -81,7 +81,7 @@ jobs:
         !contains(matrix.platform.target, 'redox') &&
         !contains(matrix.platform.target, 'freebsd') &&
         !contains(matrix.platform.target, 'netbsd') &&
-        matrix.rust_version != '1.60.0'
+        matrix.rust_version != '1.64.0'
       run: cargo $CMD test --no-run --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
     - name: Run tests
