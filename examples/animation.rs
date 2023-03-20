@@ -2,13 +2,14 @@ use instant::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use std::f64::consts::PI;
+use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
 fn main() {
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -24,8 +25,12 @@ fn main() {
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let (context, mut surface) = {
+        let context = softbuffer::Context::new(window.clone()).unwrap();
+        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+
+        (context, surface)
+    };
 
     let mut old_size = (0, 0);
     let mut frames = pre_render_frames(0, 0);
@@ -48,7 +53,7 @@ fn main() {
                 };
 
                 let buffer = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
-                surface.set_buffer(buffer.as_slice(), width as u16, height as u16);
+                surface.set_buffer(&context, buffer.as_slice(), width as u16, height as u16);
             }
             Event::MainEventsCleared => {
                 window.request_redraw();

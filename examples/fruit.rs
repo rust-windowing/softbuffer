@@ -1,4 +1,5 @@
 use image::GenericImageView;
+use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -18,10 +19,12 @@ fn main() {
         .collect::<Vec<_>>();
 
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
-        .with_inner_size(winit::dpi::PhysicalSize::new(fruit.width(), fruit.height()))
-        .build(&event_loop)
-        .unwrap();
+    let window = Rc::new(
+        WindowBuilder::new()
+            .with_inner_size(winit::dpi::PhysicalSize::new(fruit.width(), fruit.height()))
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -37,15 +40,20 @@ fn main() {
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                surface.set_buffer(&buffer, fruit.width() as u16, fruit.height() as u16);
+                surface.set_buffer(
+                    &context,
+                    &buffer,
+                    fruit.width() as u16,
+                    fruit.height() as u16,
+                );
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

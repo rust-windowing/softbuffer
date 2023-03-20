@@ -27,14 +27,18 @@ use std::sync::Arc;
 pub use error::SoftBufferError;
 
 use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+    Active, DisplayHandle, HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle,
+    HasWindowHandle, RawDisplayHandle, RawWindowHandle, WindowHandle,
 };
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
-pub struct Context {
+pub struct Context<D: ?Sized> {
     /// The inner static dispatch object.
     context_impl: ContextDispatch,
+
+    /// The reference to the event loop object.
+    display: D,
 }
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
@@ -98,23 +102,18 @@ make_dispatch! {
     Orbital((), orbital::OrbitalImpl),
 }
 
-impl Context {
+impl<D: HasDisplayHandle + ?Sized> Context<D> {
     /// Creates a new instance of this struct, using the provided display.
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided object is valid for the lifetime of the Context
-    pub unsafe fn new<D: HasRawDisplayHandle>(display: &D) -> Result<Self, SoftBufferError> {
-        unsafe { Self::from_raw(display.raw_display_handle()) }
-    }
+    pub fn new(display: D) -> Result<Self, SoftBufferError>
+    where
+        D: Sized,
+    {
+        let active = match display.active() {
+            Some(active) => active,
+            None => return Err(SoftBufferError::Inactive),
+        };
 
-    /// Creates a new instance of this struct, using the provided display handles
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided handle is valid for the lifetime of the Context
-    pub unsafe fn from_raw(raw_display_handle: RawDisplayHandle) -> Result<Self, SoftBufferError> {
-        let imple: ContextDispatch = match raw_display_handle {
+        let imple: ContextDispatch = match display.display_handle(&active).raw_display_handle() {
             #[cfg(x11_platform)]
             RawDisplayHandle::Xlib(xlib_handle) => unsafe {
                 ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
@@ -149,39 +148,51 @@ impl Context {
 
         Ok(Self {
             context_impl: imple,
+            display,
         })
     }
 }
 
-pub struct Surface {
-    /// This is boxed so that `Surface` is the same size on every platform.
-    surface_impl: Box<SurfaceDispatch>,
+impl Context<DisplayHandle<'static>> {
+    /// Creates a new instance of this struct, using the provided display handles
+    ///
+    /// # Safety
+    ///
+    ///  - Ensure that the provided handle is valid for the lifetime of the Context
+    pub unsafe fn from_raw(raw_display_handle: RawDisplayHandle) -> Result<Self, SoftBufferError> {
+        // SAFETY: This is safe because the lifetime of the display handle is static.
+        unsafe {
+            Self::new(DisplayHandle::borrow_raw(
+                raw_display_handle,
+                &Active::new_unchecked(),
+            ))
+        }
+    }
 }
 
-impl Surface {
-    /// Creates a new instance of this struct, using the provided window and display.
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided objects are valid to draw a 2D buffer to, and are valid for the
-    ///    lifetime of the Context
-    pub unsafe fn new<W: HasRawWindowHandle>(
-        context: &Context,
-        window: &W,
-    ) -> Result<Self, SoftBufferError> {
-        unsafe { Self::from_raw(context, window.raw_window_handle()) }
-    }
+pub struct Surface<W: ?Sized> {
+    /// This is boxed so that `Surface` is the same size on every platform.
+    surface_impl: Box<SurfaceDispatch>,
 
-    /// Creates a new instance of this struct, using the provided raw window and display handles
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided handles are valid to draw a 2D buffer to, and are valid for the
-    ///    lifetime of the Context
-    pub unsafe fn from_raw(
-        context: &Context,
-        raw_window_handle: RawWindowHandle,
-    ) -> Result<Self, SoftBufferError> {
+    /// The reference to the window object.
+    window: W,
+}
+
+impl<W: HasWindowHandle + ?Sized> Surface<W> {
+    /// Creates a new instance of this struct, using the provided window and display.
+    pub fn new(
+        context: &Context<impl HasDisplayHandle + ?Sized>,
+        window: W,
+    ) -> Result<Self, SoftBufferError>
+    where
+        W: Sized,
+    {
+        let active = match context.display.active() {
+            Some(active) => active,
+            None => return Err(SoftBufferError::Inactive),
+        };
+
+        let raw_window_handle = window.window_handle(&active).raw_window_handle();
         let imple: SurfaceDispatch = match (&context.context_impl, raw_window_handle) {
             #[cfg(x11_platform)]
             (
@@ -232,6 +243,7 @@ impl Surface {
 
         Ok(Self {
             surface_impl: Box::new(imple),
+            window,
         })
     }
 
@@ -273,13 +285,50 @@ impl Surface {
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
     #[inline]
-    pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+    pub fn set_buffer(
+        &mut self,
+        context: &Context<impl HasDisplayHandle + ?Sized>,
+        buffer: &[u32],
+        width: u16,
+        height: u16,
+    ) {
+        // Gain access to the window handle for the duration of this function.
+        let active = match context.display.active() {
+            Some(active) => active,
+            None => panic!("TODO: Handle not being active"),
+        };
+
+        let _ = self.window.window_handle(&active);
+
+        // SAFETY: All of the below is safe because the window handle is valid for the lifetime of the
+        // context, and the context is valid for the lifetime of the surface.
         if (width as usize) * (height as usize) != buffer.len() {
             panic!("The size of the passed buffer is not the correct size. Its length must be exactly width*height.");
         }
 
         unsafe {
             self.surface_impl.set_buffer(buffer, width, height);
+        }
+    }
+}
+
+impl Surface<WindowHandle<'static>> {
+    /// Creates a new instance of this struct, using the provided raw window and display handles
+    ///
+    /// # Safety
+    ///
+    ///  - Ensure that the provided handles are valid to draw a 2D buffer to, and are valid for the
+    ///    lifetime of the Context
+    pub unsafe fn from_raw(
+        context: &Context<impl HasDisplayHandle + ?Sized>,
+        raw_window_handle: RawWindowHandle,
+    ) -> Result<Self, SoftBufferError> {
+        // SAFETY: This is safe because the lifetime of the window handle is static.
+        unsafe {
+            Self::new(
+                context,
+                WindowHandle::borrow_raw(raw_window_handle, &Active::new_unchecked()),
+            )
         }
     }
 }

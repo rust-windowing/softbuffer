@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -21,10 +22,12 @@ fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
 fn main() {
     let event_loop = EventLoop::new();
 
-    let window = WindowBuilder::new()
-        .with_title("Press space to show/hide a rectangle")
-        .build(&event_loop)
-        .unwrap();
+    let window = Rc::new(
+        WindowBuilder::new()
+            .with_title("Press space to show/hide a rectangle")
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -40,8 +43,8 @@ fn main() {
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     let mut buffer = Vec::new();
     let mut flag = false;
@@ -66,7 +69,7 @@ fn main() {
                 redraw(&mut buffer, width, height, flag);
 
                 // Blit the offscreen buffer to the window's client area
-                surface.set_buffer(&buffer, width as u16, height as u16);
+                surface.set_buffer(&context, &buffer, width as u16, height as u16);
             }
 
             Event::WindowEvent {

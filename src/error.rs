@@ -27,6 +27,9 @@ pub enum SoftBufferError {
     #[error("The provided display handle is null.")]
     IncompleteDisplayHandle,
 
+    #[error("The provided display handle is not active.")]
+    Inactive,
+
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>),
 }

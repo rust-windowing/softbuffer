@@ -20,7 +20,7 @@ x11 = ["bytemuck", "nix", "x11rb", "x11-dl"]
 
 [dependencies]
 log = "0.4.17"
-raw-window-handle = "0.5.0"
+raw-window-handle = { version = "0.5.0", features = ["alloc"] }
 thiserror = "1.0.30"
 
 [target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox"))))'.dependencies]
@@ -77,3 +77,10 @@ rayon = "1.5.1"
 members = [
     "run-wasm",
 ]
+
+[patch.crates-io]
+raw-window-handle = { git = "https://github.com/notgull/raw-window-handle.git", branch = "notgull/impl-more", version = "0.5.1" }
+winit = { git = "https://github.com/bread-graphics/winit.git", branch = "window-handle", version = "0.28.3" }
+
+[patch.'https://github.com/rust-windowing/raw-window-handle']
+raw-window-handle = { git = "https://github.com/notgull/raw-window-handle.git", branch = "notgull/impl-more", version = "0.5.1" }
