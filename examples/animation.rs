@@ -53,7 +53,7 @@ fn main() {
                 };
 
                 let buffer = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
-                surface.set_buffer(&context, buffer.as_slice(), width as u16, height as u16);
+                surface.set_buffer(buffer.as_slice(), width as u16, height as u16);
             }
             Event::MainEventsCleared => {
                 window.request_redraw();

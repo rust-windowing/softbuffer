@@ -27,7 +27,7 @@ use std::sync::Arc;
 pub use error::SoftBufferError;
 
 use raw_window_handle::{
-    Active, DisplayHandle, HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle,
+    ActiveHandle, DisplayHandle, HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle,
     HasWindowHandle, RawDisplayHandle, RawWindowHandle, WindowHandle,
 };
 
@@ -38,7 +38,7 @@ pub struct Context<D: ?Sized> {
     context_impl: ContextDispatch,
 
     /// The reference to the event loop object.
-    display: D,
+    _display: D,
 }
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
@@ -108,12 +108,7 @@ impl<D: HasDisplayHandle + ?Sized> Context<D> {
     where
         D: Sized,
     {
-        let active = match display.active() {
-            Some(active) => active,
-            None => return Err(SoftBufferError::Inactive),
-        };
-
-        let imple: ContextDispatch = match display.display_handle(&active).raw_display_handle() {
+        let imple: ContextDispatch = match display.display_handle().raw_display_handle() {
             #[cfg(x11_platform)]
             RawDisplayHandle::Xlib(xlib_handle) => unsafe {
                 ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
@@ -148,7 +143,7 @@ impl<D: HasDisplayHandle + ?Sized> Context<D> {
 
         Ok(Self {
             context_impl: imple,
-            display,
+            _display: display,
         })
     }
 }
@@ -161,12 +156,7 @@ impl Context<DisplayHandle<'static>> {
     ///  - Ensure that the provided handle is valid for the lifetime of the Context
     pub unsafe fn from_raw(raw_display_handle: RawDisplayHandle) -> Result<Self, SoftBufferError> {
         // SAFETY: This is safe because the lifetime of the display handle is static.
-        unsafe {
-            Self::new(DisplayHandle::borrow_raw(
-                raw_display_handle,
-                &Active::new_unchecked(),
-            ))
-        }
+        unsafe { Self::new(DisplayHandle::borrow_raw(raw_display_handle)) }
     }
 }
 
@@ -187,59 +177,57 @@ impl<W: HasWindowHandle + ?Sized> Surface<W> {
     where
         W: Sized,
     {
-        let active = match context.display.active() {
-            Some(active) => active,
-            None => return Err(SoftBufferError::Inactive),
-        };
-
-        let raw_window_handle = window.window_handle(&active).raw_window_handle();
-        let imple: SurfaceDispatch = match (&context.context_impl, raw_window_handle) {
-            #[cfg(x11_platform)]
-            (
-                ContextDispatch::X11(xcb_display_handle),
-                RawWindowHandle::Xlib(xlib_window_handle),
-            ) => SurfaceDispatch::X11(unsafe {
-                x11::X11Impl::from_xlib(xlib_window_handle, xcb_display_handle.clone())?
-            }),
-            #[cfg(x11_platform)]
-            (ContextDispatch::X11(xcb_display_handle), RawWindowHandle::Xcb(xcb_window_handle)) => {
-                SurfaceDispatch::X11(unsafe {
+        let raw_window_handle = window.window_handle().unwrap();
+        let imple: SurfaceDispatch =
+            match (&context.context_impl, raw_window_handle.raw_window_handle()) {
+                #[cfg(x11_platform)]
+                (
+                    ContextDispatch::X11(xcb_display_handle),
+                    RawWindowHandle::Xlib(xlib_window_handle),
+                ) => SurfaceDispatch::X11(unsafe {
+                    x11::X11Impl::from_xlib(xlib_window_handle, xcb_display_handle.clone())?
+                }),
+                #[cfg(x11_platform)]
+                (
+                    ContextDispatch::X11(xcb_display_handle),
+                    RawWindowHandle::Xcb(xcb_window_handle),
+                ) => SurfaceDispatch::X11(unsafe {
                     x11::X11Impl::from_xcb(xcb_window_handle, xcb_display_handle.clone())?
-                })
-            }
-            #[cfg(wayland_platform)]
-            (
-                ContextDispatch::Wayland(wayland_display_impl),
-                RawWindowHandle::Wayland(wayland_window_handle),
-            ) => SurfaceDispatch::Wayland(unsafe {
-                wayland::WaylandImpl::new(wayland_window_handle, wayland_display_impl.clone())?
-            }),
-            #[cfg(target_os = "windows")]
-            (ContextDispatch::Win32(()), RawWindowHandle::Win32(win32_handle)) => {
-                SurfaceDispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
-            }
-            #[cfg(target_os = "macos")]
-            (ContextDispatch::CG(()), RawWindowHandle::AppKit(appkit_handle)) => {
-                SurfaceDispatch::CG(unsafe { cg::CGImpl::new(appkit_handle)? })
-            }
-            #[cfg(target_arch = "wasm32")]
-            (ContextDispatch::Web(context), RawWindowHandle::Web(web_handle)) => {
-                SurfaceDispatch::Web(web::WebImpl::new(context, web_handle)?)
-            }
-            #[cfg(target_os = "redox")]
-            (ContextDispatch::Orbital(()), RawWindowHandle::Orbital(orbital_handle)) => {
-                SurfaceDispatch::Orbital(orbital::OrbitalImpl::new(orbital_handle)?)
-            }
-            (unsupported_display_impl, unimplemented_window_handle) => {
-                return Err(SoftBufferError::UnsupportedWindowPlatform {
-                    human_readable_window_platform_name: window_handle_type_name(
-                        &unimplemented_window_handle,
-                    ),
-                    human_readable_display_platform_name: unsupported_display_impl.variant_name(),
-                    window_handle: unimplemented_window_handle,
-                })
-            }
-        };
+                }),
+                #[cfg(wayland_platform)]
+                (
+                    ContextDispatch::Wayland(wayland_display_impl),
+                    RawWindowHandle::Wayland(wayland_window_handle),
+                ) => SurfaceDispatch::Wayland(unsafe {
+                    wayland::WaylandImpl::new(wayland_window_handle, wayland_display_impl.clone())?
+                }),
+                #[cfg(target_os = "windows")]
+                (ContextDispatch::Win32(()), RawWindowHandle::Win32(win32_handle)) => {
+                    SurfaceDispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
+                }
+                #[cfg(target_os = "macos")]
+                (ContextDispatch::CG(()), RawWindowHandle::AppKit(appkit_handle)) => {
+                    SurfaceDispatch::CG(unsafe { cg::CGImpl::new(appkit_handle)? })
+                }
+                #[cfg(target_arch = "wasm32")]
+                (ContextDispatch::Web(context), RawWindowHandle::Web(web_handle)) => {
+                    SurfaceDispatch::Web(web::WebImpl::new(context, web_handle)?)
+                }
+                #[cfg(target_os = "redox")]
+                (ContextDispatch::Orbital(()), RawWindowHandle::Orbital(orbital_handle)) => {
+                    SurfaceDispatch::Orbital(orbital::OrbitalImpl::new(orbital_handle)?)
+                }
+                (unsupported_display_impl, unimplemented_window_handle) => {
+                    return Err(SoftBufferError::UnsupportedWindowPlatform {
+                        human_readable_window_platform_name: window_handle_type_name(
+                            &unimplemented_window_handle,
+                        ),
+                        human_readable_display_platform_name: unsupported_display_impl
+                            .variant_name(),
+                        window_handle: unimplemented_window_handle,
+                    })
+                }
+            };
 
         Ok(Self {
             surface_impl: Box::new(imple),
@@ -285,20 +273,8 @@ impl<W: HasWindowHandle + ?Sized> Surface<W> {
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
     #[inline]
-    pub fn set_buffer(
-        &mut self,
-        context: &Context<impl HasDisplayHandle + ?Sized>,
-        buffer: &[u32],
-        width: u16,
-        height: u16,
-    ) {
-        // Gain access to the window handle for the duration of this function.
-        let active = match context.display.active() {
-            Some(active) => active,
-            None => panic!("TODO: Handle not being active"),
-        };
-
-        let _ = self.window.window_handle(&active);
+    pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+        let _ = self.window.window_handle().unwrap();
 
         // SAFETY: All of the below is safe because the window handle is valid for the lifetime of the
         // context, and the context is valid for the lifetime of the surface.
@@ -327,7 +303,7 @@ impl Surface<WindowHandle<'static>> {
         unsafe {
             Self::new(
                 context,
-                WindowHandle::borrow_raw(raw_window_handle, &Active::new_unchecked()),
+                WindowHandle::borrow_raw(raw_window_handle, ActiveHandle::new_unchecked()),
             )
         }
     }

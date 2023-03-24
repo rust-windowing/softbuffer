@@ -69,7 +69,7 @@ fn main() {
                 redraw(&mut buffer, width, height, flag);
 
                 // Blit the offscreen buffer to the window's client area
-                surface.set_buffer(&context, &buffer, width as u16, height as u16);
+                surface.set_buffer(&buffer, width as u16, height as u16);
             }
 
             Event::WindowEvent {

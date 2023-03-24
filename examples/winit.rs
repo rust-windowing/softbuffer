@@ -47,7 +47,7 @@ fn main() {
                     })
                     .collect::<Vec<_>>();
 
-                surface.set_buffer(&context, &buffer, width as u16, height as u16);
+                surface.set_buffer(&buffer, width as u16, height as u16);
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

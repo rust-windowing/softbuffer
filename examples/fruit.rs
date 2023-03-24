@@ -48,12 +48,7 @@ fn main() {
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                surface.set_buffer(
-                    &context,
-                    &buffer,
-                    fruit.width() as u16,
-                    fruit.height() as u16,
-                );
+                surface.set_buffer(&buffer, fruit.width() as u16, fruit.height() as u16);
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
