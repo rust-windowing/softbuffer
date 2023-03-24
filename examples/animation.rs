@@ -25,12 +25,8 @@ fn main() {
             .unwrap();
     }
 
-    let (context, mut surface) = {
-        let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
-
-        (context, surface)
-    };
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     let mut old_size = (0, 0);
     let mut frames = pre_render_frames(0, 0);

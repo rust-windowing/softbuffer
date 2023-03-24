@@ -1,4 +1,4 @@
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use raw_window_handle::{HandleError, RawDisplayHandle, RawWindowHandle};
 use std::error::Error;
 use thiserror::Error;
 
@@ -27,8 +27,8 @@ pub enum SoftBufferError {
     #[error("The provided display handle is null.")]
     IncompleteDisplayHandle,
 
-    #[error("The provided display handle is not active.")]
-    Inactive,
+    #[error("A handle error occurred: {0}")]
+    HandleError(#[from] HandleError),
 
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>),

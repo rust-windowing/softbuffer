@@ -108,7 +108,7 @@ impl<D: HasDisplayHandle + ?Sized> Context<D> {
     where
         D: Sized,
     {
-        let imple: ContextDispatch = match display.display_handle().raw_display_handle() {
+        let imple: ContextDispatch = match display.display_handle()?.raw_display_handle() {
             #[cfg(x11_platform)]
             RawDisplayHandle::Xlib(xlib_handle) => unsafe {
                 ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
@@ -177,7 +177,7 @@ impl<W: HasWindowHandle + ?Sized> Surface<W> {
     where
         W: Sized,
     {
-        let raw_window_handle = window.window_handle().unwrap();
+        let raw_window_handle = window.window_handle()?;
         let imple: SurfaceDispatch =
             match (&context.context_impl, raw_window_handle.raw_window_handle()) {
                 #[cfg(x11_platform)]
