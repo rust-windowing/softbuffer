@@ -20,7 +20,7 @@ x11 = ["bytemuck", "nix", "x11rb", "x11-dl"]
 
 [dependencies]
 log = "0.4.17"
-raw-window-handle = { version = "0.5.0", features = ["alloc"] }
+raw-window-handle = { version = "0.5.0", features = ["std"] }
 thiserror = "1.0.30"
 
 [target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox"))))'.dependencies]

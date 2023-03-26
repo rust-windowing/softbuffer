@@ -58,15 +58,16 @@ To run an example with the web backend: `cargo run-wasm --example winit`
 Example
 ==
 ```rust,no_run
+use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
 fn main() {
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let context = softbuffer::Context::new(Rc::clone(&window)).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, Rc::clone(&window)).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
