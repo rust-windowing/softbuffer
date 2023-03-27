@@ -21,7 +21,6 @@ mod x11;
 
 mod error;
 
-#[cfg(any(wayland_platform, x11_platform))]
 use std::sync::Arc;
 
 pub use error::SoftBufferError;
@@ -38,7 +37,7 @@ pub struct Context<D: ?Sized> {
     context_impl: ContextDispatch,
 
     /// The reference to the event loop object.
-    _display: D,
+    display: Arc<D>,
 }
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
@@ -143,7 +142,7 @@ impl<D: HasDisplayHandle + ?Sized> Context<D> {
 
         Ok(Self {
             context_impl: imple,
-            _display: display,
+            display: Arc::new(display),
         })
     }
 }
@@ -160,20 +159,20 @@ impl Context<DisplayHandle<'static>> {
     }
 }
 
-pub struct Surface<W: ?Sized> {
+pub struct Surface<D: ?Sized, W: ?Sized> {
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch>,
+
+    /// Make sure that the display object is still alive.
+    _display: Arc<D>,
 
     /// The reference to the window object.
     window: W,
 }
 
-impl<W: HasWindowHandle + ?Sized> Surface<W> {
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> Surface<D, W> {
     /// Creates a new instance of this struct, using the provided window and display.
-    pub fn new(
-        context: &Context<impl HasDisplayHandle + ?Sized>,
-        window: W,
-    ) -> Result<Self, SoftBufferError>
+    pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError>
     where
         W: Sized,
     {
@@ -232,6 +231,7 @@ impl<W: HasWindowHandle + ?Sized> Surface<W> {
         Ok(Self {
             surface_impl: Box::new(imple),
             window,
+            _display: context.display.clone(),
         })
     }
 
@@ -274,7 +274,7 @@ impl<W: HasWindowHandle + ?Sized> Surface<W> {
     /// Wayland compositor before calling this function.
     #[inline]
     pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        let _ = self.window.window_handle().unwrap();
+        let _guard = self.window.window_handle().unwrap();
 
         // SAFETY: All of the below is safe because the window handle is valid for the lifetime of the
         // context, and the context is valid for the lifetime of the surface.
@@ -288,7 +288,7 @@ impl<W: HasWindowHandle + ?Sized> Surface<W> {
     }
 }
 
-impl Surface<WindowHandle<'static>> {
+impl<D: HasDisplayHandle + ?Sized> Surface<D, WindowHandle<'static>> {
     /// Creates a new instance of this struct, using the provided raw window and display handles
     ///
     /// # Safety
@@ -296,7 +296,7 @@ impl Surface<WindowHandle<'static>> {
     ///  - Ensure that the provided handles are valid to draw a 2D buffer to, and are valid for the
     ///    lifetime of the Context
     pub unsafe fn from_raw(
-        context: &Context<impl HasDisplayHandle + ?Sized>,
+        context: &Context<D>,
         raw_window_handle: RawWindowHandle,
     ) -> Result<Self, SoftBufferError> {
         // SAFETY: This is safe because the lifetime of the window handle is static.
