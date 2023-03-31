@@ -228,6 +228,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> Surface<D, W> {
                 }
             };
 
+        drop(raw_window_handle);
+
         Ok(Self {
             surface_impl: Box::new(imple),
             window,
