@@ -317,7 +317,7 @@ impl Surface {
 /// This derefs to a `[u32]`, which depending on the backend may be a mapping into shared memory
 /// accessible to the display server, so presentation doesn't require any (client-side) copying.
 ///
-/// This trust the display server not to mutate the buffer, which could otherwise be unsound.
+/// This trusts the display server not to mutate the buffer, which could otherwise be unsound.
 ///
 /// # Data representation
 ///
@@ -338,6 +338,16 @@ impl Surface {
 /// R: Red channel
 /// G: Green channel
 /// B: Blue channel
+///
+/// # Platform dependent behavior
+/// No-copy presentation is currently supported on:
+/// - Wayland
+/// - X, when XShm is available
+/// - Win32
+/// - Orbital, when buffer size matches window size
+/// Currently [`Buffer::present`] must block copying image data on:
+/// - Web
+/// - macOS
 pub struct Buffer<'a> {
     buffer_impl: BufferDispatch<'a>,
     _marker: PhantomData<*mut ()>,
