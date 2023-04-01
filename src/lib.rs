@@ -236,28 +236,49 @@ impl Surface {
     }
 
     /// Shows the given buffer with the given width and height on the window corresponding to this
-    /// graphics context. Panics if buffer.len() ≠ width*height. If the size of the buffer does
-    /// not match the size of the window, the buffer is drawn in the upper-left corner of the window.
+    /// surface.
+    ///
     /// It is recommended in most production use cases to have the buffer fill the entire window.
-    /// Use your windowing library to find the size of the window.
+    /// Use your windowing library to determine the size of the window.
     ///
-    /// The format of the buffer is as follows. There is one u32 in the buffer for each pixel in
-    /// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
-    /// etc. (Row-major top to bottom left to right one u32 per pixel). Within each u32 the highest
-    /// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
-    /// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
-    /// one way to build this format using bitwise operations.
+    /// # Panics
     ///
-    /// --------
+    /// - If `buffer.len() ≠ width * height`
     ///
-    /// Pixel format (u32):
+    /// # Pixel format
     ///
-    /// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
+    /// The buffer layout is in a row-major layout. This means that index `0` is at the top-left corner of the
+    /// window and as the index increases, the position on the x axis grows to the right. When the number of
+    /// entries for the row is equal to the width of the surface, then the next row is started.
     ///
-    /// 0: Bit is 0
-    /// R: Red channel
-    /// G: Green channel
-    /// B: Blue channel
+    /// Each pixel is represented in memory as a [`u32`]. Starting with the most significant byte (MSB)
+    /// going to the least significant byte (LSB), the byte is ignored but best set to `0`. Then there is
+    /// a byte for the red, green and blue channel.
+    ///
+    /// ```text
+    /// XXXXXXXXRRRRRRRRGGGGGGGGBBBBBBBB
+    /// ^                              ^
+    /// MSB                          LSB
+    /// ```
+    ///
+    /// | Bit  | Channel             |
+    /// |------|---------------------|
+    /// | X    | Ignored[^x-channel] |
+    /// | R    | Red channel         |
+    /// | G    | Green channel       |
+    /// | B    | Blue channel        |
+    ///
+    /// The function shown below may be used to create a color from a 24-bit RGB color using bitwise\
+    /// operations:
+    ///
+    /// ```
+    /// fn pixel(red: u8, green: u8, blue: u8) -> u32 {
+    ///     let color = blue as u32
+    ///         | ((green as u32) << 8)
+    ///         | ((red as u32) << 16);
+    ///     color
+    /// }
+    /// ```
     ///
     /// # Platform dependent behavior
     ///
@@ -272,6 +293,8 @@ impl Surface {
     ///
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
+    ///
+    /// [^x-channel]: On some backends setting these bits to anything other than `0` may cause weird behavior.
     #[inline]
     pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
         if (width as usize) * (height as usize) != buffer.len() {
