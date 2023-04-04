@@ -1,6 +1,10 @@
 use crate::{error::unwrap, util, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
-use std::{cell::RefCell, num::NonZeroI32, rc::Rc};
+use std::{
+    cell::RefCell,
+    num::{NonZeroI32, NonZeroU32},
+    rc::Rc,
+};
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
@@ -77,11 +81,11 @@ impl WaylandImpl {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         self.size = Some(
             (|| {
-                let width = NonZeroI32::new(i32::try_from(width).ok()?)?;
-                let height = NonZeroI32::new(i32::try_from(height).ok()?)?;
+                let width = NonZeroI32::try_from(width).ok()?;
+                let height = NonZeroI32::try_from(height).ok()?;
                 Some((width, height))
             })()
             .ok_or(SoftBufferError::SizeOutOfRange { width, height })?,
@@ -109,20 +113,20 @@ impl WaylandImpl {
             }
 
             // Resize, if buffer isn't large enough
-            back.resize(width.into(), height.into());
+            back.resize(width.get(), height.get());
         } else {
             // Allocate front and back buffer
             self.buffers = Some((
                 WaylandBuffer::new(
                     &self.display.shm,
-                    width.into(),
-                    height.into(),
+                    width.get(),
+                    height.get(),
                     &self.display.qh,
                 ),
                 WaylandBuffer::new(
                     &self.display.shm,
-                    width.into(),
-                    height.into(),
+                    width.get(),
+                    height.get(),
                     &self.display.qh,
                 ),
             ));
@@ -177,7 +181,7 @@ impl<'a> BufferImpl<'a> {
                 imp.surface.damage(0, 0, i32::MAX, i32::MAX);
             } else {
                 // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                imp.surface.damage_buffer(0, 0, width.into(), height.into());
+                imp.surface.damage_buffer(0, 0, width.get(), height.get());
             }
 
             imp.surface.commit();

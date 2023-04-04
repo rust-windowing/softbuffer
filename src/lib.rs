@@ -24,6 +24,7 @@ mod error;
 mod util;
 
 use std::marker::PhantomData;
+use std::num::NonZeroU32;
 use std::ops;
 #[cfg(any(wayland_platform, x11_platform))]
 use std::rc::Rc;
@@ -76,7 +77,7 @@ macro_rules! make_dispatch {
         }
 
         impl SurfaceDispatch {
-            pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+            pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -297,7 +298,7 @@ impl Surface {
     /// in the upper-left corner of the window. It is recommended in most production use cases
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
-    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         self.surface_impl.resize(width, height)
     }
 

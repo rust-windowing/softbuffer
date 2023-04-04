@@ -12,6 +12,7 @@ use cocoa::base::{id, nil};
 use cocoa::quartzcore::{transaction, CALayer, ContentsGravity};
 use foreign_types::ForeignType;
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 struct Buffer(Vec<u32>);
@@ -56,9 +57,9 @@ impl CGImpl {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
-        self.width = width;
-        self.height = height;
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        self.width = width.get();
+        self.height = height.get();
         Ok(())
     }
 

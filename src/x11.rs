@@ -9,7 +9,7 @@ use crate::{util, SoftBufferError};
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
-use std::{fmt, io, mem, rc::Rc};
+use std::{fmt, io, mem, num::NonZeroU32, rc::Rc};
 
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
@@ -230,7 +230,11 @@ impl X11Impl {
     }
 
     /// Resize the internal buffer to the given width and height.
-    pub(crate) fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+    pub(crate) fn resize(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+    ) -> Result<(), SoftBufferError> {
         log::trace!(
             "resize: window={:X}, size={}x{}",
             self.window,
@@ -240,12 +244,16 @@ impl X11Impl {
 
         // Width and height should fit in u16.
         let width: u16 = width
+            .get()
             .try_into()
             .or(Err(SoftBufferError::SizeOutOfRange { width, height }))?;
-        let height: u16 = height.try_into().or(Err(SoftBufferError::SizeOutOfRange {
-            width: width.into(),
-            height,
-        }))?;
+        let height: u16 = height
+            .get()
+            .try_into()
+            .or(Err(SoftBufferError::SizeOutOfRange {
+                width: NonZeroU32::new(width.into()).unwrap(),
+                height,
+            }))?;
 
         if width != self.width || height != self.height {
             self.buffer

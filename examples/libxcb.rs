@@ -3,6 +3,7 @@
 #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
 mod example {
     use raw_window_handle::{RawDisplayHandle, RawWindowHandle, XcbDisplayHandle, XcbWindowHandle};
+    use std::num::NonZeroU32;
     use x11rb::{
         connection::Connection,
         protocol::{
@@ -98,7 +99,12 @@ mod example {
             match event {
                 Event::Expose(_) => {
                     // Draw a width x height red rectangle.
-                    surface.resize(width.into(), height.into()).unwrap();
+                    surface
+                        .resize(
+                            NonZeroU32::new(width.into()).unwrap(),
+                            NonZeroU32::new(height.into()).unwrap(),
+                        )
+                        .unwrap();
                     let mut buffer = surface.buffer_mut().unwrap();
                     buffer.fill(RED);
                     buffer.present().unwrap();

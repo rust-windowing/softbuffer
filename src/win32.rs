@@ -7,7 +7,7 @@ use raw_window_handle::Win32WindowHandle;
 
 use std::io;
 use std::mem;
-use std::num::NonZeroI32;
+use std::num::{NonZeroI32, NonZeroU32};
 use std::ptr::{self, NonNull};
 use std::slice;
 
@@ -47,8 +47,8 @@ impl Buffer {
         let bitmap_info = BitmapInfo {
             bmi_header: Gdi::BITMAPINFOHEADER {
                 biSize: mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32,
-                biWidth: width.into(),
-                biHeight: -i32::from(height),
+                biWidth: width.get(),
+                biHeight: -height.get(),
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: Gdi::BI_BITFIELDS,
@@ -164,10 +164,10 @@ impl Win32Impl {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
-            let width = NonZeroI32::new(i32::try_from(width).ok()?)?;
-            let height = NonZeroI32::new(i32::try_from(height).ok()?)?;
+            let width = NonZeroI32::new(i32::try_from(width.get()).ok()?)?;
+            let height = NonZeroI32::new(i32::try_from(height.get()).ok()?)?;
             Some((width, height))
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
@@ -215,8 +215,8 @@ impl<'a> BufferImpl<'a> {
                 imp.dc,
                 0,
                 0,
-                buffer.width.into(),
-                buffer.height.into(),
+                buffer.width.get(),
+                buffer.height.get(),
                 buffer.dc,
                 0,
                 0,

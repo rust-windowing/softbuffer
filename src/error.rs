@@ -1,5 +1,6 @@
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use std::error::Error;
+use std::num::NonZeroU32;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -29,7 +30,10 @@ pub enum SoftBufferError {
     IncompleteDisplayHandle,
 
     #[error("Surface size {width}x{height} out of range for backend.")]
-    SizeOutOfRange { width: u32, height: u32 },
+    SizeOutOfRange {
+        width: NonZeroU32,
+        height: NonZeroU32,
+    },
 
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>),

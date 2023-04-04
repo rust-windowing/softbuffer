@@ -2,6 +2,7 @@ use instant::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use std::f64::consts::PI;
+use std::num::NonZeroU32;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -49,7 +50,12 @@ fn main() {
 
                 let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
 
-                surface.resize(width, height).unwrap();
+                surface
+                    .resize(
+                        NonZeroU32::new(width).unwrap(),
+                        NonZeroU32::new(height).unwrap(),
+                    )
+                    .unwrap();
                 let mut buffer = surface.buffer_mut().unwrap();
                 buffer.copy_from_slice(frame);
                 buffer.present().unwrap();

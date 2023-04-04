@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -32,7 +33,10 @@ fn main() {
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 surface
-                    .resize(BUFFER_WIDTH as u32, BUFFER_HEIGHT as u32)
+                    .resize(
+                        NonZeroU32::new(BUFFER_WIDTH as u32).unwrap(),
+                        NonZeroU32::new(BUFFER_HEIGHT as u32).unwrap(),
+                    )
                     .unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();

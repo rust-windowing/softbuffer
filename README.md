@@ -53,6 +53,7 @@ For now, the priority for new platforms is:
 Example
 ==
 ```rust,no_run
+use std::num::NonZeroU32;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -72,7 +73,12 @@ fn main() {
                     let size = window.inner_size();
                     (size.width, size.height)
                 };
-                surface.resize(width, height).unwrap();
+                surface
+                    .resize(
+                        NonZeroU32::new(width).unwrap(),
+                        NonZeroU32::new(height).unwrap(),
+                    )
+                    .unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
                 for index in 0..(width * height) {

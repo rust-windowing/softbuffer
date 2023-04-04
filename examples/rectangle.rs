@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -57,7 +58,12 @@ fn main() {
                 };
 
                 // Resize surface if needed
-                surface.resize(width, height).unwrap();
+                surface
+                    .resize(
+                        NonZeroU32::new(width).unwrap(),
+                        NonZeroU32::new(height).unwrap(),
+                    )
+                    .unwrap();
 
                 // Draw something in the window
                 let mut buffer = surface.buffer_mut().unwrap();

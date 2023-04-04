@@ -1,4 +1,5 @@
 use image::GenericImageView;
+use std::num::NonZeroU32;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -35,7 +36,12 @@ fn main() {
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                surface.resize(fruit.width(), fruit.height()).unwrap();
+                surface
+                    .resize(
+                        NonZeroU32::new(fruit.width()).unwrap(),
+                        NonZeroU32::new(fruit.height()).unwrap(),
+                    )
+                    .unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
                 let width = fruit.width() as usize;

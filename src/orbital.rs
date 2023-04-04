@@ -1,5 +1,5 @@
 use raw_window_handle::OrbitalWindowHandle;
-use std::{cmp, slice, str};
+use std::{cmp, num::NonZeroU32, slice, str};
 
 use crate::SoftBufferError;
 
@@ -68,9 +68,9 @@ impl OrbitalImpl {
         })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
-        self.width = width;
-        self.height = height;
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        self.width = width.get();
+        self.height = height.get();
         Ok(())
     }
 

@@ -11,6 +11,7 @@ use web_sys::ImageData;
 
 use crate::SoftBufferError;
 use std::convert::TryInto;
+use std::num::NonZeroU32;
 
 /// Display implementation for the web platform.
 ///
@@ -96,7 +97,14 @@ impl WebImpl {
     }
 
     /// Resize the canvas to the given dimensions.
-    pub(crate) fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+    pub(crate) fn resize(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+    ) -> Result<(), SoftBufferError> {
+        let width = width.get();
+        let height = height.get();
+
         self.buffer.resize(total_len(width, height), 0);
         self.canvas.set_width(width);
         self.canvas.set_height(height);
