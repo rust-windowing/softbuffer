@@ -47,7 +47,7 @@ For now, the priority for new platforms is:
  - Web ✅ (Thanks to [Liamolucko](https://github.com/Liamolucko)!)
  - Win32 ✅
  - WinRt ❌
- - Xcb ❌
+ - Xcb ✅ 
  - Xlib ✅
 
 WebAssembly
