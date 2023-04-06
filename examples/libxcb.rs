@@ -3,6 +3,7 @@
 #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
 mod example {
     use raw_window_handle::{RawDisplayHandle, RawWindowHandle, XcbDisplayHandle, XcbWindowHandle};
+    use std::num::NonZeroU32;
     use x11rb::{
         connection::Connection,
         protocol::{
@@ -11,6 +12,8 @@ mod example {
         },
         xcb_ffi::XCBConnection,
     };
+
+    const RED: u32 = 255 << 16;
 
     pub(crate) fn run() {
         // Create a new XCB connection
@@ -96,13 +99,15 @@ mod example {
             match event {
                 Event::Expose(_) => {
                     // Draw a width x height red rectangle.
-                    let red = 255 << 16;
-                    let source = std::iter::repeat(red)
-                        .take((width as usize * height as usize) as _)
-                        .collect::<Vec<_>>();
-
-                    // Draw the buffer.
-                    surface.set_buffer(&source, width, height);
+                    surface
+                        .resize(
+                            NonZeroU32::new(width.into()).unwrap(),
+                            NonZeroU32::new(height.into()).unwrap(),
+                        )
+                        .unwrap();
+                    let mut buffer = surface.buffer_mut().unwrap();
+                    buffer.fill(RED);
+                    buffer.present().unwrap();
                 }
                 Event::ConfigureNotify(configure_notify) => {
                     width = configure_notify.width;

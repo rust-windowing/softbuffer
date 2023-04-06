@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -43,7 +44,6 @@ fn main() {
     let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
     let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
-    let mut buffer = Vec::new();
     let mut flag = false;
 
     event_loop.run(move |event, _, control_flow| {
@@ -54,19 +54,21 @@ fn main() {
                 // Grab the window's client area dimensions
                 let (width, height) = {
                     let size = window.inner_size();
-                    (size.width as usize, size.height as usize)
+                    (size.width, size.height)
                 };
 
-                // Resize the off-screen buffer if the window size has changed
-                if buffer.len() != width * height {
-                    buffer.resize(width * height, 0);
-                }
+                // Resize surface if needed
+                surface
+                    .resize(
+                        NonZeroU32::new(width).unwrap(),
+                        NonZeroU32::new(height).unwrap(),
+                    )
+                    .unwrap();
 
-                // Draw something in the offscreen buffer
-                redraw(&mut buffer, width, height, flag);
-
-                // Blit the offscreen buffer to the window's client area
-                surface.set_buffer(&buffer, width as u16, height as u16);
+                // Draw something in the window
+                let mut buffer = surface.buffer_mut().unwrap();
+                redraw(&mut buffer, width as usize, height as usize, flag);
+                buffer.present().unwrap();
             }
 
             Event::WindowEvent {

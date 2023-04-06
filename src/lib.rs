@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs)]
 
 #[cfg(target_os = "macos")]
 #[macro_use]
@@ -20,9 +21,13 @@ mod win32;
 mod x11;
 
 mod error;
+mod util;
 
+use std::marker::PhantomData;
+use std::num::NonZeroU32;
+use std::ops;
 #[cfg(any(wayland_platform, x11_platform))]
-use std::sync::Arc;
+use std::rc::Rc;
 
 pub use error::SoftBufferError;
 
@@ -35,6 +40,7 @@ use raw_window_handle::{
 pub struct Context {
     /// The inner static dispatch object.
     context_impl: ContextDispatch,
+    _marker: PhantomData<*mut ()>,
 }
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
@@ -42,7 +48,7 @@ macro_rules! make_dispatch {
     (
         $(
             $(#[$attr:meta])*
-            $name: ident ($context_inner: ty, $surface_inner : ty),
+            $name: ident ($context_inner: ty, $surface_inner: ty, $buffer_inner: ty),
         )*
     ) => {
         enum ContextDispatch {
@@ -71,11 +77,58 @@ macro_rules! make_dispatch {
         }
 
         impl SurfaceDispatch {
-            unsafe fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
+            pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => unsafe { inner.set_buffer(buffer, width, height) },
+                        Self::$name(inner) => inner.resize(width, height),
+                    )*
+                }
+            }
+
+            pub fn buffer_mut(&mut self) -> Result<BufferDispatch, SoftBufferError> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.buffer_mut()?)),
+                    )*
+                }
+            }
+        }
+
+        enum BufferDispatch<'a> {
+            $(
+                $(#[$attr])*
+                $name($buffer_inner),
+            )*
+        }
+
+        impl<'a> BufferDispatch<'a> {
+            #[inline]
+            pub fn pixels(&self) -> &[u32] {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.pixels(),
+                    )*
+                }
+            }
+
+            #[inline]
+            pub fn pixels_mut(&mut self) -> &mut [u32] {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.pixels_mut(),
+                    )*
+                }
+            }
+
+            pub fn present(self) -> Result<(), SoftBufferError> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.present(),
                     )*
                 }
             }
@@ -83,19 +136,21 @@ macro_rules! make_dispatch {
     };
 }
 
+// XXX empty enum with generic bound is invalid?
+
 make_dispatch! {
     #[cfg(x11_platform)]
-    X11(Arc<x11::X11DisplayImpl>, x11::X11Impl),
+    X11(Rc<x11::X11DisplayImpl>, x11::X11Impl, x11::BufferImpl<'a>),
     #[cfg(wayland_platform)]
-    Wayland(std::sync::Arc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl),
+    Wayland(Rc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl, wayland::BufferImpl<'a>),
     #[cfg(target_os = "windows")]
-    Win32((), win32::Win32Impl),
+    Win32((), win32::Win32Impl, win32::BufferImpl<'a>),
     #[cfg(target_os = "macos")]
-    CG((), cg::CGImpl),
+    CG((), cg::CGImpl, cg::BufferImpl<'a>),
     #[cfg(target_arch = "wasm32")]
-    Web(web::WebDisplayImpl, web::WebImpl),
+    Web(web::WebDisplayImpl, web::WebImpl, web::BufferImpl<'a>),
     #[cfg(target_os = "redox")]
-    Orbital((), orbital::OrbitalImpl),
+    Orbital((), orbital::OrbitalImpl, orbital::BufferImpl<'a>),
 }
 
 impl Context {
@@ -117,17 +172,15 @@ impl Context {
         let imple: ContextDispatch = match raw_display_handle {
             #[cfg(x11_platform)]
             RawDisplayHandle::Xlib(xlib_handle) => unsafe {
-                ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
+                ContextDispatch::X11(Rc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
             },
             #[cfg(x11_platform)]
             RawDisplayHandle::Xcb(xcb_handle) => unsafe {
-                ContextDispatch::X11(Arc::new(x11::X11DisplayImpl::from_xcb(xcb_handle)?))
+                ContextDispatch::X11(Rc::new(x11::X11DisplayImpl::from_xcb(xcb_handle)?))
             },
             #[cfg(wayland_platform)]
             RawDisplayHandle::Wayland(wayland_handle) => unsafe {
-                ContextDispatch::Wayland(Arc::new(wayland::WaylandDisplayImpl::new(
-                    wayland_handle,
-                )?))
+                ContextDispatch::Wayland(Rc::new(wayland::WaylandDisplayImpl::new(wayland_handle)?))
             },
             #[cfg(target_os = "windows")]
             RawDisplayHandle::Windows(_) => ContextDispatch::Win32(()),
@@ -149,17 +202,20 @@ impl Context {
 
         Ok(Self {
             context_impl: imple,
+            _marker: PhantomData,
         })
     }
 }
 
+/// A surface for drawing to a window with software buffers.
 pub struct Surface {
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch>,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl Surface {
-    /// Creates a new instance of this struct, using the provided window and display.
+    /// Creates a new surface for the context for the provided window.
     ///
     /// # Safety
     ///
@@ -172,7 +228,7 @@ impl Surface {
         unsafe { Self::from_raw(context, window.raw_window_handle()) }
     }
 
-    /// Creates a new instance of this struct, using the provided raw window and display handles
+    /// Creates a new surface for the context for the provided raw window handle.
     ///
     /// # Safety
     ///
@@ -232,37 +288,76 @@ impl Surface {
 
         Ok(Self {
             surface_impl: Box::new(imple),
+            _marker: PhantomData,
         })
     }
 
-    /// Shows the given buffer with the given width and height on the window corresponding to this
-    /// graphics context. Panics if buffer.len() ≠ width*height. If the size of the buffer does
-    /// not match the size of the window, the buffer is drawn in the upper-left corner of the window.
-    /// It is recommended in most production use cases to have the buffer fill the entire window.
-    /// Use your windowing library to find the size of the window.
+    /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
     ///
-    /// The format of the buffer is as follows. There is one u32 in the buffer for each pixel in
-    /// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
-    /// etc. (Row-major top to bottom left to right one u32 per pixel). Within each u32 the highest
-    /// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
-    /// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
-    /// one way to build this format using bitwise operations.
-    ///
-    /// --------
-    ///
-    /// Pixel format (u32):
-    ///
-    /// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
-    ///
-    /// 0: Bit is 0
-    /// R: Red channel
-    /// G: Green channel
-    /// B: Blue channel
+    /// If the size of the buffer does not match the size of the window, the buffer is drawn
+    /// in the upper-left corner of the window. It is recommended in most production use cases
+    /// to have the buffer fill the entire window. Use your windowing library to find the size
+    /// of the window.
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        self.surface_impl.resize(width, height)
+    }
+
+    /// Return a [`Buffer`] that the next frame should be rendered into. The size must
+    /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
+    /// may contain a previous frame.
+    pub fn buffer_mut(&mut self) -> Result<Buffer, SoftBufferError> {
+        Ok(Buffer {
+            buffer_impl: self.surface_impl.buffer_mut()?,
+            _marker: PhantomData,
+        })
+    }
+}
+
+/// A buffer that can be written to by the CPU and presented to the window.
+///
+/// This derefs to a `[u32]`, which depending on the backend may be a mapping into shared memory
+/// accessible to the display server, so presentation doesn't require any (client-side) copying.
+///
+/// This trusts the display server not to mutate the buffer, which could otherwise be unsound.
+///
+/// # Data representation
+///
+/// The format of the buffer is as follows. There is one `u32` in the buffer for each pixel in
+/// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
+/// etc. (Row-major top to bottom left to right one `u32` per pixel). Within each `u32` the highest
+/// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
+/// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
+/// one way to build this format using bitwise operations.
+///
+/// --------
+///
+/// Pixel format (`u32`):
+///
+/// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
+///
+/// 0: Bit is 0
+/// R: Red channel
+/// G: Green channel
+/// B: Blue channel
+///
+/// # Platform dependent behavior
+/// No-copy presentation is currently supported on:
+/// - Wayland
+/// - X, when XShm is available
+/// - Win32
+/// - Orbital, when buffer size matches window size
+/// Currently [`Buffer::present`] must block copying image data on:
+/// - Web
+/// - macOS
+pub struct Buffer<'a> {
+    buffer_impl: BufferDispatch<'a>,
+    _marker: PhantomData<*mut ()>,
+}
+
+impl<'a> Buffer<'a> {
+    /// Presents buffer to the window.
     ///
     /// # Platform dependent behavior
-    ///
-    /// This section of the documentation details how some platforms may behave when [`set_buffer`](Surface::set_buffer)
-    /// is called.
     ///
     /// ## Wayland
     ///
@@ -272,15 +367,24 @@ impl Surface {
     ///
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
-    #[inline]
-    pub fn set_buffer(&mut self, buffer: &[u32], width: u16, height: u16) {
-        if (width as usize) * (height as usize) != buffer.len() {
-            panic!("The size of the passed buffer is not the correct size. Its length must be exactly width*height.");
-        }
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        self.buffer_impl.present()
+    }
+}
 
-        unsafe {
-            self.surface_impl.set_buffer(buffer, width, height);
-        }
+impl<'a> ops::Deref for Buffer<'a> {
+    type Target = [u32];
+
+    #[inline]
+    fn deref(&self) -> &[u32] {
+        self.buffer_impl.pixels()
+    }
+}
+
+impl<'a> ops::DerefMut for Buffer<'a> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [u32] {
+        self.buffer_impl.pixels_mut()
     }
 }
 

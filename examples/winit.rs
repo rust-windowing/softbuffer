@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -32,21 +33,26 @@ fn main() {
                     let size = window.inner_size();
                     (size.width, size.height)
                 };
-                let buffer = (0..((width * height) as usize))
-                    .map(|index| {
-                        let y = index / (width as usize);
-                        let x = index % (width as usize);
-                        let red = x % 255;
-                        let green = y % 255;
-                        let blue = (x * y) % 255;
 
-                        let color = blue | (green << 8) | (red << 16);
+                surface
+                    .resize(
+                        NonZeroU32::new(width).unwrap(),
+                        NonZeroU32::new(height).unwrap(),
+                    )
+                    .unwrap();
 
-                        color as u32
-                    })
-                    .collect::<Vec<_>>();
+                let mut buffer = surface.buffer_mut().unwrap();
+                for index in 0..(width * height) {
+                    let y = index / width;
+                    let x = index % width;
+                    let red = x % 255;
+                    let green = y % 255;
+                    let blue = (x * y) % 255;
 
-                surface.set_buffer(&buffer, width as u16, height as u16);
+                    buffer[index as usize] = blue | (green << 8) | (red << 16);
+                }
+
+                buffer.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

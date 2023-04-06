@@ -1,7 +1,9 @@
+use memmap2::MmapMut;
 use std::{
     ffi::CStr,
     fs::File,
-    os::unix::prelude::{AsRawFd, FileExt, FromRawFd},
+    os::unix::prelude::{AsRawFd, FromRawFd},
+    slice,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -69,9 +71,19 @@ fn create_memfile() -> File {
     panic!("Failed to generate non-existant shm name")
 }
 
+// Round size to use for pool for given dimentions, rounding up to power of 2
+fn get_pool_size(width: i32, height: i32) -> i32 {
+    ((width * height * 4) as u32).next_power_of_two() as i32
+}
+
+unsafe fn map_file(file: &File) -> MmapMut {
+    unsafe { MmapMut::map_mut(file.as_raw_fd()).expect("Failed to map shared memory") }
+}
+
 pub(super) struct WaylandBuffer {
     qh: QueueHandle<State>,
     tempfile: File,
+    map: MmapMut,
     pool: wl_shm_pool::WlShmPool,
     pool_size: i32,
     buffer: wl_buffer::WlBuffer,
@@ -82,8 +94,15 @@ pub(super) struct WaylandBuffer {
 
 impl WaylandBuffer {
     pub fn new(shm: &wl_shm::WlShm, width: i32, height: i32, qh: &QueueHandle<State>) -> Self {
+        // Calculate size to use for shm pool
+        let pool_size = get_pool_size(width, height);
+
+        // Create an `mmap` shared memory
         let tempfile = create_memfile();
-        let pool_size = width * height * 4;
+        let _ = tempfile.set_len(pool_size as u64);
+        let map = unsafe { map_file(&tempfile) };
+
+        // Create wayland shm pool and buffer
         let pool = shm.create_pool(tempfile.as_raw_fd(), pool_size, qh, ());
         let released = Arc::new(AtomicBool::new(true));
         let buffer = pool.create_buffer(
@@ -95,8 +114,10 @@ impl WaylandBuffer {
             qh,
             released.clone(),
         );
+
         Self {
             qh: qh.clone(),
+            map,
             tempfile,
             pool,
             pool_size,
@@ -119,6 +140,7 @@ impl WaylandBuffer {
                 let _ = self.tempfile.set_len(size as u64);
                 self.pool.resize(size);
                 self.pool_size = size;
+                self.map = unsafe { map_file(&self.tempfile) };
             }
 
             // Create buffer with correct size
@@ -136,14 +158,6 @@ impl WaylandBuffer {
         }
     }
 
-    pub fn write(&self, buffer: &[u32]) {
-        let buffer =
-            unsafe { std::slice::from_raw_parts(buffer.as_ptr() as *const u8, buffer.len() * 4) };
-        self.tempfile
-            .write_all_at(buffer, 0)
-            .expect("Failed to write buffer to temporary file.");
-    }
-
     pub fn attach(&self, surface: &wl_surface::WlSurface) {
         self.released.store(false, Ordering::SeqCst);
         surface.attach(Some(&self.buffer), 0, 0);
@@ -151,6 +165,14 @@ impl WaylandBuffer {
 
     pub fn released(&self) -> bool {
         self.released.load(Ordering::SeqCst)
+    }
+
+    fn len(&self) -> usize {
+        self.width as usize * self.height as usize
+    }
+
+    pub unsafe fn mapped_mut(&mut self) -> &mut [u32] {
+        unsafe { slice::from_raw_parts_mut(self.map.as_mut_ptr() as *mut u32, self.len()) }
     }
 }
 

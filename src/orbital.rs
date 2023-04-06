@@ -1,11 +1,12 @@
 use raw_window_handle::OrbitalWindowHandle;
-use std::{cmp, slice, str};
+use std::{cmp, num::NonZeroU32, slice, str};
 
 use crate::SoftBufferError;
 
 struct OrbitalMap {
     address: usize,
     size: usize,
+    size_unaligned: usize,
 }
 
 impl OrbitalMap {
@@ -27,7 +28,19 @@ impl OrbitalMap {
             )?
         };
 
-        Ok(Self { address, size })
+        Ok(Self {
+            address,
+            size,
+            size_unaligned,
+        })
+    }
+
+    unsafe fn data(&self) -> &[u32] {
+        unsafe { slice::from_raw_parts(self.address as *const u32, self.size_unaligned / 4) }
+    }
+
+    unsafe fn data_mut(&self) -> &mut [u32] {
+        unsafe { slice::from_raw_parts_mut(self.address as *mut u32, self.size_unaligned / 4) }
     }
 }
 
@@ -42,50 +55,79 @@ impl Drop for OrbitalMap {
 
 pub struct OrbitalImpl {
     handle: OrbitalWindowHandle,
+    width: u32,
+    height: u32,
 }
 
 impl OrbitalImpl {
     pub fn new(handle: OrbitalWindowHandle) -> Result<Self, SoftBufferError> {
-        Ok(Self { handle })
+        Ok(Self {
+            handle,
+            width: 0,
+            height: 0,
+        })
     }
 
-    pub(crate) unsafe fn set_buffer(&mut self, buffer: &[u32], width_u16: u16, height_u16: u16) {
-        let window_fd = self.handle.window as usize;
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        self.width = width.get();
+        self.height = height.get();
+        Ok(())
+    }
 
-        // Read the current width and size
+    fn window_fd(&self) -> usize {
+        self.handle.window as usize
+    }
+
+    // Read the current width and size
+    fn window_size(&self) -> (usize, usize) {
         let mut window_width = 0;
         let mut window_height = 0;
-        {
-            let mut buf: [u8; 4096] = [0; 4096];
-            let count = syscall::fpath(window_fd, &mut buf).unwrap();
-            let path = str::from_utf8(&buf[..count]).unwrap();
-            // orbital:/x/y/w/h/t
-            let mut parts = path.split('/').skip(3);
-            if let Some(w) = parts.next() {
-                window_width = w.parse::<usize>().unwrap_or(0);
-            }
-            if let Some(h) = parts.next() {
-                window_height = h.parse::<usize>().unwrap_or(0);
-            }
+
+        let mut buf: [u8; 4096] = [0; 4096];
+        let count = syscall::fpath(self.window_fd(), &mut buf).unwrap();
+        let path = str::from_utf8(&buf[..count]).unwrap();
+        // orbital:/x/y/w/h/t
+        let mut parts = path.split('/').skip(3);
+        if let Some(w) = parts.next() {
+            window_width = w.parse::<usize>().unwrap_or(0);
         }
+        if let Some(h) = parts.next() {
+            window_height = h.parse::<usize>().unwrap_or(0);
+        }
+
+        (window_width, window_height)
+    }
+
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+        let (window_width, window_height) = self.window_size();
+        let pixels = if self.width as usize == window_width && self.height as usize == window_height
+        {
+            Pixels::Mapping(
+                unsafe { OrbitalMap::new(self.window_fd(), window_width * window_height * 4) }
+                    .expect("failed to map orbital window"),
+            )
+        } else {
+            Pixels::Buffer(vec![0; self.width as usize * self.height as usize])
+        };
+        Ok(BufferImpl { imp: self, pixels })
+    }
+
+    fn set_buffer(&self, buffer: &[u32], width_u32: u32, height_u32: u32) {
+        // Read the current width and size
+        let (window_width, window_height) = self.window_size();
 
         {
             // Map window buffer
             let window_map =
-                unsafe { OrbitalMap::new(window_fd, window_width * window_height * 4) }
+                unsafe { OrbitalMap::new(self.window_fd(), window_width * window_height * 4) }
                     .expect("failed to map orbital window");
 
             // Window buffer is u32 color data in 0xAABBGGRR format
-            let window_data = unsafe {
-                slice::from_raw_parts_mut(
-                    window_map.address as *mut u32,
-                    window_width * window_height,
-                )
-            };
+            let window_data = unsafe { window_map.data_mut() };
 
             // Copy each line, cropping to fit
-            let width = width_u16 as usize;
-            let height = height_u16 as usize;
+            let width = width_u32 as usize;
+            let height = height_u32 as usize;
             let min_width = cmp::min(width, window_width);
             let min_height = cmp::min(height, window_height);
             for y in 0..min_height {
@@ -99,6 +141,49 @@ impl OrbitalImpl {
         }
 
         // Tell orbital to show the latest window data
-        syscall::fsync(window_fd).expect("failed to sync orbital window");
+        syscall::fsync(self.window_fd()).expect("failed to sync orbital window");
+    }
+}
+
+enum Pixels {
+    Mapping(OrbitalMap),
+    Buffer(Vec<u32>),
+}
+
+pub struct BufferImpl<'a> {
+    imp: &'a mut OrbitalImpl,
+    pixels: Pixels,
+}
+
+impl<'a> BufferImpl<'a> {
+    #[inline]
+    pub fn pixels(&self) -> &[u32] {
+        match &self.pixels {
+            Pixels::Mapping(mapping) => unsafe { mapping.data() },
+            Pixels::Buffer(buffer) => buffer,
+        }
+    }
+
+    #[inline]
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        match &mut self.pixels {
+            Pixels::Mapping(mapping) => unsafe { mapping.data_mut() },
+            Pixels::Buffer(buffer) => buffer,
+        }
+    }
+
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        match self.pixels {
+            Pixels::Mapping(mapping) => {
+                drop(mapping);
+                syscall::fsync(self.imp.window_fd()).expect("failed to sync orbital window");
+            }
+            Pixels::Buffer(buffer) => {
+                self.imp
+                    .set_buffer(&buffer, self.imp.width, self.imp.height);
+            }
+        }
+
+        Ok(())
     }
 }

@@ -2,6 +2,7 @@ use instant::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use std::f64::consts::PI;
+use std::num::NonZeroU32;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -47,8 +48,17 @@ fn main() {
                     frames = pre_render_frames(width as usize, height as usize);
                 };
 
-                let buffer = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
-                surface.set_buffer(buffer.as_slice(), width as u16, height as u16);
+                let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
+
+                surface
+                    .resize(
+                        NonZeroU32::new(width).unwrap(),
+                        NonZeroU32::new(height).unwrap(),
+                    )
+                    .unwrap();
+                let mut buffer = surface.buffer_mut().unwrap();
+                buffer.copy_from_slice(frame);
+                buffer.present().unwrap();
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
