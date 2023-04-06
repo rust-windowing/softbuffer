@@ -51,7 +51,7 @@ impl Buffer {
                 biHeight: -height.get(),
                 biPlanes: 1,
                 biBitCount: 32,
-                biCompression: Gdi::BI_BITFIELDS,
+                biCompression: Gdi::BI_BITFIELDS as u32,
                 biSizeImage: 0,
                 biXPelsPerMeter: 0,
                 biYPelsPerMeter: 0,
