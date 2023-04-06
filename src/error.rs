@@ -1,5 +1,6 @@
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use std::error::Error;
+use std::fmt;
 use std::num::NonZeroU32;
 use thiserror::Error;
 
@@ -39,16 +40,41 @@ pub enum SoftBufferError {
     PlatformError(Option<String>, Option<Box<dyn Error>>),
 }
 
-#[allow(unused)] // This isn't used on all platforms
-pub(crate) fn unwrap<T, E: std::error::Error + 'static>(
-    res: Result<T, E>,
-    str: &str,
-) -> Result<T, SoftBufferError> {
-    match res {
-        Ok(t) => Ok(t),
-        Err(e) => Err(SoftBufferError::PlatformError(
-            Some(str.into()),
-            Some(Box::new(e)),
-        )),
+/// Convenient wrapper to cast errors into SoftBufferError.
+pub(crate) trait SwResultExt<T> {
+    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError>;
+}
+
+impl<T, E: std::error::Error + 'static> SwResultExt<T> for Result<T, E> {
+    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError> {
+        self.map_err(|e| {
+            SoftBufferError::PlatformError(Some(msg.into()), Some(Box::new(LibraryError(e))))
+        })
     }
 }
+
+impl<T> SwResultExt<T> for Option<T> {
+    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError> {
+        self.ok_or_else(|| SoftBufferError::PlatformError(Some(msg.into()), None))
+    }
+}
+
+/// A wrapper around a library error.
+///
+/// This prevents `x11-dl` and `x11rb` from becoming public dependencies, since users cannot downcast
+/// to this type.
+struct LibraryError<E>(E);
+
+impl<E: fmt::Debug> fmt::Debug for LibraryError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl<E: fmt::Display> fmt::Display for LibraryError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl<E: fmt::Debug + fmt::Display> std::error::Error for LibraryError<E> {}

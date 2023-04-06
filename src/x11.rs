@@ -5,6 +5,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
+use crate::error::SwResultExt;
 use crate::{util, SoftBufferError};
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
@@ -650,19 +651,6 @@ impl From<io::Error> for PushBufferError {
     }
 }
 
-/// Convenient wrapper to cast errors into SoftBufferError.
-trait SwResultExt<T, E> {
-    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError>;
-}
-
-impl<T, E: std::error::Error + 'static> SwResultExt<T, E> for Result<T, E> {
-    fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError> {
-        self.map_err(|e| {
-            SoftBufferError::PlatformError(Some(msg.into()), Some(Box::new(LibraryError(e))))
-        })
-    }
-}
-
 /// Convenient wrapper to cast errors into PushBufferError.
 trait PushResultExt<T, E> {
     fn push_err(self) -> Result<T, PushBufferError>;
@@ -673,26 +661,6 @@ impl<T, E: Into<PushBufferError>> PushResultExt<T, E> for Result<T, E> {
         self.map_err(Into::into)
     }
 }
-
-/// A wrapper around a library error.
-///
-/// This prevents `x11-dl` and `x11rb` from becoming public dependencies, since users cannot downcast
-/// to this type.
-struct LibraryError<E>(E);
-
-impl<E: fmt::Debug> fmt::Debug for LibraryError<E> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, f)
-    }
-}
-
-impl<E: fmt::Display> fmt::Display for LibraryError<E> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl<E: fmt::Debug + fmt::Display> std::error::Error for LibraryError<E> {}
 
 /// Get the length that a slice needs to be to hold a buffer of the given dimensions.
 #[inline(always)]

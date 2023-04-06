@@ -1,4 +1,4 @@
-use crate::{error::unwrap, util, SoftBufferError};
+use crate::{error::SwResultExt, util, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
 use std::{
     cell::RefCell,
@@ -29,15 +29,12 @@ impl WaylandDisplayImpl {
         // SAFETY: Ensured by user
         let backend = unsafe { Backend::from_foreign_display(display_handle.display as *mut _) };
         let conn = Connection::from_backend(backend);
-        let (globals, event_queue) = unwrap(
-            registry_queue_init(&conn),
-            "Failed to make round trip to server",
-        )?;
+        let (globals, event_queue) =
+            registry_queue_init(&conn).swbuf_err("Failed to make round trip to server")?;
         let qh = event_queue.handle();
-        let shm: wl_shm::WlShm = unwrap(
-            globals.bind(&qh, 1..=1, ()),
-            "Failed to instantiate Wayland Shm",
-        )?;
+        let shm: wl_shm::WlShm = globals
+            .bind(&qh, 1..=1, ())
+            .swbuf_err("Failed to instantiate Wayland Shm")?;
         Ok(Self {
             conn,
             event_queue: RefCell::new(event_queue),
@@ -60,19 +57,15 @@ impl WaylandImpl {
         display: Rc<WaylandDisplayImpl>,
     ) -> Result<Self, SoftBufferError> {
         // SAFETY: Ensured by user
-        let surface_id = unwrap(
-            unsafe {
-                ObjectId::from_ptr(
-                    wl_surface::WlSurface::interface(),
-                    window_handle.surface as _,
-                )
-            },
-            "Failed to create proxy for surface ID.",
-        )?;
-        let surface = unwrap(
-            wl_surface::WlSurface::from_id(&display.conn, surface_id),
-            "Failed to create proxy for surface ID.",
-        )?;
+        let surface_id = unsafe {
+            ObjectId::from_ptr(
+                wl_surface::WlSurface::interface(),
+                window_handle.surface as _,
+            )
+        }
+        .swbuf_err("Failed to create proxy for surface ID.")?;
+        let surface = wl_surface::WlSurface::from_id(&display.conn, surface_id)
+            .swbuf_err("Failed to create proxy for surface ID.")?;
         Ok(Self {
             display,
             surface,

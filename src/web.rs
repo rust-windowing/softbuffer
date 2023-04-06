@@ -8,6 +8,7 @@ use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
 
+use crate::error::SwResultExt;
 use crate::SoftBufferError;
 use std::convert::TryInto;
 use std::num::NonZeroU32;
@@ -22,19 +23,9 @@ pub struct WebDisplayImpl {
 impl WebDisplayImpl {
     pub(super) fn new() -> Result<Self, SoftBufferError> {
         let document = web_sys::window()
-            .ok_or_else(|| {
-                SoftBufferError::PlatformError(
-                    Some("`window` is not present in this runtime".into()),
-                    None,
-                )
-            })?
+            .swbuf_err("`window` is not present in this runtime")?
             .document()
-            .ok_or_else(|| {
-                SoftBufferError::PlatformError(
-                    Some("`document` is not present in this runtime".into()),
-                    None,
-                )
-            })?;
+            .swbuf_err("`document` is not present in this runtime")?;
 
         Ok(Self { document })
     }
@@ -61,31 +52,19 @@ impl WebImpl {
             .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
             // `querySelector` only throws an error if the selector is invalid.
             .unwrap()
-            .ok_or_else(|| {
-                SoftBufferError::PlatformError(
-                    Some("No canvas found with the given id".into()),
-                    None,
-                )
-            })?
+            .swbuf_err("No canvas found with the given id")?
             // We already made sure this was a canvas in `querySelector`.
             .unchecked_into();
 
         let ctx = canvas
-        .get_context("2d")
-        .map_err(|_| {
-            SoftBufferError::PlatformError(
-                Some("Canvas already controlled using `OffscreenCanvas`".into()),
-                None,
-            )
-        })?
-        .ok_or_else(|| {
-            SoftBufferError::PlatformError(
-                Some("A canvas context other than `CanvasRenderingContext2d` was already created".into()),
-                None,
-            )
-        })?
-        .dyn_into()
-        .expect("`getContext(\"2d\") didn't return a `CanvasRenderingContext2d`");
+            .get_context("2d")
+            .ok()
+            .swbuf_err("Canvas already controlled using `OffscreenCanvas`")?
+            .swbuf_err(
+                "A canvas context other than `CanvasRenderingContext2d` was already created",
+            )?
+            .dyn_into()
+            .expect("`getContext(\"2d\") didn't return a `CanvasRenderingContext2d`");
 
         Ok(Self {
             canvas,
