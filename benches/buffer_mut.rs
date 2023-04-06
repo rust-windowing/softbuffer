@@ -2,44 +2,52 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use softbuffer::{Context, Surface};
 
 fn buffer_mut(c: &mut Criterion) {
-    use winit::platform::run_return::EventLoopExtRunReturn;
+    #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
+    {
+        // Do nothing.
+    }
 
-    let mut evl = winit::event_loop::EventLoop::new();
-    let window = winit::window::WindowBuilder::new()
-        .with_visible(false)
-        .build(&evl)
-        .unwrap();
+    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
+    {
+        use winit::platform::run_return::EventLoopExtRunReturn;
 
-    evl.run_return(move |ev, elwt, control_flow| {
-        control_flow.set_poll();
+        let mut evl = winit::event_loop::EventLoop::new();
+        let window = winit::window::WindowBuilder::new()
+            .with_visible(false)
+            .build(&evl)
+            .unwrap();
 
-        if let winit::event::Event::RedrawEventsCleared = ev {
-            control_flow.set_exit();
+        evl.run_return(move |ev, elwt, control_flow| {
+            control_flow.set_poll();
 
-            let mut surface = unsafe {
-                let context = Context::new(elwt).unwrap();
-                Surface::new(&context, &window).unwrap()
-            };
+            if let winit::event::Event::RedrawEventsCleared = ev {
+                control_flow.set_exit();
 
-            c.bench_function("buffer_mut()", |b| {
-                b.iter(|| {
-                    for _ in 0..500 {
-                        black_box(surface.buffer_mut().unwrap());
-                    }
+                let mut surface = unsafe {
+                    let context = Context::new(elwt).unwrap();
+                    Surface::new(&context, &window).unwrap()
+                };
+
+                c.bench_function("buffer_mut()", |b| {
+                    b.iter(|| {
+                        for _ in 0..500 {
+                            black_box(surface.buffer_mut().unwrap());
+                        }
+                    });
                 });
-            });
 
-            c.bench_function("pixels_mut()", |b| {
-                let mut buffer = surface.buffer_mut().unwrap();
-                b.iter(|| {
-                    for _ in 0..500 {
-                        let x: &mut [u32] = &mut buffer;
-                        black_box(x);
-                    }
+                c.bench_function("pixels_mut()", |b| {
+                    let mut buffer = surface.buffer_mut().unwrap();
+                    b.iter(|| {
+                        for _ in 0..500 {
+                            let x: &mut [u32] = &mut buffer;
+                            black_box(x);
+                        }
+                    });
                 });
-            });
-        }
-    });
+            }
+        });
+    }
 }
 
 criterion_group!(benches, buffer_mut);
