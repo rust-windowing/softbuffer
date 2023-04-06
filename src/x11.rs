@@ -395,6 +395,7 @@ impl Buffer {
     /// # Safety
     ///
     /// `finish_wait()` must be called in between `shm::PutImage` requests and this function.
+    #[inline]
     unsafe fn buffer(&self) -> &[u32] {
         match self {
             Buffer::Shm(ref shm) => unsafe { shm.as_ref() },
@@ -446,17 +447,12 @@ impl ShmBuffer {
     /// # Safety
     ///
     /// `finish_wait()` must be called before this function is.
+    #[inline]
     unsafe fn as_ref(&self) -> &[u32] {
         match self.seg.as_ref() {
             Some((seg, _)) => {
                 // SAFETY: No other code should be able to access the segment.
-                unsafe {
-                    let buf = seg.as_ref();
-                    slice::from_raw_parts(
-                        buf.as_ptr() as *const u32,
-                        buf.len() / mem::size_of::<u32>(),
-                    )
-                }
+                bytemuck::cast_slice(unsafe { seg.as_ref() })
             }
             None => {
                 // Nothing has been allocated yet.
@@ -475,13 +471,7 @@ impl ShmBuffer {
         match self.seg.as_mut() {
             Some((seg, _)) => {
                 // SAFETY: No other code should be able to access the segment.
-                unsafe {
-                    let buf = seg.as_mut();
-                    slice::from_raw_parts_mut(
-                        buf.as_mut_ptr() as *mut u32,
-                        buf.len() / mem::size_of::<u32>(),
-                    )
-                }
+                bytemuck::cast_slice_mut(unsafe { seg.as_mut() })
             }
             None => {
                 // Nothing has been allocated yet.
