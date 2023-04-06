@@ -52,7 +52,7 @@ jobs:
           - { target: wasm32-unknown-unknown,   os: windows-latest,  }
         include:
           - rust_version: nightly
-          - { target: wasm32-unknown-unknown,   os: windows-latest, options: -Zbuild-std=panic_abort,std, rustflags: -Ctarget-feature=+atomics }
+            platform: { target: wasm32-unknown-unknown, os: windows-latest, options: "-Zbuild-std=panic_abort,std", rustflags: "-Ctarget-feature=+atomics,+bulk-memory" }
 
     env:
       RUST_BACKTRACE: 1
@@ -78,7 +78,7 @@ jobs:
       with:
         rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
         targets: ${{ matrix.platform.target }}
-        components: clippy
+        components: clippy, rust-src
 
     - name: Install GCC Multilib
       if: (matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')
