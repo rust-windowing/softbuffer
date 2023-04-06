@@ -1,14 +1,16 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use softbuffer::{Context, Surface};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 fn buffer_mut(c: &mut Criterion) {
     #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
     {
         // Do nothing.
+        let _ = c;
     }
 
     #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
     {
+        use criterion::black_box;
+        use softbuffer::{Context, Surface};
         use winit::platform::run_return::EventLoopExtRunReturn;
 
         let mut evl = winit::event_loop::EventLoop::new();
