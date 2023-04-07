@@ -6,11 +6,11 @@
 #![allow(clippy::uninlined_format_args)]
 
 use crate::error::SwResultExt;
-use crate::{util, SoftBufferError};
+use crate::SoftBufferError;
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
-use std::{fmt, io, mem, num::NonZeroU32, rc::Rc};
+use std::{fmt, io, mem, num::NonZeroU32, rc::Rc, slice};
 
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
@@ -34,8 +34,6 @@ impl X11DisplayImpl {
     pub(crate) unsafe fn from_xlib(
         display_handle: XlibDisplayHandle,
     ) -> Result<X11DisplayImpl, SoftBufferError> {
-        // TODO: We should cache the shared libraries.
-
         // Try to open the XlibXCB shared library.
         let lib_xcb = Xlib_xcb::open().swbuf_err("Failed to open XlibXCB shared library")?;
 
@@ -273,34 +271,32 @@ impl X11Impl {
     pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
         log::trace!("buffer_mut: window={:X}", self.window);
 
-        Ok(BufferImpl(util::BorrowStack::new(self, |surface| {
-            let buffer = surface
-                .buffer
-                .buffer_mut(&surface.display.connection)
-                .swbuf_err("Failed to get mutable X11 buffer")?;
+        // Finish waiting on the previous `shm::PutImage` request, if any.
+        self.buffer.finish_wait(&self.display.connection)?;
 
-            // Crop it down to the window size.
-            Ok(&mut buffer[..total_len(surface.width, surface.height) / 4])
-        })?))
+        // We can now safely call `buffer_mut` on the buffer.
+        Ok(BufferImpl(self))
     }
 }
 
-pub struct BufferImpl<'a>(util::BorrowStack<'a, X11Impl, [u32]>);
+pub struct BufferImpl<'a>(&'a mut X11Impl);
 
 impl<'a> BufferImpl<'a> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
-        self.0.member()
+        // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer()`.
+        unsafe { self.0.buffer.buffer() }
     }
 
     #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
-        self.0.member_mut()
+        // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer_mut`.
+        unsafe { self.0.buffer.buffer_mut() }
     }
 
     /// Push the buffer to the window.
     pub fn present(self) -> Result<(), SoftBufferError> {
-        let imp = self.0.into_container();
+        let imp = self.0;
 
         log::trace!("present: window={:X}", imp.window);
 
@@ -329,39 +325,37 @@ impl<'a> BufferImpl<'a> {
 
             Buffer::Shm(ref mut shm) => {
                 // If the X server is still processing the last image, wait for it to finish.
-                shm.finish_wait(&imp.display.connection)
-                    .and_then(|()| {
-                        // Put the image into the window.
-                        if let Some((_, segment_id)) = shm.seg {
-                            imp.display
-                                .connection
-                                .shm_put_image(
-                                    imp.window,
-                                    imp.gc,
-                                    imp.width,
-                                    imp.height,
-                                    0,
-                                    0,
-                                    imp.width,
-                                    imp.height,
-                                    0,
-                                    0,
-                                    imp.depth,
-                                    xproto::ImageFormat::Z_PIXMAP.into(),
-                                    false,
-                                    segment_id,
-                                    0,
-                                )
-                                .push_err()
-                                .map(|c| c.ignore_error())
-                        } else {
-                            Ok(())
-                        }
-                    })
-                    .and_then(|()| {
-                        // Send a short request to act as a notification for when the X server is done processing the image.
-                        shm.begin_wait(&imp.display.connection)
-                    })
+                // SAFETY: We know that we called finish_wait() before this.
+                // Put the image into the window.
+                if let Some((_, segment_id)) = shm.seg {
+                    imp.display
+                        .connection
+                        .shm_put_image(
+                            imp.window,
+                            imp.gc,
+                            imp.width,
+                            imp.height,
+                            0,
+                            0,
+                            imp.width,
+                            imp.height,
+                            0,
+                            0,
+                            imp.depth,
+                            xproto::ImageFormat::Z_PIXMAP.into(),
+                            false,
+                            segment_id,
+                            0,
+                        )
+                        .push_err()
+                        .map(|c| c.ignore_error())
+                        .and_then(|()| {
+                            // Send a short request to act as a notification for when the X server is done processing the image.
+                            shm.begin_wait(&imp.display.connection)
+                        })
+                } else {
+                    Ok(())
+                }
             }
         };
 
@@ -386,11 +380,39 @@ impl Buffer {
         }
     }
 
-    /// Get a mutable reference to the buffer.
-    fn buffer_mut(&mut self, conn: &impl Connection) -> Result<&mut [u32], PushBufferError> {
+    /// Finish waiting for an ongoing `shm::PutImage` request, if there is one.
+    fn finish_wait(&mut self, conn: &impl Connection) -> Result<(), SoftBufferError> {
+        if let Buffer::Shm(ref mut shm) = self {
+            shm.finish_wait(conn)
+                .swbuf_err("Failed to wait for X11 buffer")?;
+        }
+
+        Ok(())
+    }
+
+    /// Get a reference to the buffer.
+    ///
+    /// # Safety
+    ///
+    /// `finish_wait()` must be called in between `shm::PutImage` requests and this function.
+    #[inline]
+    unsafe fn buffer(&self) -> &[u32] {
         match self {
-            Buffer::Shm(ref mut shm) => shm.as_mut(conn),
-            Buffer::Wire(wire) => Ok(wire),
+            Buffer::Shm(ref shm) => unsafe { shm.as_ref() },
+            Buffer::Wire(wire) => wire,
+        }
+    }
+
+    /// Get a mutable reference to the buffer.
+    ///
+    /// # Safety
+    ///
+    /// `finish_wait()` must be called in between `shm::PutImage` requests and this function.
+    #[inline]
+    unsafe fn buffer_mut(&mut self) -> &mut [u32] {
+        match self {
+            Buffer::Shm(ref mut shm) => unsafe { shm.as_mut() },
+            Buffer::Wire(wire) => wire,
         }
     }
 }
@@ -420,20 +442,40 @@ impl ShmBuffer {
         Ok(())
     }
 
-    /// Get the SHM buffer as a mutable reference.
-    fn as_mut(&mut self, conn: &impl Connection) -> Result<&mut [u32], PushBufferError> {
-        // Make sure that, if we're waiting for the X server to finish processing the last image,
-        // that we finish the wait.
-        self.finish_wait(conn)?;
-
-        match self.seg.as_mut() {
+    /// Get the SHM buffer as a reference.
+    ///
+    /// # Safety
+    ///
+    /// `finish_wait()` must be called before this function is.
+    #[inline]
+    unsafe fn as_ref(&self) -> &[u32] {
+        match self.seg.as_ref() {
             Some((seg, _)) => {
                 // SAFETY: No other code should be able to access the segment.
-                Ok(bytemuck::cast_slice_mut(unsafe { seg.as_mut() }))
+                bytemuck::cast_slice(unsafe { seg.as_ref() })
             }
             None => {
                 // Nothing has been allocated yet.
-                Ok(&mut [])
+                &[]
+            }
+        }
+    }
+
+    /// Get the SHM buffer as a mutable reference.
+    ///
+    /// # Safety
+    ///
+    /// `finish_wait()` must be called before this function is.
+    #[inline]
+    unsafe fn as_mut(&mut self) -> &mut [u32] {
+        match self.seg.as_mut() {
+            Some((seg, _)) => {
+                // SAFETY: No other code should be able to access the segment.
+                bytemuck::cast_slice_mut(unsafe { seg.as_mut() })
+            }
+            None => {
+                // Nothing has been allocated yet.
+                &mut []
             }
         }
     }
@@ -514,13 +556,22 @@ impl ShmSegment {
         }
     }
 
+    /// Get this shared memory segment as a reference.
+    ///
+    /// # Safety
+    ///
+    /// One must ensure that no other processes are writing to this memory.
+    unsafe fn as_ref(&self) -> &[i8] {
+        unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.size) }
+    }
+
     /// Get this shared memory segment as a mutable reference.
     ///
     /// # Safety
     ///
     /// One must ensure that no other processes are reading from or writing to this memory.
     unsafe fn as_mut(&mut self) -> &mut [i8] {
-        unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.size) }
+        unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr(), self.size) }
     }
 
     /// Get the size of this shared memory segment.

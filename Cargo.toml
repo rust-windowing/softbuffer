@@ -12,6 +12,10 @@ categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
 rust-version = "1.64.0"
 
+[[bench]]
+name = "buffer_mut"
+harness = false
+
 [features]
 default = ["x11", "wayland", "wayland-dlopen"]
 wayland = ["wayland-backend", "wayland-client", "memmap2", "nix", "fastrand"]
@@ -62,6 +66,7 @@ redox_syscall = "0.3"
 cfg_aliases = "0.1.1"
 
 [dev-dependencies]
+criterion = { version = "0.4.0", default-features = false, features = ["cargo_bench_support"] }
 instant = "0.1.12"
 winit = "0.28.1"
 
