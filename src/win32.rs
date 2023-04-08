@@ -2,7 +2,7 @@
 //!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
-use crate::{util, SoftBufferError};
+use crate::SoftBufferError;
 use raw_window_handle::Win32WindowHandle;
 
 use std::io;
@@ -104,6 +104,17 @@ impl Buffer {
         }
     }
 
+    #[inline]
+    fn pixels(&self) -> &[u32] {
+        unsafe {
+            slice::from_raw_parts(
+                self.pixels.as_ptr(),
+                i32::from(self.width) as usize * i32::from(self.height) as usize,
+            )
+        }
+    }
+
+    #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
         unsafe {
             slice::from_raw_parts_mut(
@@ -122,6 +133,7 @@ pub struct Win32Impl {
     /// The device context for the window.
     dc: Gdi::HDC,
 
+    /// The buffer used to hold the image.
     buffer: Option<Buffer>,
 }
 
@@ -184,31 +196,29 @@ impl Win32Impl {
     }
 
     pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
-        Ok(BufferImpl(util::BorrowStack::new(self, |surface| {
-            Ok(surface
-                .buffer
-                .as_mut()
-                .expect("Must set size of surface before calling `buffer_mut()`")
-                .pixels_mut())
-        })?))
+        if self.buffer.is_none() {
+            panic!("Must set size of surface before calling `buffer_mut()`");
+        }
+
+        Ok(BufferImpl(self))
     }
 }
 
-pub struct BufferImpl<'a>(util::BorrowStack<'a, Win32Impl, [u32]>);
+pub struct BufferImpl<'a>(&'a mut Win32Impl);
 
 impl<'a> BufferImpl<'a> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
-        self.0.member()
+        self.0.buffer.as_ref().unwrap().pixels()
     }
 
     #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
-        self.0.member_mut()
+        self.0.buffer.as_mut().unwrap().pixels_mut()
     }
 
     pub fn present(self) -> Result<(), SoftBufferError> {
-        let imp = self.0.into_container();
+        let imp = self.0;
         let buffer = imp.buffer.as_ref().unwrap();
         unsafe {
             Gdi::BitBlt(
