@@ -13,15 +13,9 @@ use cocoa::quartzcore::{transaction, CALayer, ContentsGravity};
 use foreign_types::ForeignType;
 
 use std::num::NonZeroU32;
-use std::sync::Arc;
 
-struct Buffer(Vec<u32>);
-
-impl AsRef<[u8]> for Buffer {
-    fn as_ref(&self) -> &[u8] {
-        bytemuck::cast_slice(&self.0)
-    }
-}
+mod buffer;
+use buffer::Buffer;
 
 pub struct CGImpl {
     layer: CALayer,
@@ -64,44 +58,30 @@ impl CGImpl {
     }
 
     pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
-        Ok(BufferImpl {
-            buffer: vec![0; self.width as usize * self.height as usize],
-            imp: self,
-        })
+        // TODO conversion
+        let mut buffer = Buffer::new(self.width as i32, self.height as i32);
+        unsafe { buffer.lock() };
+        Ok(BufferImpl { buffer, imp: self })
     }
 }
 
 pub struct BufferImpl<'a> {
     imp: &'a mut CGImpl,
-    buffer: Vec<u32>,
+    buffer: Buffer,
 }
 
 impl<'a> BufferImpl<'a> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
-        &self.buffer
+        unsafe { self.buffer.pixels_ref() }
     }
 
     #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
-        &mut self.buffer
+        unsafe { self.buffer.pixels_mut() }
     }
 
-    pub fn present(self) -> Result<(), SoftBufferError> {
-        let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
-        let image = CGImage::new(
-            self.imp.width as usize,
-            self.imp.height as usize,
-            8,
-            32,
-            (self.imp.width * 4) as usize,
-            &self.imp.color_space,
-            kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
-            &data_provider,
-            false,
-            kCGRenderingIntentDefault,
-        );
-
+    pub fn present(mut self) -> Result<(), SoftBufferError> {
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
         // be mitigated by wrapping the operation in a transaction and disabling all actions.
@@ -109,10 +89,11 @@ impl<'a> BufferImpl<'a> {
         transaction::set_disable_actions(true);
 
         unsafe {
+            self.buffer.unlock();
             self.imp
                 .layer
                 .set_contents_scale(self.imp.window.backingScaleFactor());
-            self.imp.layer.set_contents(image.as_ptr() as id);
+            self.imp.layer.set_contents(self.buffer.as_ptr() as id);
         };
 
         transaction::commit();
