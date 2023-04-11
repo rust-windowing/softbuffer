@@ -49,7 +49,6 @@ bytemuck = { version = "1.12.3", features = ["extern_crate_alloc"] }
 cocoa = "0.24.0"
 core-foundation = "0.9.3"
 core-graphics = "0.22.3"
-foreign-types = "0.3.0"
 io-surface = "0.15.1"
 objc = "0.2.7"
 

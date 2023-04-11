@@ -124,16 +124,6 @@ macro_rules! make_dispatch {
                 }
             }
 
-            #[inline]
-            pub fn stride(&self) -> usize {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.stride(),
-                    )*
-                }
-            }
-
             pub fn present(self) -> Result<(), SoftBufferError> {
                 match self {
                     $(
@@ -365,11 +355,6 @@ pub struct Buffer<'a> {
 }
 
 impl<'a> Buffer<'a> {
-    #[inline]
-    pub fn stride(&self) -> usize {
-        self.buffer_impl.stride()
-    }
-
     /// Presents buffer to the window.
     ///
     /// # Platform dependent behavior

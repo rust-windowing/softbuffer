@@ -1,9 +1,9 @@
 use core_foundation::{
-    base::TCFType, boolean::CFBoolean, dictionary::CFDictionary, number::CFNumber, string::CFString,
+    base::TCFType, dictionary::CFDictionary, number::CFNumber, string::CFString,
 };
 use io_surface::{
-    kIOSurfaceBytesPerElement, kIOSurfaceBytesPerRow, kIOSurfaceHeight, kIOSurfacePixelFormat,
-    kIOSurfaceWidth, IOSurface, IOSurfaceRef,
+    kIOSurfaceBytesPerElement, kIOSurfaceHeight, kIOSurfacePixelFormat, kIOSurfaceWidth, IOSurface,
+    IOSurfaceRef,
 };
 use std::{ffi::c_int, slice};
 
@@ -23,16 +23,16 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(width: i32, height: i32) -> Self {
+    pub fn new(width: u32, height: u32) -> Self {
         let properties = unsafe {
             CFDictionary::from_CFType_pairs(&[
                 (
                     CFString::wrap_under_get_rule(kIOSurfaceWidth),
-                    CFNumber::from(width).as_CFType(),
+                    CFNumber::from(i64::from(width)).as_CFType(),
                 ),
                 (
                     CFString::wrap_under_get_rule(kIOSurfaceHeight),
-                    CFNumber::from(height).as_CFType(),
+                    CFNumber::from(i64::from(height)).as_CFType(),
                 ),
                 (
                     CFString::wrap_under_get_rule(kIOSurfaceBytesPerElement),
@@ -79,7 +79,7 @@ impl Buffer {
         }
     }
 
-    // TODO: We can assume alignment, right?
+    #[allow(dead_code)]
     #[inline]
     pub unsafe fn pixels_ref(&self) -> &[u32] {
         unsafe { slice::from_raw_parts(self.ptr, self.len) }

@@ -29,7 +29,6 @@ fn main() {
     let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
 
     let mut old_size = (0, 0);
-    // TODO: need to pre-render with right stride?
     let mut frames = pre_render_frames(0, 0);
 
     let start = Instant::now();
@@ -90,7 +89,7 @@ fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>> {
                 let blue =
                     ((((y - elapsed).cos() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
 
-                blue | (green << 8) | (red << 16) | (255 << 24)
+                blue | (green << 8) | (red << 16)
             })
             .collect::<Vec<_>>()
     };
