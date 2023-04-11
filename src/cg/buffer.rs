@@ -1,5 +1,5 @@
 use core_foundation::{
-    base::TCFType, dictionary::CFDictionary, number::CFNumber, string::CFString,
+    base::TCFType, boolean::CFBoolean, dictionary::CFDictionary, number::CFNumber, string::CFString,
 };
 use io_surface::{
     kIOSurfaceBytesPerElement, kIOSurfaceBytesPerRow, kIOSurfaceHeight, kIOSurfacePixelFormat,
@@ -17,8 +17,9 @@ extern "C" {
 
 pub struct Buffer {
     io_surface: IOSurface,
-    ptr: *mut u8,
-    pixels: usize,
+    ptr: *mut u32,
+    stride: usize,
+    len: usize,
 }
 
 impl Buffer {
@@ -37,33 +38,31 @@ impl Buffer {
                     CFString::wrap_under_get_rule(kIOSurfaceBytesPerElement),
                     CFNumber::from(4).as_CFType(),
                 ),
-                // TODO: Can we always use stride = width? Is it efficient?
-                /*
-                (
-                    CFString::wrap_under_get_rule(kIOSurfaceBytesPerRow),
-                    CFNumber::from(width).as_CFType(),
-                ),
-                */
                 (
                     CFString::wrap_under_get_rule(kIOSurfacePixelFormat),
-                    CFNumber::from(i32::from_be_bytes([b'B', b'G', b'R', b'A'])).as_CFType(),
+                    CFNumber::from(i32::from_be_bytes(*b"BGRA")).as_CFType(),
                 ),
             ])
         };
         let io_surface = io_surface::new(&properties);
-        let ptr = unsafe { IOSurfaceGetBaseAddress(io_surface.obj) };
-        dbg!(width);
-        dbg!(unsafe { IOSurfaceGetBytesPerRow(io_surface.obj) } / 4);
-        let pixels = width as usize * height as usize;
+        let ptr = unsafe { IOSurfaceGetBaseAddress(io_surface.obj) } as *mut u32;
+        let stride = unsafe { IOSurfaceGetBytesPerRow(io_surface.obj) } / 4;
+        let len = stride * height as usize;
         Self {
             io_surface,
             ptr,
-            pixels,
+            stride,
+            len,
         }
     }
 
     pub fn as_ptr(&self) -> IOSurfaceRef {
         self.io_surface.obj
+    }
+
+    #[inline]
+    pub fn stride(&self) -> usize {
+        self.stride
     }
 
     pub unsafe fn lock(&mut self) {
@@ -83,11 +82,11 @@ impl Buffer {
     // TODO: We can assume alignment, right?
     #[inline]
     pub unsafe fn pixels_ref(&self) -> &[u32] {
-        unsafe { slice::from_raw_parts(self.ptr as *mut u32, self.pixels) }
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
 
     #[inline]
     pub unsafe fn pixels_mut(&self) -> &mut [u32] {
-        unsafe { slice::from_raw_parts_mut(self.ptr as *mut u32, self.pixels) }
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 }

@@ -81,6 +81,11 @@ impl<'a> BufferImpl<'a> {
         unsafe { self.buffer.pixels_mut() }
     }
 
+    #[inline]
+    pub fn stride(&self) -> usize {
+        self.buffer.stride()
+    }
+
     pub fn present(mut self) -> Result<(), SoftBufferError> {
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
