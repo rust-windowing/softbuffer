@@ -6,6 +6,7 @@ use cocoa::base::{id, nil};
 use cocoa::quartzcore::{transaction, CALayer, ContentsGravity};
 
 use std::num::NonZeroU32;
+use std::ptr;
 
 mod buffer;
 use buffer::Buffer;
@@ -108,6 +109,7 @@ impl<'a> BufferImpl<'a> {
             self.imp
                 .layer
                 .set_contents_scale(self.imp.window.backingScaleFactor());
+            self.imp.layer.set_contents(ptr::null_mut());
             self.imp.layer.set_contents(buffer.as_ptr() as id);
         };
 
