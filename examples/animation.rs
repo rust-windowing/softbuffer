@@ -78,10 +78,11 @@ fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>> {
     let render = |frame_id| {
         let elapsed = ((frame_id as f64) / (60.0)) * 2.0 * PI;
 
-        (0..(width * height))
-            .map(|index| {
-                let y = ((index / width) as f64) / (height as f64);
-                let x = ((index % width) as f64) / (width as f64);
+        let coords = (0..height).flat_map(|x| (0..width).map(move |y| (x, y)));
+        coords
+            .map(|(x, y)| {
+                let y = (y as f64) / (height as f64);
+                let x = (x as f64) / (width as f64);
                 let red =
                     ((((y + elapsed).sin() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
                 let green =
