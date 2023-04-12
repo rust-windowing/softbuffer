@@ -42,14 +42,14 @@ fn main() {
                     .unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                for index in 0..(width * height) {
-                    let y = index / width;
-                    let x = index % width;
-                    let red = x % 255;
-                    let green = y % 255;
-                    let blue = (x * y) % 255;
-
-                    buffer[index as usize] = blue | (green << 8) | (red << 16);
+                for y in 0..height {
+                    for x in 0..width {
+                        let red = x % 255;
+                        let green = y % 255;
+                        let blue = (x * y) % 255;
+                        let index = y as usize * width as usize + x as usize;
+                        buffer[index] = blue | (green << 8) | (red << 16);
+                    }
                 }
 
                 buffer.present().unwrap();
