@@ -6,7 +6,7 @@
 #![allow(clippy::uninlined_format_args)]
 
 use crate::error::SwResultExt;
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
@@ -295,7 +295,7 @@ impl<'a> BufferImpl<'a> {
     }
 
     /// Push the buffer to the window.
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;
 
         log::trace!("present: window={:X}", imp.window);
@@ -328,27 +328,38 @@ impl<'a> BufferImpl<'a> {
                 // SAFETY: We know that we called finish_wait() before this.
                 // Put the image into the window.
                 if let Some((_, segment_id)) = shm.seg {
-                    imp.display
-                        .connection
-                        .shm_put_image(
-                            imp.window,
-                            imp.gc,
-                            imp.width,
-                            imp.height,
-                            0,
-                            0,
-                            imp.width,
-                            imp.height,
-                            0,
-                            0,
-                            imp.depth,
-                            xproto::ImageFormat::Z_PIXMAP.into(),
-                            false,
-                            segment_id,
-                            0,
+                    damage
+                        .iter()
+                        .try_for_each(
+                            |Rect {
+                                 x,
+                                 y,
+                                 width,
+                                 height,
+                             }| {
+                                imp.display
+                                    .connection
+                                    .shm_put_image(
+                                        imp.window,
+                                        imp.gc,
+                                        imp.width,
+                                        imp.height,
+                                        *x as u16,
+                                        *y as u16,
+                                        *width as u16,
+                                        *height as u16,
+                                        *x as i16,
+                                        *y as i16,
+                                        imp.depth,
+                                        xproto::ImageFormat::Z_PIXMAP.into(),
+                                        false,
+                                        segment_id,
+                                        0,
+                                    )
+                                    .push_err()
+                                    .map(|c| c.ignore_error())
+                            },
                         )
-                        .push_err()
-                        .map(|c| c.ignore_error())
                         .and_then(|()| {
                             // Send a short request to act as a notification for when the X server is done processing the image.
                             shm.begin_wait(&imp.display.connection)
@@ -360,6 +371,17 @@ impl<'a> BufferImpl<'a> {
         };
 
         result.swbuf_err("Failed to draw image to window")
+    }
+
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        let width = self.0.width.into();
+        let height = self.0.height.into();
+        self.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        }])
     }
 }
 

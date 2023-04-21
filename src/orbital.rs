@@ -1,7 +1,7 @@
 use raw_window_handle::OrbitalWindowHandle;
 use std::{cmp, num::NonZeroU32, slice, str};
 
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 
 struct OrbitalMap {
     address: usize,
@@ -185,5 +185,9 @@ impl<'a> BufferImpl<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.present()
     }
 }

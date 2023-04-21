@@ -9,7 +9,7 @@ use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
 
 use crate::error::SwResultExt;
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 use std::convert::TryInto;
 use std::num::NonZeroU32;
 
@@ -152,6 +152,10 @@ impl<'a> BufferImpl<'a> {
         self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
 
         Ok(())
+    }
+
+    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.present()
     }
 }
 

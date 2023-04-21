@@ -1,4 +1,4 @@
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 use core_graphics::base::{
     kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
 };
@@ -118,6 +118,10 @@ impl<'a> BufferImpl<'a> {
         transaction::commit();
 
         Ok(())
+    }
+
+    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.present()
     }
 }
 

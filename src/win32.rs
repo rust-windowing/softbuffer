@@ -2,7 +2,7 @@
 //!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 use raw_window_handle::Win32WindowHandle;
 
 use std::io;
@@ -202,6 +202,36 @@ impl Win32Impl {
 
         Ok(BufferImpl(self))
     }
+
+    fn present_with_damage(&self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let buffer = self.buffer.as_ref().unwrap();
+        unsafe {
+            for Rect {
+                x,
+                y,
+                width,
+                height,
+            } in damage
+            {
+                Gdi::BitBlt(
+                    self.dc,
+                    *x,
+                    *y,
+                    *width,
+                    *height,
+                    buffer.dc,
+                    *x,
+                    *y,
+                    Gdi::SRCCOPY,
+                );
+            }
+
+            // Validate the window.
+            Gdi::ValidateRect(self.window, ptr::null_mut());
+        }
+
+        Ok(())
+    }
 }
 
 pub struct BufferImpl<'a>(&'a mut Win32Impl);
@@ -220,23 +250,16 @@ impl<'a> BufferImpl<'a> {
     pub fn present(self) -> Result<(), SoftBufferError> {
         let imp = self.0;
         let buffer = imp.buffer.as_ref().unwrap();
-        unsafe {
-            Gdi::BitBlt(
-                imp.dc,
-                0,
-                0,
-                buffer.width.get(),
-                buffer.height.get(),
-                buffer.dc,
-                0,
-                0,
-                Gdi::SRCCOPY,
-            );
+        imp.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            width: buffer.width.get(),
+            height: buffer.height.get(),
+        }])
+    }
 
-            // Validate the window.
-            Gdi::ValidateRect(imp.window, ptr::null_mut());
-        }
-
-        Ok(())
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let imp = self.0;
+        imp.present_with_damage(damage)
     }
 }

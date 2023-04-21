@@ -132,6 +132,15 @@ macro_rules! make_dispatch {
                     )*
                 }
             }
+
+            pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.present_with_damage(damage),
+                    )*
+                }
+            }
         }
     };
 }
@@ -205,6 +214,19 @@ impl Context {
             _marker: PhantomData,
         })
     }
+}
+
+/// A rectangular region of the buffer coordinate space.
+#[derive(Clone, Copy, Debug)]
+pub struct Rect {
+    /// x coordinate of top left corner
+    pub x: i32,
+    /// y coordinate of top left corner
+    pub y: i32,
+    /// width
+    pub width: i32,
+    /// height
+    pub height: i32,
 }
 
 /// A surface for drawing to a window with software buffers.
@@ -369,6 +391,20 @@ impl<'a> Buffer<'a> {
     /// Wayland compositor before calling this function.
     pub fn present(self) -> Result<(), SoftBufferError> {
         self.buffer_impl.present()
+    }
+
+    /// Presents buffer to the window, with damage regions.
+    ///
+    /// # Platform dependent behavior
+    ///
+    /// Supported on:
+    /// - Wayland
+    /// - X, when XShm is available
+    /// - Win32
+    ///
+    /// Otherwise this is equivalent to [`present`].
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.buffer_impl.present_with_damage(damage)
     }
 }
 

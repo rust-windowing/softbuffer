@@ -1,4 +1,4 @@
-use crate::{error::SwResultExt, util, SoftBufferError};
+use crate::{error::SwResultExt, util, Rect, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
 use std::{
     cell::RefCell,
@@ -129,6 +129,45 @@ impl WaylandImpl {
             Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
         })?))
     }
+
+    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let _ = self
+            .display
+            .event_queue
+            .borrow_mut()
+            .dispatch_pending(&mut State);
+
+        if let Some((front, back)) = &mut self.buffers {
+            // Swap front and back buffer
+            std::mem::swap(front, back);
+
+            front.attach(&self.surface);
+
+            // Like Mesa's EGL/WSI implementation, we damage the whole buffer with `i32::MAX` if
+            // the compositor doesn't support `damage_buffer`.
+            // https://bugs.freedesktop.org/show_bug.cgi?id=78190
+            if self.surface.version() < 4 {
+                self.surface.damage(0, 0, i32::MAX, i32::MAX);
+            } else {
+                for Rect {
+                    x,
+                    y,
+                    width,
+                    height,
+                } in damage
+                {
+                    // Introduced in version 4, it is an error to use this request in version 3 or lower.
+                    self.surface.damage_buffer(*x, *y, *width, *height);
+                }
+            }
+
+            self.surface.commit();
+        }
+
+        let _ = self.display.event_queue.borrow_mut().flush();
+
+        Ok(())
+    }
 }
 
 pub struct BufferImpl<'a>(util::BorrowStack<'a, WaylandImpl, [u32]>);
@@ -144,45 +183,21 @@ impl<'a> BufferImpl<'a> {
         self.0.member_mut()
     }
 
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.0.into_container().present_with_damage(damage)
+    }
+
     pub fn present(self) -> Result<(), SoftBufferError> {
         let imp = self.0.into_container();
-
         let (width, height) = imp
             .size
             .expect("Must set size of surface before calling `present()`");
-
-        let _ = imp
-            .display
-            .event_queue
-            .borrow_mut()
-            .dispatch_pending(&mut State);
-
-        if let Some((front, back)) = &mut imp.buffers {
-            // Swap front and back buffer
-            std::mem::swap(front, back);
-
-            front.attach(&imp.surface);
-
-            // FIXME: Proper damaging mechanism.
-            //
-            // In order to propagate changes on compositors which track damage, for now damage the entire surface.
-            if imp.surface.version() < 4 {
-                // FIXME: Accommodate scale factor since wl_surface::damage is in terms of surface coordinates while
-                // wl_surface::damage_buffer is in buffer coordinates.
-                //
-                // i32::MAX is a valid damage box (most compositors interpret the damage box as "the entire surface")
-                imp.surface.damage(0, 0, i32::MAX, i32::MAX);
-            } else {
-                // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                imp.surface.damage_buffer(0, 0, width.get(), height.get());
-            }
-
-            imp.surface.commit();
-        }
-
-        let _ = imp.display.event_queue.borrow_mut().flush();
-
-        Ok(())
+        imp.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            width: width.get(),
+            height: height.get(),
+        }])
     }
 }
 
