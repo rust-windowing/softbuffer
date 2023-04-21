@@ -27,6 +27,7 @@ struct Buffer {
     pixels: NonNull<u32>,
     width: NonZeroI32,
     height: NonZeroI32,
+    presented: bool,
 }
 
 impl Drop for Buffer {
@@ -101,6 +102,7 @@ impl Buffer {
             width,
             height,
             pixels,
+            presented: false,
         }
     }
 
@@ -203,8 +205,8 @@ impl Win32Impl {
         Ok(BufferImpl(self))
     }
 
-    fn present_with_damage(&self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let buffer = self.buffer.as_ref().unwrap();
+    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let buffer = self.buffer.as_mut().unwrap();
         unsafe {
             for Rect {
                 x,
@@ -229,6 +231,7 @@ impl Win32Impl {
             // Validate the window.
             Gdi::ValidateRect(self.window, ptr::null_mut());
         }
+        buffer.presented = true;
 
         Ok(())
     }
@@ -245,6 +248,13 @@ impl<'a> BufferImpl<'a> {
     #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
         self.0.buffer.as_mut().unwrap().pixels_mut()
+    }
+
+    pub fn age(&self) -> u8 {
+        match self.0.buffer.as_ref() {
+            Some(buffer) if buffer.presented => 1,
+            _ => 0,
+        }
     }
 
     pub fn present(self) -> Result<(), SoftBufferError> {

@@ -125,9 +125,14 @@ impl WaylandImpl {
             ));
         };
 
-        Ok(BufferImpl(util::BorrowStack::new(self, |buffer| {
-            Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
-        })?))
+        let age = self.buffers.as_mut().unwrap().1.age;
+
+        Ok(BufferImpl {
+            stack: util::BorrowStack::new(self, |buffer| {
+                Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
+            })?,
+            age,
+        })
     }
 
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
@@ -138,6 +143,11 @@ impl WaylandImpl {
             .dispatch_pending(&mut State);
 
         if let Some((front, back)) = &mut self.buffers {
+            front.age = 1;
+            if back.age != 0 {
+                back.age += 1;
+            }
+
             // Swap front and back buffer
             std::mem::swap(front, back);
 
@@ -170,25 +180,32 @@ impl WaylandImpl {
     }
 }
 
-pub struct BufferImpl<'a>(util::BorrowStack<'a, WaylandImpl, [u32]>);
+pub struct BufferImpl<'a> {
+    stack: util::BorrowStack<'a, WaylandImpl, [u32]>,
+    age: u8,
+}
 
 impl<'a> BufferImpl<'a> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
-        self.0.member()
+        self.stack.member()
     }
 
     #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
-        self.0.member_mut()
+        self.stack.member_mut()
+    }
+
+    pub fn age(&self) -> u8 {
+        self.age
     }
 
     pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        self.0.into_container().present_with_damage(damage)
+        self.stack.into_container().present_with_damage(damage)
     }
 
     pub fn present(self) -> Result<(), SoftBufferError> {
-        let imp = self.0.into_container();
+        let imp = self.stack.into_container();
         let (width, height) = imp
             .size
             .expect("Must set size of surface before calling `present()`");

@@ -124,6 +124,15 @@ macro_rules! make_dispatch {
                 }
             }
 
+            pub fn age(&self) -> u8 {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.age(),
+                    )*
+                }
+            }
+
             pub fn present(self) -> Result<(), SoftBufferError> {
                 match self {
                     $(
@@ -326,7 +335,7 @@ impl Surface {
 
     /// Return a [`Buffer`] that the next frame should be rendered into. The size must
     /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
-    /// may contain a previous frame.
+    /// may contain a previous frame. Call [`Buffer::age`] to determine this.
     pub fn buffer_mut(&mut self) -> Result<Buffer, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
@@ -377,6 +386,16 @@ pub struct Buffer<'a> {
 }
 
 impl<'a> Buffer<'a> {
+    /// Is age is the number of frames ago this buffer was last presented. So if the value is
+    /// `1`, it is the same as the last frame, and if it is `2`, it is the same as the frame
+    /// before that (for backends using double buffering). If the value is `0`, it is a new
+    /// buffer that has unspecified contents.
+    ///
+    /// This can be used to update only a portion of the buffer.
+    pub fn age(&self) -> u8 {
+        self.buffer_impl.age()
+    }
+
     /// Presents buffer to the window.
     ///
     /// # Platform dependent behavior

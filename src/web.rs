@@ -41,8 +41,14 @@ pub struct WebImpl {
     /// The buffer that we're drawing to.
     buffer: Vec<u32>,
 
+    /// Buffer has been presented.
+    buffer_presented: bool,
+
     /// The current width of the canvas.
     width: u32,
+
+    /// The current height of the canvas.
+    height: u32,
 }
 
 impl WebImpl {
@@ -70,7 +76,9 @@ impl WebImpl {
             canvas,
             ctx,
             buffer: Vec::new(),
+            buffer_presented: false,
             width: 0,
+            height: 0,
         })
     }
 
@@ -83,10 +91,15 @@ impl WebImpl {
         let width = width.get();
         let height = height.get();
 
-        self.buffer.resize(total_len(width, height), 0);
-        self.canvas.set_width(width);
-        self.canvas.set_height(height);
-        self.width = width;
+        if width != self.width || height != self.height {
+            self.buffer_presented = false;
+            self.buffer.resize(total_len(width, height), 0);
+            self.canvas.set_width(width);
+            self.canvas.set_height(height);
+            self.width = width;
+            self.height = height;
+        }
+
         Ok(())
     }
 
@@ -107,6 +120,14 @@ impl<'a> BufferImpl<'a> {
 
     pub fn pixels_mut(&mut self) -> &mut [u32] {
         &mut self.imp.buffer
+    }
+
+    pub fn age(&self) -> u8 {
+        if self.imp.buffer_presented {
+            1
+        } else {
+            0
+        }
     }
 
     /// Push the buffer to the canvas.
@@ -150,6 +171,8 @@ impl<'a> BufferImpl<'a> {
 
         // This can only throw an error if `data` is detached, which is impossible.
         self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+
+        self.imp.buffer_presented = true;
 
         Ok(())
     }

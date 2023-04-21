@@ -107,6 +107,9 @@ pub struct X11Impl {
     /// The buffer we draw to.
     buffer: Buffer,
 
+    /// Buffer has been presented.
+    buffer_presented: bool,
+
     /// The current buffer width.
     width: u16,
 
@@ -223,6 +226,7 @@ impl X11Impl {
             gc,
             depth: geometry_reply.depth,
             buffer,
+            buffer_presented: false,
             width: 0,
             height: 0,
         })
@@ -255,6 +259,7 @@ impl X11Impl {
             }))?;
 
         if width != self.width || height != self.height {
+            self.buffer_presented = false;
             self.buffer
                 .resize(&self.display.connection, width, height)
                 .swbuf_err("Failed to resize X11 buffer")?;
@@ -294,13 +299,21 @@ impl<'a> BufferImpl<'a> {
         unsafe { self.0.buffer.buffer_mut() }
     }
 
+    pub fn age(&self) -> u8 {
+        if self.0.buffer_presented {
+            1
+        } else {
+            0
+        }
+    }
+
     /// Push the buffer to the window.
     pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;
 
         log::trace!("present: window={:X}", imp.window);
 
-        let result = match imp.buffer {
+        match imp.buffer {
             Buffer::Wire(ref wire) => {
                 // This is a suboptimal strategy, raise a stink in the debug logs.
                 log::debug!("Falling back to non-SHM method for window drawing.");
@@ -368,9 +381,12 @@ impl<'a> BufferImpl<'a> {
                     Ok(())
                 }
             }
-        };
+        }
+        .swbuf_err("Failed to draw image to window")?;
 
-        result.swbuf_err("Failed to draw image to window")
+        imp.buffer_presented = true;
+
+        Ok(())
     }
 
     pub fn present(self) -> Result<(), SoftBufferError> {

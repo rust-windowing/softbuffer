@@ -87,6 +87,10 @@ impl<'a> BufferImpl<'a> {
         &mut self.buffer
     }
 
+    pub fn age(&self) -> u8 {
+        0
+    }
+
     pub fn present(self) -> Result<(), SoftBufferError> {
         let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
         let image = CGImage::new(

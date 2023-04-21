@@ -90,6 +90,7 @@ pub(super) struct WaylandBuffer {
     width: i32,
     height: i32,
     released: Arc<AtomicBool>,
+    pub age: u8,
 }
 
 impl WaylandBuffer {
@@ -125,6 +126,7 @@ impl WaylandBuffer {
             width,
             height,
             released,
+            age: 0,
         }
     }
 
