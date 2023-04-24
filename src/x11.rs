@@ -540,6 +540,8 @@ struct ShmSegment {
 impl ShmSegment {
     /// Create a new `ShmSegment` with the given size.
     fn new(size: usize, buffer_size: usize) -> io::Result<Self> {
+        assert!(size >= buffer_size);
+
         unsafe {
             // Create the shared memory segment.
             let id = shmget(IPC_PRIVATE, size, 0o600);
@@ -588,6 +590,7 @@ impl ShmSegment {
 
     /// Set the size of the buffer for this shared memory segment.
     fn set_buffer_size(&mut self, buffer_size: usize) {
+        assert!(self.size >= buffer_size);
         self.buffer_size = buffer_size
     }
 
