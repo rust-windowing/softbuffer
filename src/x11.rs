@@ -422,10 +422,10 @@ impl ShmBuffer {
     fn alloc_segment(
         &mut self,
         conn: &impl Connection,
-        size: usize,
+        buffer_size: usize,
     ) -> Result<(), PushBufferError> {
         // Round the size up to the next power of two to prevent frequent reallocations.
-        let size = size.next_power_of_two();
+        let size = buffer_size.next_power_of_two();
 
         // Get the size of the segment currently in use.
         let needs_realloc = match self.seg {
@@ -435,8 +435,10 @@ impl ShmBuffer {
 
         // Reallocate if necessary.
         if needs_realloc {
-            let new_seg = ShmSegment::new(size)?;
+            let new_seg = ShmSegment::new(size, buffer_size)?;
             self.associate(conn, new_seg)?;
+        } else if let Some((ref mut seg, _)) = self.seg {
+            seg.set_buffer_size(buffer_size);
         }
 
         Ok(())
@@ -451,8 +453,10 @@ impl ShmBuffer {
     unsafe fn as_ref(&self) -> &[u32] {
         match self.seg.as_ref() {
             Some((seg, _)) => {
+                let buffer_size = seg.buffer_size();
+
                 // SAFETY: No other code should be able to access the segment.
-                bytemuck::cast_slice(unsafe { seg.as_ref() })
+                bytemuck::cast_slice(unsafe { &seg.as_ref()[..buffer_size] })
             }
             None => {
                 // Nothing has been allocated yet.
@@ -470,8 +474,10 @@ impl ShmBuffer {
     unsafe fn as_mut(&mut self) -> &mut [u32] {
         match self.seg.as_mut() {
             Some((seg, _)) => {
+                let buffer_size = seg.buffer_size();
+
                 // SAFETY: No other code should be able to access the segment.
-                bytemuck::cast_slice_mut(unsafe { seg.as_mut() })
+                bytemuck::cast_slice_mut(unsafe { &mut seg.as_mut()[..buffer_size] })
             }
             None => {
                 // Nothing has been allocated yet.
@@ -528,11 +534,12 @@ struct ShmSegment {
     id: i32,
     ptr: NonNull<i8>,
     size: usize,
+    buffer_size: usize,
 }
 
 impl ShmSegment {
     /// Create a new `ShmSegment` with the given size.
-    fn new(size: usize) -> io::Result<Self> {
+    fn new(size: usize, buffer_size: usize) -> io::Result<Self> {
         unsafe {
             // Create the shared memory segment.
             let id = shmget(IPC_PRIVATE, size, 0o600);
@@ -552,7 +559,12 @@ impl ShmSegment {
                 }
             };
 
-            Ok(Self { id, ptr, size })
+            Ok(Self {
+                id,
+                ptr,
+                size,
+                buffer_size,
+            })
         }
     }
 
@@ -572,6 +584,16 @@ impl ShmSegment {
     /// One must ensure that no other processes are reading from or writing to this memory.
     unsafe fn as_mut(&mut self) -> &mut [i8] {
         unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr(), self.size) }
+    }
+
+    /// Set the size of the buffer for this shared memory segment.
+    fn set_buffer_size(&mut self, buffer_size: usize) {
+        self.buffer_size = buffer_size
+    }
+
+    /// Get the size of the buffer for this shared memory segment.
+    fn buffer_size(&self) -> usize {
+        self.buffer_size
     }
 
     /// Get the size of this shared memory segment.
@@ -624,7 +646,7 @@ impl Drop for X11Impl {
 /// Test to see if SHM is available.
 fn is_shm_available(c: &impl Connection) -> bool {
     // Create a small SHM segment.
-    let seg = match ShmSegment::new(0x1000) {
+    let seg = match ShmSegment::new(0x1000, 0x1000) {
         Ok(seg) => seg,
         Err(_) => return false,
     };
