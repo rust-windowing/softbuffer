@@ -107,6 +107,69 @@ impl WebImpl {
     pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
         Ok(BufferImpl { imp: self })
     }
+
+    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        // Create a bitmap from the buffer.
+        let bitmap: Vec<_> = self
+            .buffer
+            .iter()
+            .copied()
+            .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
+            .collect();
+
+        #[cfg(target_feature = "atomics")]
+        let result = {
+            use js_sys::{Uint8Array, Uint8ClampedArray};
+            use wasm_bindgen::prelude::wasm_bindgen;
+            use wasm_bindgen::JsValue;
+
+            #[wasm_bindgen]
+            extern "C" {
+                #[wasm_bindgen(js_name = ImageData)]
+                type ImageDataExt;
+
+                #[wasm_bindgen(catch, constructor, js_class = ImageData)]
+                fn new(array: Uint8ClampedArray, sw: u32) -> Result<ImageDataExt, JsValue>;
+            }
+
+            let array = Uint8Array::new_with_length(bitmap.len() as u32);
+            array.copy_from(&bitmap);
+            let array = Uint8ClampedArray::new(&array);
+            ImageDataExt::new(array, self.width)
+                .map(JsValue::from)
+                .map(ImageData::unchecked_from_js)
+        };
+        #[cfg(not(target_feature = "atomics"))]
+        let result =
+            ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(&bitmap), self.width);
+        // This should only throw an error if the buffer we pass's size is incorrect.
+        let image_data = result.unwrap();
+
+        for Rect {
+            x,
+            y,
+            width,
+            height,
+        } in damage
+        {
+            // This can only throw an error if `data` is detached, which is impossible.
+            self.ctx
+                .put_image_data_with_dirty_x_and_dirty_y_and_dirty_width_and_dirty_height(
+                    &image_data,
+                    (*x).into(),
+                    (*y).into(),
+                    (*x).into(),
+                    (*y).into(),
+                    (*width).into(),
+                    (*height).into(),
+                )
+                .unwrap();
+        }
+
+        self.buffer_presented = true;
+
+        Ok(())
+    }
 }
 
 pub struct BufferImpl<'a> {
@@ -132,53 +195,26 @@ impl<'a> BufferImpl<'a> {
 
     /// Push the buffer to the canvas.
     pub fn present(self) -> Result<(), SoftBufferError> {
-        // Create a bitmap from the buffer.
-        let bitmap: Vec<_> = self
-            .imp
-            .buffer
-            .iter()
-            .copied()
-            .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
-            .collect();
+        let (width, height) = (|| {
+            let width = i32::try_from(self.imp.width).ok()?;
+            let height = i32::try_from(self.imp.height).ok()?;
+            Some((width, height))
+        })()
+        .ok_or(SoftBufferError::SizeOutOfRange {
+            width: NonZeroU32::new(self.imp.width).unwrap(),
+            height: NonZeroU32::new(self.imp.height).unwrap(),
+        })?;
 
-        #[cfg(target_feature = "atomics")]
-        let result = {
-            use js_sys::{Uint8Array, Uint8ClampedArray};
-            use wasm_bindgen::prelude::wasm_bindgen;
-            use wasm_bindgen::JsValue;
-
-            #[wasm_bindgen]
-            extern "C" {
-                #[wasm_bindgen(js_name = ImageData)]
-                type ImageDataExt;
-
-                #[wasm_bindgen(catch, constructor, js_class = ImageData)]
-                fn new(array: Uint8ClampedArray, sw: u32) -> Result<ImageDataExt, JsValue>;
-            }
-
-            let array = Uint8Array::new_with_length(bitmap.len() as u32);
-            array.copy_from(&bitmap);
-            let array = Uint8ClampedArray::new(&array);
-            ImageDataExt::new(array, self.imp.width)
-                .map(JsValue::from)
-                .map(ImageData::unchecked_from_js)
-        };
-        #[cfg(not(target_feature = "atomics"))]
-        let result =
-            ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(&bitmap), self.imp.width);
-        // This should only throw an error if the buffer we pass's size is incorrect.
-        let image_data = result.unwrap();
-
-        // This can only throw an error if `data` is detached, which is impossible.
-        self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
-
-        self.imp.buffer_presented = true;
-
-        Ok(())
+        self.imp.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        }])
     }
 
-    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        self.present()
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.imp.present_with_damage(damage)
     }
 }
 
