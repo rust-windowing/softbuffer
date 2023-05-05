@@ -10,8 +10,8 @@
 # Wayland
 /src/wayland        @ids1024
 
-# Web (no maintainer)
-/src/web.rs
+# Web
+/src/web.rs         @daxpedda
 
 # Windows
 /src/win32.rs       @notgull
