@@ -2,7 +2,6 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use js_sys::Object;
 use raw_window_handle::WebWindowHandle;
 use wasm_bindgen::JsCast;
 use web_sys::CanvasRenderingContext2d;
@@ -62,7 +61,15 @@ impl WebImpl {
     }
 
     fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
-        let ctx = Self::resolve_ctx(canvas.get_context("2d").ok(), "CanvasRenderingContext2d")?;
+        let ctx = canvas
+            .get_context("2d")
+            .ok()
+            .swbuf_err("Canvas already controlled using `OffscreenCanvas`")?
+            .swbuf_err(
+                "A canvas context other than `CanvasRenderingContext2d` was already created",
+            )?
+            .dyn_into()
+            .expect("`getContext(\"2d\") didn't return a `CanvasRenderingContext2d`");
 
         Ok(Self {
             canvas,
@@ -70,21 +77,6 @@ impl WebImpl {
             buffer: Vec::new(),
             width: 0,
         })
-    }
-
-    fn resolve_ctx<T: JsCast>(
-        result: Option<Option<Object>>,
-        name: &str,
-    ) -> Result<T, SoftBufferError> {
-        let ctx = result
-            .swbuf_err("Canvas already controlled using `OffscreenCanvas`")?
-            .swbuf_err(
-                "A canvas context other than `CanvasRenderingContext2d` was already created",
-            )?
-            .dyn_into()
-            .unwrap_or_else(|_| panic!("`getContext(\"2d\") didn't return a `{name}`"));
-
-        Ok(ctx)
     }
 
     /// Resize the canvas to the given dimensions.
