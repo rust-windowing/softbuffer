@@ -4,13 +4,10 @@
 
 use js_sys::Object;
 use raw_window_handle::WebWindowHandle;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
 use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
 use web_sys::ImageData;
-use web_sys::OffscreenCanvas;
 
 use crate::error::SwResultExt;
 use crate::SoftBufferError;
@@ -36,40 +33,18 @@ impl WebDisplayImpl {
     }
 }
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_name = OffscreenCanvasRenderingContext2D)]
-    pub type OffscreenCanvasRenderingContext2d;
-
-    #[wasm_bindgen(catch, method, structural, js_class = "OffscreenCanvasRenderingContext2D", js_name = putImageData)]
-    fn put_image_data(
-        this: &OffscreenCanvasRenderingContext2d,
-        imagedata: &ImageData,
-        dx: f64,
-        dy: f64,
-    ) -> Result<(), JsValue>;
-}
-
 pub struct WebImpl {
-    /// The handle and context to the canvas that we're drawing to.
-    canvas: Canvas,
+    /// The handle to the canvas that we're drawing to.
+    canvas: HtmlCanvasElement,
+
+    /// The 2D rendering context for the canvas.
+    ctx: CanvasRenderingContext2d,
 
     /// The buffer that we're drawing to.
     buffer: Vec<u32>,
 
     /// The current width of the canvas.
     width: u32,
-}
-
-pub enum Canvas {
-    Canvas {
-        canvas: HtmlCanvasElement,
-        ctx: CanvasRenderingContext2d,
-    },
-    OffscreenCanvas {
-        canvas: OffscreenCanvas,
-        ctx: OffscreenCanvasRenderingContext2d,
-    },
 }
 
 impl WebImpl {
@@ -90,20 +65,8 @@ impl WebImpl {
         let ctx = Self::resolve_ctx(canvas.get_context("2d").ok(), "CanvasRenderingContext2d")?;
 
         Ok(Self {
-            canvas: Canvas::Canvas { canvas, ctx },
-            buffer: Vec::new(),
-            width: 0,
-        })
-    }
-
-    fn from_offscreen_canvas(canvas: OffscreenCanvas) -> Result<Self, SoftBufferError> {
-        let ctx = Self::resolve_ctx(
-            canvas.get_context("2d").ok(),
-            "OffscreenCanvasRenderingContext2d",
-        )?;
-
-        Ok(Self {
-            canvas: Canvas::OffscreenCanvas { canvas, ctx },
+            canvas,
+            ctx,
             buffer: Vec::new(),
             width: 0,
         })
@@ -150,9 +113,6 @@ impl WebImpl {
 pub trait SurfaceExtWeb: Sized {
     /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
     fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
-
-    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
-    fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError>;
 }
 
 impl SurfaceExtWeb for crate::Surface {
@@ -163,38 +123,6 @@ impl SurfaceExtWeb for crate::Surface {
             surface_impl: Box::new(imple),
             _marker: PhantomData,
         })
-    }
-
-    fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError> {
-        let imple = crate::SurfaceDispatch::Web(WebImpl::from_offscreen_canvas(offscreen_canvas)?);
-
-        Ok(Self {
-            surface_impl: Box::new(imple),
-            _marker: PhantomData,
-        })
-    }
-}
-
-impl Canvas {
-    fn set_width(&self, width: u32) {
-        match self {
-            Self::Canvas { canvas, .. } => canvas.set_width(width),
-            Self::OffscreenCanvas { canvas, .. } => canvas.set_width(width),
-        }
-    }
-
-    fn set_height(&self, height: u32) {
-        match self {
-            Self::Canvas { canvas, .. } => canvas.set_height(height),
-            Self::OffscreenCanvas { canvas, .. } => canvas.set_height(height),
-        }
-    }
-
-    fn put_image_data(&self, imagedata: &ImageData, dx: f64, dy: f64) -> Result<(), JsValue> {
-        match self {
-            Self::Canvas { ctx, .. } => ctx.put_image_data(imagedata, dx, dy),
-            Self::OffscreenCanvas { ctx, .. } => ctx.put_image_data(imagedata, dx, dy),
-        }
     }
 }
 
@@ -225,6 +153,8 @@ impl<'a> BufferImpl<'a> {
         #[cfg(target_feature = "atomics")]
         let result = {
             use js_sys::{Uint8Array, Uint8ClampedArray};
+            use wasm_bindgen::prelude::wasm_bindgen;
+            use wasm_bindgen::JsValue;
 
             #[wasm_bindgen]
             extern "C" {
@@ -249,10 +179,7 @@ impl<'a> BufferImpl<'a> {
         let image_data = result.unwrap();
 
         // This can only throw an error if `data` is detached, which is impossible.
-        self.imp
-            .canvas
-            .put_image_data(&image_data, 0.0, 0.0)
-            .unwrap();
+        self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
 
         Ok(())
     }
