@@ -242,6 +242,24 @@ impl<'a> BufferImpl<'a> {
 
     /// Fetch the buffer from the window.
     pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        todo!()
+        let imp = self.0;
+        let buffer = imp.buffer.as_ref().unwrap();
+
+        // Just go the other way.
+        unsafe {
+            Gdi::BitBlt(
+                buffer.dc,
+                0,
+                0,
+                buffer.width.get(),
+                buffer.height.get(),
+                imp.dc,
+                0,
+                0,
+                Gdi::SRCCOPY,
+            );
+        }
+
+        Ok(())
     }
 }
