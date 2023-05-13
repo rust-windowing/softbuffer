@@ -105,8 +105,19 @@ jobs:
         !contains(matrix.platform.target, 'wasm32') &&
         !contains(matrix.platform.target, 'redox') &&
         !contains(matrix.platform.target, 'freebsd') &&
-        !contains(matrix.platform.target, 'netbsd')
+        !contains(matrix.platform.target, 'netbsd') &&
+        !contains(matrix.platform.target, 'linux')
       run: cargo $CMD test --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
+
+    - name: Run tests using Xvfb
+      shell: bash
+      if: >
+        !((matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')) &&
+        !contains(matrix.platform.target, 'redox') &&
+        !contains(matrix.platform.target, 'freebsd') &&
+        !contains(matrix.platform.target, 'netbsd') &&
+        contains(matrix.platform.target, 'linux')
+      run: xvfb-run cargo $CMD test --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
     - name: Lint with clippy
       shell: bash

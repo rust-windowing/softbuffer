@@ -98,6 +98,15 @@ macro_rules! make_dispatch {
                     )*
                 }
             }
+
+            pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.fetch(),
+                    )*
+                }
+            }
         }
 
         enum BufferDispatch<'a> {
@@ -133,15 +142,6 @@ macro_rules! make_dispatch {
                     $(
                         $(#[$attr])*
                         Self::$name(inner) => inner.present(),
-                    )*
-                }
-            }
-
-            pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.fetch(),
                     )*
                 }
             }
@@ -315,6 +315,15 @@ impl Surface {
         self.surface_impl.resize(width, height)
     }
 
+    /// Copies the window contents into a buffer.
+    ///
+    /// ## Platform Dependent Behavior
+    ///
+    /// - On X11, the window must be visible.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        self.surface_impl.fetch()
+    }
+
     /// Return a [`Buffer`] that the next frame should be rendered into. The size must
     /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
     /// may contain a previous frame.
@@ -382,11 +391,6 @@ impl<'a> Buffer<'a> {
     /// Wayland compositor before calling this function.
     pub fn present(self) -> Result<(), SoftBufferError> {
         self.buffer_impl.present()
-    }
-
-    /// Copies the window contents into this buffer.
-    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        self.buffer_impl.fetch()
     }
 }
 

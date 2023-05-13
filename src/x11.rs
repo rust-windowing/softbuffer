@@ -104,6 +104,9 @@ pub struct X11Impl {
     /// The depth (bits per pixel) of the drawing context.
     depth: u8,
 
+    /// The visual ID of the drawing context.
+    visual_id: u32,
+
     /// The buffer we draw to.
     buffer: Buffer,
 
@@ -178,11 +181,26 @@ impl X11Impl {
 
         let window = window_handle.window;
 
-        // Run in parallel: start getting the window depth.
-        let geometry_token = display
-            .connection
-            .get_geometry(window)
-            .swbuf_err("Failed to send geometry request")?;
+        // Run in parallel: start getting the window depth and (if necessary) visual.
+        let display2 = display.clone();
+        let tokens = {
+            let geometry_token = display2
+                .connection
+                .get_geometry(window)
+                .swbuf_err("Failed to send geometry request")?;
+            let window_attrs_token = if window_handle.visual_id == 0 {
+                Some(
+                    display2
+                        .connection
+                        .get_window_attributes(window)
+                        .swbuf_err("Failed to send window attributes request")?,
+                )
+            } else {
+                None
+            };
+
+            (geometry_token, window_attrs_token)
+        };
 
         // Create a new graphics context to draw to.
         let gc = display
@@ -201,9 +219,23 @@ impl X11Impl {
             .swbuf_err("Failed to create GC")?;
 
         // Finish getting the depth of the window.
-        let geometry_reply = geometry_token
-            .reply()
-            .swbuf_err("Failed to get geometry reply")?;
+        let (geometry_reply, visual_id) = {
+            let (geometry_token, window_attrs_token) = tokens;
+            let geometry_reply = geometry_token
+                .reply()
+                .swbuf_err("Failed to get geometry reply")?;
+            let visual_id = match window_attrs_token {
+                None => window_handle.visual_id,
+                Some(window_attrs) => {
+                    window_attrs
+                        .reply()
+                        .swbuf_err("Failed to get window attributes reply")?
+                        .visual
+                }
+            };
+
+            (geometry_reply, visual_id)
+        };
 
         // See if SHM is available.
         let buffer = if display.is_shm_available {
@@ -222,6 +254,7 @@ impl X11Impl {
             window,
             gc,
             depth: geometry_reply.depth,
+            visual_id,
             buffer,
             width: 0,
             height: 0,
@@ -276,6 +309,39 @@ impl X11Impl {
 
         // We can now safely call `buffer_mut` on the buffer.
         Ok(BufferImpl(self))
+    }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        log::trace!("fetch: window={:X}", self.window);
+
+        // TODO: Is it worth it to do SHM here? Probably not.
+        let reply = self
+            .display
+            .connection
+            .get_image(
+                xproto::ImageFormat::Z_PIXMAP,
+                self.window,
+                0,
+                0,
+                self.width,
+                self.height,
+                u32::MAX,
+            )
+            .swbuf_err("Failed to send image fetching request")?
+            .reply()
+            .swbuf_err("Failed to fetch image from window")?;
+
+        if reply.depth == self.depth && reply.visual == self.visual_id {
+            let mut out = vec![0u32; reply.data.len() / 4];
+            bytemuck::cast_slice_mut::<u32, u8>(&mut out).copy_from_slice(&reply.data);
+            Ok(out)
+        } else {
+            Err(SoftBufferError::PlatformError(
+                Some("Mismatch between reply and window data".into()),
+                None,
+            ))
+        }
     }
 }
 
@@ -364,7 +430,76 @@ impl<'a> BufferImpl<'a> {
 
     /// Fetch the buffer from the window.
     pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        todo!()
+        let imp = &mut self.0;
+
+        log::trace!("fetch: window={:X}", imp.window);
+
+        match imp.buffer {
+            Buffer::Wire(ref mut wire) => {
+                log::debug!("Falling back to non-SHM method for window fetching.");
+
+                let reply = imp
+                    .display
+                    .connection
+                    .get_image(
+                        xproto::ImageFormat::Z_PIXMAP,
+                        imp.window,
+                        0,
+                        0,
+                        imp.width,
+                        imp.height,
+                        u32::MAX,
+                    )
+                    .swbuf_err("Failed to send image fetching request")?
+                    .reply()
+                    .swbuf_err("Failed to fetch image from window")?;
+
+                if reply.depth == imp.depth && reply.visual == imp.visual_id {
+                    wire.copy_from_slice(bytemuck::cast_slice(&reply.data));
+                    Ok(())
+                } else {
+                    Err(SoftBufferError::PlatformError(
+                        Some("Mismatch between reply and window data".into()),
+                        None,
+                    ))
+                }
+            }
+
+            Buffer::Shm(ref mut shm) => {
+                if let Some((_, segment_id)) = shm.seg {
+                    // SAFETY: We have already called finish_wait
+                    let reply = imp
+                        .display
+                        .connection
+                        .shm_get_image(
+                            imp.window,
+                            0,
+                            0,
+                            imp.width,
+                            imp.height,
+                            u32::MAX,
+                            xproto::ImageFormat::Z_PIXMAP.into(),
+                            segment_id,
+                            0,
+                        )
+                        .swbuf_err("Failed to send image fetching request")?
+                        .reply()
+                        .swbuf_err("Failed to fetch image from window")?;
+
+                    // Make sure it all matches.
+                    if reply.depth == imp.depth && reply.visual == imp.visual_id {
+                        Ok(())
+                    } else {
+                        Err(SoftBufferError::PlatformError(
+                            Some("Mismatch between reply and window data".into()),
+                            None,
+                        ))
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+        }
     }
 }
 
