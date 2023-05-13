@@ -109,6 +109,7 @@ jobs:
         !contains(matrix.platform.target, 'linux')
       run: cargo $CMD test --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
+    # TODO: We should also be using Wayland for testing here.
     - name: Run tests using Xvfb
       shell: bash
       if: >
@@ -116,7 +117,9 @@ jobs:
         !contains(matrix.platform.target, 'redox') &&
         !contains(matrix.platform.target, 'freebsd') &&
         !contains(matrix.platform.target, 'netbsd') &&
-        contains(matrix.platform.target, 'linux')
+        contains(matrix.platform.target, 'linux') &&
+        !contains(matrix.platform.options, '--no-default-features') &&
+        !contains(matrix.platform.features, 'wayland')
       run: xvfb-run cargo $CMD test --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
     - name: Lint with clippy

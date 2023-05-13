@@ -684,7 +684,7 @@ impl ShmSegment {
 
         unsafe {
             // Create the shared memory segment.
-            let id = shmget(IPC_PRIVATE, size, 0o600);
+            let id = shmget(IPC_PRIVATE, size, 0o1777);
             if id == -1 {
                 return Err(io::Error::last_os_error());
             }
