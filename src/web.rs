@@ -24,9 +24,9 @@ pub struct WebDisplayImpl {
 impl WebDisplayImpl {
     pub(super) fn new() -> Result<Self, SoftBufferError> {
         let document = web_sys::window()
-            .swbuf_err("`window` is not present in this runtime")?
+            .swbuf_err("`Window` is not present in this runtime")?
             .document()
-            .swbuf_err("`document` is not present in this runtime")?;
+            .swbuf_err("`Document` is not present in this runtime")?;
 
         Ok(Self { document })
     }
@@ -176,7 +176,7 @@ impl<'a> BufferImpl<'a> {
         let image_data = result.unwrap();
 
         // This can only throw an error if `data` is detached, which is impossible.
-        self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+        self.imp.ctx.put_image_data(&image_data, 0., 0.).unwrap();
 
         Ok(())
     }
