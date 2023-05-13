@@ -136,6 +136,15 @@ macro_rules! make_dispatch {
                     )*
                 }
             }
+
+            pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.fetch(),
+                    )*
+                }
+            }
         }
     };
 }
@@ -373,6 +382,11 @@ impl<'a> Buffer<'a> {
     /// Wayland compositor before calling this function.
     pub fn present(self) -> Result<(), SoftBufferError> {
         self.buffer_impl.present()
+    }
+
+    /// Copies the window contents into this buffer.
+    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
+        self.buffer_impl.fetch()
     }
 }
 

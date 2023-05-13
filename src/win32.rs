@@ -239,4 +239,9 @@ impl<'a> BufferImpl<'a> {
 
         Ok(())
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
+        todo!()
+    }
 }

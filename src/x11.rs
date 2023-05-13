@@ -361,6 +361,11 @@ impl<'a> BufferImpl<'a> {
 
         result.swbuf_err("Failed to draw image to window")
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
+        todo!()
+    }
 }
 
 impl Buffer {

@@ -143,6 +143,11 @@ impl OrbitalImpl {
         // Tell orbital to show the latest window data
         syscall::fsync(self.window_fd()).expect("failed to sync orbital window");
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
+        todo!()
+    }
 }
 
 enum Pixels {
