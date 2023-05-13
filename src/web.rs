@@ -44,6 +44,9 @@ pub struct WebImpl {
 
     /// The current width of the canvas.
     width: u32,
+
+    /// The current height of the canvas.
+    height: u32,
 }
 
 impl WebImpl {
@@ -76,6 +79,7 @@ impl WebImpl {
             ctx,
             buffer: Vec::new(),
             width: 0,
+            height: 0,
         })
     }
 
@@ -92,6 +96,7 @@ impl WebImpl {
         self.canvas.set_width(width);
         self.canvas.set_height(height);
         self.width = width;
+        self.height = height;
         Ok(())
     }
 
@@ -178,7 +183,21 @@ impl<'a> BufferImpl<'a> {
 
     /// Fetch the buffer from the window.
     pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        todo!()
+        let image_data = self
+            .imp
+            .ctx
+            .get_image_data(0., 0., self.imp.width.into(), self.imp.height.into())
+            .ok()
+            // TODO: Can also error if width or height are 0.
+            .swbuf_err("`Canvas` contains pixels from a different origin")?;
+
+        self.imp
+            .buffer
+            .iter_mut()
+            .zip(image_data.data().0.chunks_exact(4))
+            .for_each(|(old, new)| *old = u32::from_be_bytes([0, new[0], new[1], new[2]]));
+
+        Ok(())
     }
 }
 
