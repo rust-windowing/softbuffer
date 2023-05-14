@@ -104,6 +104,23 @@ impl WebImpl {
     pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
         Ok(BufferImpl { imp: self })
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        let image_data = self
+            .ctx
+            .get_image_data(0., 0., self.width.into(), self.height.into())
+            .ok()
+            // TODO: Can also error if width or height are 0.
+            .swbuf_err("`Canvas` contains pixels from a different origin")?;
+
+        Ok(image_data
+            .data()
+            .0
+            .chunks_exact(4)
+            .map(|chunk| u32::from_be_bytes([0, chunk[0], chunk[1], chunk[2]]))
+            .collect())
+    }
 }
 
 /// Extension methods for the Wasm target on [`Surface`](crate::Surface).
@@ -177,25 +194,6 @@ impl<'a> BufferImpl<'a> {
 
         // This can only throw an error if `data` is detached, which is impossible.
         self.imp.ctx.put_image_data(&image_data, 0., 0.).unwrap();
-
-        Ok(())
-    }
-
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        let image_data = self
-            .imp
-            .ctx
-            .get_image_data(0., 0., self.imp.width.into(), self.imp.height.into())
-            .ok()
-            // TODO: Can also error if width or height are 0.
-            .swbuf_err("`Canvas` contains pixels from a different origin")?;
-
-        self.imp
-            .buffer
-            .iter_mut()
-            .zip(image_data.data().0.chunks_exact(4))
-            .for_each(|(old, new)| *old = u32::from_be_bytes([0, new[0], new[1], new[2]]));
 
         Ok(())
     }

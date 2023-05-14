@@ -427,80 +427,6 @@ impl<'a> BufferImpl<'a> {
 
         result.swbuf_err("Failed to draw image to window")
     }
-
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        let imp = &mut self.0;
-
-        log::trace!("fetch: window={:X}", imp.window);
-
-        match imp.buffer {
-            Buffer::Wire(ref mut wire) => {
-                log::debug!("Falling back to non-SHM method for window fetching.");
-
-                let reply = imp
-                    .display
-                    .connection
-                    .get_image(
-                        xproto::ImageFormat::Z_PIXMAP,
-                        imp.window,
-                        0,
-                        0,
-                        imp.width,
-                        imp.height,
-                        u32::MAX,
-                    )
-                    .swbuf_err("Failed to send image fetching request")?
-                    .reply()
-                    .swbuf_err("Failed to fetch image from window")?;
-
-                if reply.depth == imp.depth && reply.visual == imp.visual_id {
-                    wire.copy_from_slice(bytemuck::cast_slice(&reply.data));
-                    Ok(())
-                } else {
-                    Err(SoftBufferError::PlatformError(
-                        Some("Mismatch between reply and window data".into()),
-                        None,
-                    ))
-                }
-            }
-
-            Buffer::Shm(ref mut shm) => {
-                if let Some((_, segment_id)) = shm.seg {
-                    // SAFETY: We have already called finish_wait
-                    let reply = imp
-                        .display
-                        .connection
-                        .shm_get_image(
-                            imp.window,
-                            0,
-                            0,
-                            imp.width,
-                            imp.height,
-                            u32::MAX,
-                            xproto::ImageFormat::Z_PIXMAP.into(),
-                            segment_id,
-                            0,
-                        )
-                        .swbuf_err("Failed to send image fetching request")?
-                        .reply()
-                        .swbuf_err("Failed to fetch image from window")?;
-
-                    // Make sure it all matches.
-                    if reply.depth == imp.depth && reply.visual == imp.visual_id {
-                        Ok(())
-                    } else {
-                        Err(SoftBufferError::PlatformError(
-                            Some("Mismatch between reply and window data".into()),
-                            None,
-                        ))
-                    }
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
 }
 
 impl Buffer {
@@ -684,7 +610,7 @@ impl ShmSegment {
 
         unsafe {
             // Create the shared memory segment.
-            let id = shmget(IPC_PRIVATE, size, 0o1777);
+            let id = shmget(IPC_PRIVATE, size, 0o600);
             if id == -1 {
                 return Err(io::Error::last_os_error());
             }
