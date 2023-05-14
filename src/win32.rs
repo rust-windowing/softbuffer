@@ -242,7 +242,7 @@ impl<'a> BufferImpl<'a> {
 
     /// Fetch the buffer from the window.
     pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        let imp = self.0;
+        let imp = &mut self.0;
         let buffer = imp.buffer.as_ref().unwrap();
 
         // Just go the other way.

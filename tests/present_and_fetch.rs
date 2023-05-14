@@ -11,57 +11,42 @@ struct WinitBasedTest {
     test_fn: fn(&EventLoopWindowTarget<()>),
 }
 
-macro_rules! test {
-    (fn $name:ident($elwt:ident : &EventLoopWindowTarget<()>) $b:block) => {
-        const _: () = {
-            fn __the_test(elwt: &EventLoopWindowTarget<()>) {
-                let _ = {
-                    let $elwt = elwt;
-                    $b
-                };
-            }
+fn all_red(elwt: &EventLoopWindowTarget<()>) {
+    let window = winit::window::WindowBuilder::new()
+        .with_title("all_red")
+        .with_visible(false)
+        .build(elwt)
+        .unwrap();
 
-            inventory::submit!(WinitBasedTest {
-                name: stringify!($name),
-                test_fn: __the_test
-            });
-        };
-    };
-}
+    let context = unsafe { Context::new(elwt) }.unwrap();
+    let mut surface = unsafe { Surface::new(&context, &window) }.unwrap();
+    let size = window.inner_size();
 
-inventory::collect!(WinitBasedTest);
-
-test! {
-    fn all_red(elwt: &EventLoopWindowTarget<()>) {
-        let window = winit::window::WindowBuilder::new()
-            .with_title("all_red")
-            .with_visible(false)
-            .build(elwt)
-            .unwrap();
-
-        let context = unsafe { Context::new(elwt) }.unwrap();
-        let mut surface = unsafe { Surface::new(&context, &window) }.unwrap();
-        let size = window.inner_size();
-
-        // Set the size of the surface to the size of the window.
-        surface.resize(
+    // Set the size of the surface to the size of the window.
+    surface
+        .resize(
             NonZeroU32::new(size.width).unwrap(),
             NonZeroU32::new(size.height).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        // Set all pixels to red.
-        let mut buffer = surface.buffer_mut().unwrap();
-        buffer.fill(0xFF0000FF);
-        buffer.present().unwrap();
+    // Set all pixels to red.
+    let mut buffer = surface.buffer_mut().unwrap();
+    buffer.fill(0xFF0000FF);
+    buffer.present().unwrap();
 
-        // Check that all pixels are red.
-        let mut buffer = surface.buffer_mut().unwrap();
-        buffer.fetch().unwrap();
-        for pixel in buffer.iter() {
-            assert_eq!(*pixel, 0xFF0000FF);
-        }
+    // Check that all pixels are red.
+    let mut buffer = surface.buffer_mut().unwrap();
+    buffer.fetch().unwrap();
+    for pixel in buffer.iter() {
+        assert_eq!(*pixel, 0xFF0000FF);
     }
 }
+
+const TESTS: &[WinitBasedTest] = &[WinitBasedTest {
+    name: "all_red",
+    test_fn: all_red,
+}];
 
 fn main() {
     EventLoop::new().run(|ev, elwt, ctrl| {
@@ -69,7 +54,7 @@ fn main() {
 
         if let Event::Resumed = ev {
             // We can now create windows; run tests!
-            for test in inventory::iter::<WinitBasedTest> {
+            for test in TESTS {
                 print!("Running test {}...", test.name);
                 match catch_unwind(AssertUnwindSafe(move || (test.test_fn)(elwt))) {
                     Ok(()) => println!(" OK!"),
