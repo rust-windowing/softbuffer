@@ -129,6 +129,11 @@ impl WaylandImpl {
             Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
         })?))
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        todo!()
+    }
 }
 
 pub struct BufferImpl<'a>(util::BorrowStack<'a, WaylandImpl, [u32]>);
@@ -183,11 +188,6 @@ impl<'a> BufferImpl<'a> {
         let _ = imp.display.event_queue.borrow_mut().flush();
 
         Ok(())
-    }
-
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        todo!()
     }
 }
 

@@ -36,9 +36,8 @@ fn all_red(elwt: &EventLoopWindowTarget<()>) {
     buffer.present().unwrap();
 
     // Check that all pixels are red.
-    let mut buffer = surface.buffer_mut().unwrap();
-    buffer.fetch().unwrap();
-    for pixel in buffer.iter() {
+    let screen_contents = surface.fetch().unwrap();
+    for pixel in screen_contents.iter() {
         assert_eq!(*pixel, 0xFF0000FF);
     }
 }

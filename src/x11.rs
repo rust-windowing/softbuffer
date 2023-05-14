@@ -310,6 +310,39 @@ impl X11Impl {
         // We can now safely call `buffer_mut` on the buffer.
         Ok(BufferImpl(self))
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        log::trace!("fetch: window={:X}", self.window);
+
+        // TODO: Is it worth it to do SHM here? Probably not.
+        let reply = self
+            .display
+            .connection
+            .get_image(
+                xproto::ImageFormat::Z_PIXMAP,
+                self.window,
+                0,
+                0,
+                self.width,
+                self.height,
+                u32::MAX,
+            )
+            .swbuf_err("Failed to send image fetching request")?
+            .reply()
+            .swbuf_err("Failed to fetch image from window")?;
+
+        if reply.depth == self.depth && reply.visual == self.visual_id {
+            let mut out = Vec::with_capacity(reply.data.len() / 4);
+            bytemuck::cast_slice_mut::<u32, u8>(&mut out).copy_from_slice(&reply.data);
+            Ok(out)
+        } else {
+            Err(SoftBufferError::PlatformError(
+                Some("Mismatch between reply and window data".into()),
+                None,
+            ))
+        }
+    }
 }
 
 pub struct BufferImpl<'a>(&'a mut X11Impl);
@@ -393,80 +426,6 @@ impl<'a> BufferImpl<'a> {
         };
 
         result.swbuf_err("Failed to draw image to window")
-    }
-
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        let imp = &mut self.0;
-
-        log::trace!("fetch: window={:X}", imp.window);
-
-        match imp.buffer {
-            Buffer::Wire(ref mut wire) => {
-                log::debug!("Falling back to non-SHM method for window fetching.");
-
-                let reply = imp
-                    .display
-                    .connection
-                    .get_image(
-                        xproto::ImageFormat::Z_PIXMAP,
-                        imp.window,
-                        0,
-                        0,
-                        imp.width,
-                        imp.height,
-                        u32::MAX,
-                    )
-                    .swbuf_err("Failed to send image fetching request")?
-                    .reply()
-                    .swbuf_err("Failed to fetch image from window")?;
-
-                if reply.depth == imp.depth && reply.visual == imp.visual_id {
-                    wire.copy_from_slice(bytemuck::cast_slice(&reply.data));
-                    Ok(())
-                } else {
-                    Err(SoftBufferError::PlatformError(
-                        Some("Mismatch between reply and window data".into()),
-                        None,
-                    ))
-                }
-            }
-
-            Buffer::Shm(ref mut shm) => {
-                if let Some((_, segment_id)) = shm.seg {
-                    // SAFETY: We have already called finish_wait
-                    let reply = imp
-                        .display
-                        .connection
-                        .shm_get_image(
-                            imp.window,
-                            0,
-                            0,
-                            imp.width,
-                            imp.height,
-                            u32::MAX,
-                            xproto::ImageFormat::Z_PIXMAP.into(),
-                            segment_id,
-                            0,
-                        )
-                        .swbuf_err("Failed to send image fetching request")?
-                        .reply()
-                        .swbuf_err("Failed to fetch image from window")?;
-
-                    // Make sure it all matches.
-                    if reply.depth == imp.depth && reply.visual == imp.visual_id {
-                        Ok(())
-                    } else {
-                        Err(SoftBufferError::PlatformError(
-                            Some("Mismatch between reply and window data".into()),
-                            None,
-                        ))
-                    }
-                } else {
-                    Ok(())
-                }
-            }
-        }
     }
 }
 

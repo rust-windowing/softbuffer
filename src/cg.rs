@@ -69,6 +69,11 @@ impl CGImpl {
             imp: self,
         })
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        todo!()
+    }
 }
 
 pub struct BufferImpl<'a> {
@@ -118,11 +123,6 @@ impl<'a> BufferImpl<'a> {
         transaction::commit();
 
         Ok(())
-    }
-
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<(), SoftBufferError> {
-        todo!()
     }
 }
 
