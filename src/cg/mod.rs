@@ -1,34 +1,23 @@
 use crate::SoftBufferError;
-use core_graphics::base::{
-    kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
-};
-use core_graphics::color_space::CGColorSpace;
-use core_graphics::data_provider::CGDataProvider;
-use core_graphics::image::CGImage;
 use raw_window_handle::AppKitWindowHandle;
 
 use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable, NSWindow};
 use cocoa::base::{id, nil};
 use cocoa::quartzcore::{transaction, CALayer, ContentsGravity};
-use foreign_types::ForeignType;
 
 use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::ptr;
 
-struct Buffer(Vec<u32>);
-
-impl AsRef<[u8]> for Buffer {
-    fn as_ref(&self) -> &[u8] {
-        bytemuck::cast_slice(&self.0)
-    }
-}
+mod buffer;
+use buffer::Buffer;
 
 pub struct CGImpl {
     layer: CALayer,
     window: id,
-    color_space: CGColorSpace,
     width: u32,
     height: u32,
+    data: Vec<u32>,
+    buffer: Option<Buffer>,
 }
 
 impl CGImpl {
@@ -47,72 +36,81 @@ impl CGImpl {
             view.addSubview_(subview); // retains subview (+1) = 2
             let _: () = msg_send![subview, release]; // releases subview (-1) = 1
         }
-        let color_space = CGColorSpace::create_device_rgb();
         Ok(Self {
             layer,
             window,
-            color_space,
             width: 0,
             height: 0,
+            data: Vec::new(),
+            buffer: None,
         })
     }
 
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.width = width.get();
-        self.height = height.get();
+        let width = width.get();
+        let height = height.get();
+        if width != self.width || height != self.height {
+            self.width = width;
+            self.height = height;
+            self.data.resize(width as usize * height as usize, 0);
+            self.buffer = Some(Buffer::new(width, height));
+        }
         Ok(())
     }
 
     pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
-        Ok(BufferImpl {
-            buffer: vec![0; self.width as usize * self.height as usize],
-            imp: self,
-        })
+        if self.buffer.is_none() {
+            panic!("Must set size of surface before calling `buffer_mut()`");
+        }
+
+        Ok(BufferImpl { imp: self })
     }
 }
 
 pub struct BufferImpl<'a> {
     imp: &'a mut CGImpl,
-    buffer: Vec<u32>,
 }
 
 impl<'a> BufferImpl<'a> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
-        &self.buffer
+        &self.imp.data
     }
 
     #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
-        &mut self.buffer
+        &mut self.imp.data
     }
 
     pub fn present(self) -> Result<(), SoftBufferError> {
-        let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
-        let image = CGImage::new(
-            self.imp.width as usize,
-            self.imp.height as usize,
-            8,
-            32,
-            (self.imp.width * 4) as usize,
-            &self.imp.color_space,
-            kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
-            &data_provider,
-            false,
-            kCGRenderingIntentDefault,
-        );
-
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
         // be mitigated by wrapping the operation in a transaction and disabling all actions.
         transaction::begin();
         transaction::set_disable_actions(true);
 
+        let buffer = self.imp.buffer.as_mut().unwrap();
         unsafe {
+            // Copy pixels into `IOSurface` buffer, with right stride and
+            // alpha
+            buffer.lock();
+            let stride = buffer.stride();
+            let pixels = buffer.pixels_mut();
+            let width = self.imp.width as usize;
+            for y in 0..self.imp.height as usize {
+                for x in 0..width {
+                    // Set alpha to 255
+                    let value = self.imp.data[y * width + x] | (255 << 24);
+                    pixels[y * stride + x] = value;
+                }
+            }
+            buffer.unlock();
+
             self.imp
                 .layer
                 .set_contents_scale(self.imp.window.backingScaleFactor());
-            self.imp.layer.set_contents(image.as_ptr() as id);
+            self.imp.layer.set_contents(ptr::null_mut());
+            self.imp.layer.set_contents(buffer.as_ptr() as id);
         };
 
         transaction::commit();
