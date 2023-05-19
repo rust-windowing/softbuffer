@@ -23,6 +23,7 @@ fn all_red(elwt: &EventLoopWindowTarget<()>) {
     }
 
     // winit does not wait for the window to be mapped... sigh
+    #[cfg(not(target_arch = "wasm32"))]
     std::thread::sleep(std::time::Duration::from_millis(1));
 
     let context = unsafe { Context::new(elwt) }.unwrap();
@@ -43,7 +44,10 @@ fn all_red(elwt: &EventLoopWindowTarget<()>) {
     buffer.present().unwrap();
 
     // Check that all pixels are red.
-    let screen_contents = surface.fetch().unwrap();
+    let screen_contents = match surface.fetch() {
+        Err(softbuffer::SoftBufferError::Unimplemented) => return,
+        cont => cont.unwrap(),
+    };
     for pixel in screen_contents.iter() {
         assert_eq!(*pixel, 0xFF000000);
     }

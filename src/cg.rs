@@ -72,7 +72,7 @@ impl CGImpl {
 
     /// Fetch the buffer from the window.
     pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-        todo!()
+        Err(SoftBufferError::Unimplemented)
     }
 }
 
