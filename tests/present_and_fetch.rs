@@ -40,7 +40,7 @@ fn all_red(elwt: &EventLoopWindowTarget<()>) {
 
     // Set all pixels to red.
     let mut buffer = surface.buffer_mut().unwrap();
-    buffer.fill(0xFF000000);
+    buffer.fill(0x00FF0000);
     buffer.present().unwrap();
 
     // Check that all pixels are red.
@@ -49,7 +49,7 @@ fn all_red(elwt: &EventLoopWindowTarget<()>) {
         cont => cont.unwrap(),
     };
     for pixel in screen_contents.iter() {
-        assert_eq!(*pixel, 0xFF000000);
+        assert_eq!(*pixel, 0x00FF0000);
     }
 }
 
