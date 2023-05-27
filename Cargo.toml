@@ -35,7 +35,7 @@ wayland-backend = { version = "0.1.0", features = ["client_system"], optional = 
 wayland-client = { version = "0.30.0", optional = true }
 wayland-sys = "0.30.0"
 x11-dl = { version  = "2.19.1", optional = true }
-x11rb = { version = "0.11.0", features = ["allow-unsafe-code", "dl-libxcb", "shm"], optional = true }
+x11rb = { version = "0.12.0", features = ["allow-unsafe-code", "dl-libxcb", "shm"], optional = true }
 
 [target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox", target_os = "linux", target_os = "freebsd"))))'.dependencies]
 fastrand = { version = "1.8.0", optional = true }
