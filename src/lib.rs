@@ -321,6 +321,8 @@ impl Surface {
     ///
     /// - On X11, the window must be visible.
     /// - On macOS, Redox and Wayland, this function is unimplemented.
+    /// - On Web, this will fail if the content was supplied by
+    ///   a different origin depending on the sites CORS rules.
     pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         self.surface_impl.fetch()
     }

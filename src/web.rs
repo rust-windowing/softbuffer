@@ -126,6 +126,10 @@ impl WebImpl {
 /// Extension methods for the Wasm target on [`Surface`](crate::Surface).
 pub trait SurfaceExtWeb: Sized {
     /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
+    ///
+    /// # Errors
+    /// - If the canvas was already controlled by an `OffscreenCanvas`.
+    /// - If a another context then "2d" was already created for this canvas.
     fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
 }
 
