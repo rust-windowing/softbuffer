@@ -425,7 +425,7 @@ impl<'a> Buffer<'a> {
     /// - X, when XShm is available
     /// - Win32
     ///
-    /// Otherwise this is equivalent to [`present`].
+    /// Otherwise this is equivalent to [`Self::present`].
     pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         self.buffer_impl.present_with_damage(damage)
     }
