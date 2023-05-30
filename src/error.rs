@@ -36,6 +36,11 @@ pub enum SoftBufferError {
         height: NonZeroU32,
     },
 
+    #[error(
+        "Damage rect {}x{} at ({}, {}) out of range for backend.", .rect.width, .rect.height, .rect.x, .rect.y,
+    )]
+    DamageOutOfRange { rect: crate::Rect },
+
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>),
 }

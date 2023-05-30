@@ -45,11 +45,8 @@ pub struct WebImpl {
     /// Buffer has been presented.
     buffer_presented: bool,
 
-    /// The current width of the canvas.
-    width: u32,
-
-    /// The current height of the canvas.
-    height: u32,
+    /// The current canvas width/height.
+    size: Option<(NonZeroU32, NonZeroU32)>,
 }
 
 impl WebImpl {
@@ -82,8 +79,7 @@ impl WebImpl {
             ctx,
             buffer: Vec::new(),
             buffer_presented: false,
-            width: 0,
-            height: 0,
+            size: None,
         })
     }
 
@@ -93,16 +89,12 @@ impl WebImpl {
         width: NonZeroU32,
         height: NonZeroU32,
     ) -> Result<(), SoftBufferError> {
-        let width = width.get();
-        let height = height.get();
-
-        if width != self.width || height != self.height {
+        if self.size != Some((width, height)) {
             self.buffer_presented = false;
-            self.buffer.resize(total_len(width, height), 0);
-            self.canvas.set_width(width);
-            self.canvas.set_height(height);
-            self.width = width;
-            self.height = height;
+            self.buffer.resize(total_len(width.get(), height.get()), 0);
+            self.canvas.set_width(width.get());
+            self.canvas.set_height(height.get());
+            self.size = Some((width, height));
         }
 
         Ok(())
@@ -114,6 +106,9 @@ impl WebImpl {
     }
 
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let (width, _height) = self
+            .size
+            .expect("Must set size of surface before calling `present_with_damage()`");
         // Create a bitmap from the buffer.
         let bitmap: Vec<_> = self
             .buffer
@@ -140,33 +135,27 @@ impl WebImpl {
             let array = Uint8Array::new_with_length(bitmap.len() as u32);
             array.copy_from(&bitmap);
             let array = Uint8ClampedArray::new(&array);
-            ImageDataExt::new(array, self.width)
+            ImageDataExt::new(array, width.get())
                 .map(JsValue::from)
                 .map(ImageData::unchecked_from_js)
         };
         #[cfg(not(target_feature = "atomics"))]
         let result =
-            ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(&bitmap), self.width);
+            ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(&bitmap), width.get());
         // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data = result.unwrap();
 
-        for Rect {
-            x,
-            y,
-            width,
-            height,
-        } in damage
-        {
+        for rect in damage {
             // This can only throw an error if `data` is detached, which is impossible.
             self.ctx
                 .put_image_data_with_dirty_x_and_dirty_y_and_dirty_width_and_dirty_height(
                     &image_data,
-                    (*x).into(),
-                    (*y).into(),
-                    (*x).into(),
-                    (*y).into(),
-                    (*width).into(),
-                    (*height).into(),
+                    rect.x.into(),
+                    rect.y.into(),
+                    rect.x.into(),
+                    rect.y.into(),
+                    rect.width.get().into(),
+                    rect.height.get().into(),
                 )
                 .unwrap();
         }
@@ -217,16 +206,10 @@ impl<'a> BufferImpl<'a> {
 
     /// Push the buffer to the canvas.
     pub fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = (|| {
-            let width = i32::try_from(self.imp.width).ok()?;
-            let height = i32::try_from(self.imp.height).ok()?;
-            Some((width, height))
-        })()
-        .ok_or(SoftBufferError::SizeOutOfRange {
-            width: NonZeroU32::new(self.imp.width).unwrap(),
-            height: NonZeroU32::new(self.imp.height).unwrap(),
-        })?;
-
+        let (width, height) = self
+            .imp
+            .size
+            .expect("Must set size of surface before calling `present()`");
         self.imp.present_with_damage(&[Rect {
             x: 0,
             y: 0,

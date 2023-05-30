@@ -159,15 +159,18 @@ impl WaylandImpl {
             if self.surface.version() < 4 {
                 self.surface.damage(0, 0, i32::MAX, i32::MAX);
             } else {
-                for Rect {
-                    x,
-                    y,
-                    width,
-                    height,
-                } in damage
-                {
+                for rect in damage {
                     // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                    self.surface.damage_buffer(*x, *y, *width, *height);
+                    let (x, y, width, height) = (|| {
+                        Some((
+                            i32::try_from(rect.x).ok()?,
+                            i32::try_from(rect.y).ok()?,
+                            i32::try_from(rect.width.get()).ok()?,
+                            i32::try_from(rect.height.get()).ok()?,
+                        ))
+                    })()
+                    .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
+                    self.surface.damage_buffer(x, y, width, height);
                 }
             }
 
@@ -212,8 +215,9 @@ impl<'a> BufferImpl<'a> {
         imp.present_with_damage(&[Rect {
             x: 0,
             y: 0,
-            width: width.get(),
-            height: height.get(),
+            // We know width/height will be non-negative
+            width: width.try_into().unwrap(),
+            height: height.try_into().unwrap(),
         }])
     }
 }

@@ -233,13 +233,13 @@ impl Context {
 #[derive(Clone, Copy, Debug)]
 pub struct Rect {
     /// x coordinate of top left corner
-    pub x: i32,
+    pub x: u32,
     /// y coordinate of top left corner
-    pub y: i32,
+    pub y: u32,
     /// width
-    pub width: i32,
+    pub width: NonZeroU32,
     /// height
-    pub height: i32,
+    pub height: NonZeroU32,
 }
 
 /// A surface for drawing to a window with software buffers.

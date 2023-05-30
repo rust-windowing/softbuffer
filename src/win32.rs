@@ -208,24 +208,17 @@ impl Win32Impl {
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let buffer = self.buffer.as_mut().unwrap();
         unsafe {
-            for Rect {
-                x,
-                y,
-                width,
-                height,
-            } in damage
-            {
-                Gdi::BitBlt(
-                    self.dc,
-                    *x,
-                    *y,
-                    *width,
-                    *height,
-                    buffer.dc,
-                    *x,
-                    *y,
-                    Gdi::SRCCOPY,
-                );
+            for rect in damage.iter().copied() {
+                let (x, y, width, height) = (|| {
+                    Some((
+                        i32::try_from(rect.x).ok()?,
+                        i32::try_from(rect.y).ok()?,
+                        i32::try_from(rect.width.get()).ok()?,
+                        i32::try_from(rect.height.get()).ok()?,
+                    ))
+                })()
+                .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
+                Gdi::BitBlt(self.dc, x, y, width, height, buffer.dc, x, y, Gdi::SRCCOPY);
             }
 
             // Validate the window.
@@ -263,8 +256,9 @@ impl<'a> BufferImpl<'a> {
         imp.present_with_damage(&[Rect {
             x: 0,
             y: 0,
-            width: buffer.width.get(),
-            height: buffer.height.get(),
+            // We know width/height will be non-negative
+            width: buffer.width.try_into().unwrap(),
+            height: buffer.height.try_into().unwrap(),
         }])
     }
 
