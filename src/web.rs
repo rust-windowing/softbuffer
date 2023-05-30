@@ -11,6 +11,7 @@ use web_sys::ImageData;
 use crate::error::SwResultExt;
 use crate::{Rect, SoftBufferError};
 use std::convert::TryInto;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
 /// Display implementation for the web platform.
@@ -62,6 +63,10 @@ impl WebImpl {
             // We already made sure this was a canvas in `querySelector`.
             .unchecked_into();
 
+        Self::from_canvas(canvas)
+    }
+
+    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
         let ctx = canvas
             .get_context("2d")
             .ok()
@@ -169,6 +174,23 @@ impl WebImpl {
         self.buffer_presented = true;
 
         Ok(())
+    }
+}
+
+/// Extension methods for the Wasm target on [`Surface`](crate::Surface).
+pub trait SurfaceExtWeb: Sized {
+    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
+    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
+}
+
+impl SurfaceExtWeb for crate::Surface {
+    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
+        let imple = crate::SurfaceDispatch::Web(WebImpl::from_canvas(canvas)?);
+
+        Ok(Self {
+            surface_impl: Box::new(imple),
+            _marker: PhantomData,
+        })
     }
 }
 

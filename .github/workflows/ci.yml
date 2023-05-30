@@ -118,3 +118,14 @@ jobs:
         !contains(matrix.platform.target, 'freebsd') &&
         !contains(matrix.platform.target, 'netbsd')
       run: cargo clippy --all-targets --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES -- -Dwarnings
+
+    - name: Lint with rustdoc
+      shell: bash
+      if: >
+        (matrix.rust_version == 'stable') &&
+        !contains(matrix.platform.options, '--no-default-features') &&
+        !((matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')) &&
+        !contains(matrix.platform.target, 'redox') &&
+        !contains(matrix.platform.target, 'freebsd') &&
+        !contains(matrix.platform.target, 'netbsd')
+      run: cargo doc --no-deps --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES --document-private-items

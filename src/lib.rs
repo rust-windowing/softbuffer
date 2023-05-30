@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg(target_os = "macos")]
 #[macro_use]
@@ -34,6 +35,9 @@ pub use error::SoftBufferError;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
+
+#[cfg(target_arch = "wasm32")]
+pub use self::web::SurfaceExtWeb;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
