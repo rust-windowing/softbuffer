@@ -67,7 +67,7 @@ impl Win32Impl {
             biHeight: -(height as i32),
             biPlanes: 1,
             biBitCount: 32,
-            biCompression: BI_BITFIELDS,
+            biCompression: BI_BITFIELDS as _,
             biSizeImage: 0,
             biXPelsPerMeter: 0,
             biYPelsPerMeter: 0,
