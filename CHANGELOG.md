@@ -1,3 +1,7 @@
+# 0.2.1
+
+* Bump `windows-sys` to 0.48
+
 # 0.2.0
 
 * Add support for Redox/Orbital.
