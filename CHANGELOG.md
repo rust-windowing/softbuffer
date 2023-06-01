@@ -2,6 +2,10 @@
 
 * On MacOS, the contents scale is updated when set_buffer() is called, to adapt when the window is on a new screen.
 
+# 0.2.1
+
+* Bump `windows-sys` to 0.48
+
 # 0.2.0
 
 * Add support for Redox/Orbital.
