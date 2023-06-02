@@ -223,6 +223,11 @@ impl Win32Impl {
             );
         }
 
+        // Flush the operation so that it happens immediately.
+        unsafe {
+            Gdi::GdiFlush();
+        }
+
         Ok(temp_buffer.pixels().to_vec())
     }
 }
