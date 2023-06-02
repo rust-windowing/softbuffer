@@ -98,6 +98,15 @@ macro_rules! make_dispatch {
                     )*
                 }
             }
+
+            pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.fetch(),
+                    )*
+                }
+            }
         }
 
         enum BufferDispatch<'a> {
@@ -304,6 +313,18 @@ impl Surface {
     /// of the window.
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         self.surface_impl.resize(width, height)
+    }
+
+    /// Copies the window contents into a buffer.
+    ///
+    /// ## Platform Dependent Behavior
+    ///
+    /// - On X11, the window must be visible.
+    /// - On macOS, Redox and Wayland, this function is unimplemented.
+    /// - On Web, this will fail if the content was supplied by
+    ///   a different origin depending on the sites CORS rules.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        self.surface_impl.fetch()
     }
 
     /// Return a [`Buffer`] that the next frame should be rendered into. The size must

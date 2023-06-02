@@ -24,9 +24,9 @@ pub struct WebDisplayImpl {
 impl WebDisplayImpl {
     pub(super) fn new() -> Result<Self, SoftBufferError> {
         let document = web_sys::window()
-            .swbuf_err("`window` is not present in this runtime")?
+            .swbuf_err("`Window` is not present in this runtime")?
             .document()
-            .swbuf_err("`document` is not present in this runtime")?;
+            .swbuf_err("`Document` is not present in this runtime")?;
 
         Ok(Self { document })
     }
@@ -44,6 +44,9 @@ pub struct WebImpl {
 
     /// The current width of the canvas.
     width: u32,
+
+    /// The current height of the canvas.
+    height: u32,
 }
 
 impl WebImpl {
@@ -76,6 +79,7 @@ impl WebImpl {
             ctx,
             buffer: Vec::new(),
             width: 0,
+            height: 0,
         })
     }
 
@@ -92,6 +96,7 @@ impl WebImpl {
         self.canvas.set_width(width);
         self.canvas.set_height(height);
         self.width = width;
+        self.height = height;
         Ok(())
     }
 
@@ -99,11 +104,32 @@ impl WebImpl {
     pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
         Ok(BufferImpl { imp: self })
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        let image_data = self
+            .ctx
+            .get_image_data(0., 0., self.width.into(), self.height.into())
+            .ok()
+            // TODO: Can also error if width or height are 0.
+            .swbuf_err("`Canvas` contains pixels from a different origin")?;
+
+        Ok(image_data
+            .data()
+            .0
+            .chunks_exact(4)
+            .map(|chunk| u32::from_be_bytes([0, chunk[0], chunk[1], chunk[2]]))
+            .collect())
+    }
 }
 
 /// Extension methods for the Wasm target on [`Surface`](crate::Surface).
 pub trait SurfaceExtWeb: Sized {
     /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
+    ///
+    /// # Errors
+    /// - If the canvas was already controlled by an `OffscreenCanvas`.
+    /// - If a another context then "2d" was already created for this canvas.
     fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
 }
 
@@ -171,7 +197,7 @@ impl<'a> BufferImpl<'a> {
         let image_data = result.unwrap();
 
         // This can only throw an error if `data` is detached, which is impossible.
-        self.imp.ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+        self.imp.ctx.put_image_data(&image_data, 0., 0.).unwrap();
 
         Ok(())
     }

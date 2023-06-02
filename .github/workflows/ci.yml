@@ -47,12 +47,10 @@ jobs:
           - { target: x86_64-unknown-freebsd,   os: ubuntu-latest,   }
           - { target: x86_64-unknown-netbsd,    os: ubuntu-latest,   }
           - { target: x86_64-apple-darwin,      os: macos-latest,    }
-          # We're using Windows rather than Ubuntu to run the wasm tests because caching cargo-web
-          # doesn't currently work on Linux.
-          - { target: wasm32-unknown-unknown,   os: windows-latest,  }
+          - { target: wasm32-unknown-unknown,   os: ubuntu-latest,   }
         include:
           - rust_version: nightly
-            platform: { target: wasm32-unknown-unknown, os: windows-latest, options: "-Zbuild-std=panic_abort,std", rustflags: "-Ctarget-feature=+atomics,+bulk-memory" }
+            platform: { target: wasm32-unknown-unknown, os: ubuntu-latest, options: "-Zbuild-std=panic_abort,std", rustflags: "-Ctarget-feature=+atomics,+bulk-memory" }
 
     env:
       RUST_BACKTRACE: 1
@@ -67,12 +65,10 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    # Used to cache cargo-web
-    - name: Cache cargo folder
-      uses: actions/cache@v3
+    - uses: taiki-e/install-action@v2
+      if: matrix.platform.target == 'wasm32-unknown-unknown'
       with:
-        path: ~/.cargo
-        key: ${{ matrix.platform.target }}-cargo-${{ matrix.rust_version }}
+        tool: wasm-bindgen-cli
 
     - uses: hecrj/setup-rust-action@v1
       with:
@@ -102,11 +98,24 @@ jobs:
       shell: bash
       if: >
         !((matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')) &&
-        !contains(matrix.platform.target, 'wasm32') &&
         !contains(matrix.platform.target, 'redox') &&
         !contains(matrix.platform.target, 'freebsd') &&
-        !contains(matrix.platform.target, 'netbsd')
+        !contains(matrix.platform.target, 'netbsd') &&
+        !contains(matrix.platform.target, 'linux')
       run: cargo $CMD test --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
+
+    # TODO: We should also be using Wayland for testing here.
+    - name: Run tests using Xvfb
+      shell: bash
+      if: >
+        !((matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')) &&
+        !contains(matrix.platform.target, 'redox') &&
+        !contains(matrix.platform.target, 'freebsd') &&
+        !contains(matrix.platform.target, 'netbsd') &&
+        contains(matrix.platform.target, 'linux') &&
+        !contains(matrix.platform.options, '--no-default-features') &&
+        !contains(matrix.platform.features, 'wayland')
+      run: xvfb-run cargo $CMD test --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
     - name: Lint with clippy
       shell: bash
