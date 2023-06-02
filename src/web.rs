@@ -24,9 +24,9 @@ pub struct WebDisplayImpl {
 impl WebDisplayImpl {
     pub(super) fn new() -> Result<Self, SoftBufferError> {
         let document = web_sys::window()
-            .swbuf_err("`window` is not present in this runtime")?
+            .swbuf_err("`Window` is not present in this runtime")?
             .document()
-            .swbuf_err("`document` is not present in this runtime")?;
+            .swbuf_err("`Document` is not present in this runtime")?;
 
         Ok(Self { document })
     }
@@ -164,11 +164,36 @@ impl WebImpl {
 
         Ok(())
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        let (width, height) = self
+            .size
+            .expect("Must set size of surface before calling `fetch()`");
+
+        let image_data = self
+            .ctx
+            .get_image_data(0., 0., width.get().into(), height.get().into())
+            .ok()
+            // TODO: Can also error if width or height are 0.
+            .swbuf_err("`Canvas` contains pixels from a different origin")?;
+
+        Ok(image_data
+            .data()
+            .0
+            .chunks_exact(4)
+            .map(|chunk| u32::from_be_bytes([0, chunk[0], chunk[1], chunk[2]]))
+            .collect())
+    }
 }
 
 /// Extension methods for the Wasm target on [`Surface`](crate::Surface).
 pub trait SurfaceExtWeb: Sized {
     /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
+    ///
+    /// # Errors
+    /// - If the canvas was already controlled by an `OffscreenCanvas`.
+    /// - If a another context then "2d" was already created for this canvas.
     fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
 }
 

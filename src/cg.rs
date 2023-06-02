@@ -69,6 +69,11 @@ impl CGImpl {
             imp: self,
         })
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        Err(SoftBufferError::Unimplemented)
+    }
 }
 
 pub struct BufferImpl<'a> {

@@ -126,13 +126,17 @@ impl WaylandImpl {
         };
 
         let age = self.buffers.as_mut().unwrap().1.age;
-
         Ok(BufferImpl {
             stack: util::BorrowStack::new(self, |buffer| {
                 Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
             })?,
             age,
         })
+    }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        Err(SoftBufferError::Unimplemented)
     }
 
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {

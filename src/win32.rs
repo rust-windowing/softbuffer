@@ -228,6 +228,34 @@ impl Win32Impl {
 
         Ok(())
     }
+
+    /// Fetch the buffer from the window.
+    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+        let buffer = self.buffer.as_ref().unwrap();
+        let temp_buffer = Buffer::new(self.dc, buffer.width, buffer.height);
+
+        // Just go the other way.
+        unsafe {
+            Gdi::BitBlt(
+                temp_buffer.dc,
+                0,
+                0,
+                temp_buffer.width.get(),
+                temp_buffer.height.get(),
+                self.dc,
+                0,
+                0,
+                Gdi::SRCCOPY,
+            );
+        }
+
+        // Flush the operation so that it happens immediately.
+        unsafe {
+            Gdi::GdiFlush();
+        }
+
+        Ok(temp_buffer.pixels().to_vec())
+    }
 }
 
 pub struct BufferImpl<'a>(&'a mut Win32Impl);

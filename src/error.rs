@@ -43,6 +43,9 @@ pub enum SoftBufferError {
 
     #[error("Platform error")]
     PlatformError(Option<String>, Option<Box<dyn Error>>),
+
+    #[error("This function is unimplemented on this platform")]
+    Unimplemented,
 }
 
 /// Convenient wrapper to cast errors into SoftBufferError.
