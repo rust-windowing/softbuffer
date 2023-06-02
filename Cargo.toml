@@ -66,7 +66,7 @@ redox_syscall = "0.3"
 cfg_aliases = "0.1.1"
 
 [dev-dependencies]
-criterion = { version = "0.4.0", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.5.1", default-features = false, features = ["cargo_bench_support"] }
 instant = "0.1.12"
 winit = "0.28.1"
 winit-test = "0.1.0"
