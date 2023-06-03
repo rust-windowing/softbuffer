@@ -1,7 +1,7 @@
 use raw_window_handle::OrbitalWindowHandle;
 use std::{cmp, num::NonZeroU32, slice, str};
 
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 
 struct OrbitalMap {
     address: usize,
@@ -57,6 +57,7 @@ pub struct OrbitalImpl {
     handle: OrbitalWindowHandle,
     width: u32,
     height: u32,
+    presented: bool,
 }
 
 impl OrbitalImpl {
@@ -65,12 +66,18 @@ impl OrbitalImpl {
             handle,
             width: 0,
             height: 0,
+            presented: false,
         })
     }
 
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.width = width.get();
-        self.height = height.get();
+        let width = width.get();
+        let height = height.get();
+        if width != self.width && height != self.height {
+            self.presented = false;
+            self.width = width;
+            self.height = height;
+        }
         Ok(())
     }
 
@@ -177,11 +184,19 @@ impl<'a> BufferImpl<'a> {
         }
     }
 
+    pub fn age(&self) -> u8 {
+        match self.pixels {
+            Pixels::Mapping(_) if self.imp.presented => 1,
+            _ => 0,
+        }
+    }
+
     pub fn present(self) -> Result<(), SoftBufferError> {
         match self.pixels {
             Pixels::Mapping(mapping) => {
                 drop(mapping);
                 syscall::fsync(self.imp.window_fd()).expect("failed to sync orbital window");
+                self.imp.presented = true;
             }
             Pixels::Buffer(buffer) => {
                 self.imp
@@ -190,5 +205,9 @@ impl<'a> BufferImpl<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.present()
     }
 }

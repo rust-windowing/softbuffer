@@ -1,4 +1,4 @@
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 use core_graphics::base::{
     kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
 };
@@ -92,6 +92,10 @@ impl<'a> BufferImpl<'a> {
         &mut self.buffer
     }
 
+    pub fn age(&self) -> u8 {
+        0
+    }
+
     pub fn present(self) -> Result<(), SoftBufferError> {
         let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
         let image = CGImage::new(
@@ -123,6 +127,10 @@ impl<'a> BufferImpl<'a> {
         transaction::commit();
 
         Ok(())
+    }
+
+    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.present()
     }
 }
 

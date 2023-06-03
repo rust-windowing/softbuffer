@@ -6,11 +6,16 @@
 #![allow(clippy::uninlined_format_args)]
 
 use crate::error::SwResultExt;
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
-use std::{fmt, io, mem, num::NonZeroU32, rc::Rc, slice};
+use std::{
+    fmt, io, mem,
+    num::{NonZeroU16, NonZeroU32},
+    rc::Rc,
+    slice,
+};
 
 use x11_dl::xlib::Display;
 use x11_dl::xlib_xcb::Xlib_xcb;
@@ -110,11 +115,11 @@ pub struct X11Impl {
     /// The buffer we draw to.
     buffer: Buffer,
 
-    /// The current buffer width.
-    width: u16,
+    /// Buffer has been presented.
+    buffer_presented: bool,
 
-    /// The current buffer height.
-    height: u16,
+    /// The current buffer width/height.
+    size: Option<(NonZeroU16, NonZeroU16)>,
 }
 
 /// The buffer that is being drawn to.
@@ -256,8 +261,8 @@ impl X11Impl {
             depth: geometry_reply.depth,
             visual_id,
             buffer,
-            width: 0,
-            height: 0,
+            buffer_presented: false,
+            size: None,
         })
     }
 
@@ -275,26 +280,22 @@ impl X11Impl {
         );
 
         // Width and height should fit in u16.
-        let width: u16 = width
-            .get()
+        let width: NonZeroU16 = width
             .try_into()
             .or(Err(SoftBufferError::SizeOutOfRange { width, height }))?;
-        let height: u16 = height
-            .get()
-            .try_into()
-            .or(Err(SoftBufferError::SizeOutOfRange {
-                width: NonZeroU32::new(width.into()).unwrap(),
-                height,
-            }))?;
+        let height: NonZeroU16 = height.try_into().or(Err(SoftBufferError::SizeOutOfRange {
+            width: width.into(),
+            height,
+        }))?;
 
-        if width != self.width || height != self.height {
+        if self.size != Some((width, height)) {
+            self.buffer_presented = false;
             self.buffer
-                .resize(&self.display.connection, width, height)
+                .resize(&self.display.connection, width.get(), height.get())
                 .swbuf_err("Failed to resize X11 buffer")?;
 
             // We successfully resized the buffer.
-            self.width = width;
-            self.height = height;
+            self.size = Some((width, height));
         }
 
         Ok(())
@@ -315,6 +316,10 @@ impl X11Impl {
     pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         log::trace!("fetch: window={:X}", self.window);
 
+        let (width, height) = self
+            .size
+            .expect("Must set size of surface before calling `fetch()`");
+
         // TODO: Is it worth it to do SHM here? Probably not.
         let reply = self
             .display
@@ -324,8 +329,8 @@ impl X11Impl {
                 self.window,
                 0,
                 0,
-                self.width,
-                self.height,
+                width.get(),
+                height.get(),
                 u32::MAX,
             )
             .swbuf_err("Failed to send image fetching request")?
@@ -360,13 +365,25 @@ impl<'a> BufferImpl<'a> {
         unsafe { self.0.buffer.buffer_mut() }
     }
 
+    pub fn age(&self) -> u8 {
+        if self.0.buffer_presented {
+            1
+        } else {
+            0
+        }
+    }
+
     /// Push the buffer to the window.
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;
+
+        let (surface_width, surface_height) = imp
+            .size
+            .expect("Must set size of surface before calling `present_with_damage()`");
 
         log::trace!("present: window={:X}", imp.window);
 
-        let result = match imp.buffer {
+        match imp.buffer {
             Buffer::Wire(ref wire) => {
                 // This is a suboptimal strategy, raise a stink in the debug logs.
                 log::debug!("Falling back to non-SHM method for window drawing.");
@@ -377,8 +394,8 @@ impl<'a> BufferImpl<'a> {
                         xproto::ImageFormat::Z_PIXMAP,
                         imp.window,
                         imp.gc,
-                        imp.width,
-                        imp.height,
+                        surface_width.get(),
+                        surface_height.get(),
                         0,
                         0,
                         0,
@@ -387,6 +404,7 @@ impl<'a> BufferImpl<'a> {
                     )
                     .map(|c| c.ignore_error())
                     .push_err()
+                    .swbuf_err("Failed to draw image to window")?;
             }
 
             Buffer::Shm(ref mut shm) => {
@@ -394,38 +412,69 @@ impl<'a> BufferImpl<'a> {
                 // SAFETY: We know that we called finish_wait() before this.
                 // Put the image into the window.
                 if let Some((_, segment_id)) = shm.seg {
-                    imp.display
-                        .connection
-                        .shm_put_image(
-                            imp.window,
-                            imp.gc,
-                            imp.width,
-                            imp.height,
-                            0,
-                            0,
-                            imp.width,
-                            imp.height,
-                            0,
-                            0,
-                            imp.depth,
-                            xproto::ImageFormat::Z_PIXMAP.into(),
-                            false,
-                            segment_id,
-                            0,
-                        )
-                        .push_err()
-                        .map(|c| c.ignore_error())
+                    damage
+                        .iter()
+                        .try_for_each(|rect| {
+                            let (src_x, src_y, dst_x, dst_y, width, height) = (|| {
+                                Some((
+                                    u16::try_from(rect.x).ok()?,
+                                    u16::try_from(rect.y).ok()?,
+                                    i16::try_from(rect.x).ok()?,
+                                    i16::try_from(rect.y).ok()?,
+                                    u16::try_from(rect.width.get()).ok()?,
+                                    u16::try_from(rect.height.get()).ok()?,
+                                ))
+                            })(
+                            )
+                            .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
+                            imp.display
+                                .connection
+                                .shm_put_image(
+                                    imp.window,
+                                    imp.gc,
+                                    surface_width.get(),
+                                    surface_height.get(),
+                                    src_x,
+                                    src_y,
+                                    width,
+                                    height,
+                                    dst_x,
+                                    dst_y,
+                                    imp.depth,
+                                    xproto::ImageFormat::Z_PIXMAP.into(),
+                                    false,
+                                    segment_id,
+                                    0,
+                                )
+                                .push_err()
+                                .map(|c| c.ignore_error())
+                                .swbuf_err("Failed to draw image to window")
+                        })
                         .and_then(|()| {
                             // Send a short request to act as a notification for when the X server is done processing the image.
                             shm.begin_wait(&imp.display.connection)
-                        })
-                } else {
-                    Ok(())
+                                .swbuf_err("Failed to draw image to window")
+                        })?;
                 }
             }
-        };
+        }
 
-        result.swbuf_err("Failed to draw image to window")
+        imp.buffer_presented = true;
+
+        Ok(())
+    }
+
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        let (width, height) = self
+            .0
+            .size
+            .expect("Must set size of surface before calling `present()`");
+        self.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            width: width.into(),
+            height: height.into(),
+        }])
     }
 }
 

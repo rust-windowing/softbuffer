@@ -1,4 +1,4 @@
-use crate::{error::SwResultExt, util, SoftBufferError};
+use crate::{error::SwResultExt, util, Rect, SoftBufferError};
 use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
 use std::{
     cell::RefCell,
@@ -125,69 +125,104 @@ impl WaylandImpl {
             ));
         };
 
-        Ok(BufferImpl(util::BorrowStack::new(self, |buffer| {
-            Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
-        })?))
+        let age = self.buffers.as_mut().unwrap().1.age;
+        Ok(BufferImpl {
+            stack: util::BorrowStack::new(self, |buffer| {
+                Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
+            })?,
+            age,
+        })
     }
 
     /// Fetch the buffer from the window.
     pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)
     }
-}
 
-pub struct BufferImpl<'a>(util::BorrowStack<'a, WaylandImpl, [u32]>);
-
-impl<'a> BufferImpl<'a> {
-    #[inline]
-    pub fn pixels(&self) -> &[u32] {
-        self.0.member()
-    }
-
-    #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
-        self.0.member_mut()
-    }
-
-    pub fn present(self) -> Result<(), SoftBufferError> {
-        let imp = self.0.into_container();
-
-        let (width, height) = imp
-            .size
-            .expect("Must set size of surface before calling `present()`");
-
-        let _ = imp
+    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let _ = self
             .display
             .event_queue
             .borrow_mut()
             .dispatch_pending(&mut State);
 
-        if let Some((front, back)) = &mut imp.buffers {
+        if let Some((front, back)) = &mut self.buffers {
+            front.age = 1;
+            if back.age != 0 {
+                back.age += 1;
+            }
+
             // Swap front and back buffer
             std::mem::swap(front, back);
 
-            front.attach(&imp.surface);
+            front.attach(&self.surface);
 
-            // FIXME: Proper damaging mechanism.
-            //
-            // In order to propagate changes on compositors which track damage, for now damage the entire surface.
-            if imp.surface.version() < 4 {
-                // FIXME: Accommodate scale factor since wl_surface::damage is in terms of surface coordinates while
-                // wl_surface::damage_buffer is in buffer coordinates.
-                //
-                // i32::MAX is a valid damage box (most compositors interpret the damage box as "the entire surface")
-                imp.surface.damage(0, 0, i32::MAX, i32::MAX);
+            // Like Mesa's EGL/WSI implementation, we damage the whole buffer with `i32::MAX` if
+            // the compositor doesn't support `damage_buffer`.
+            // https://bugs.freedesktop.org/show_bug.cgi?id=78190
+            if self.surface.version() < 4 {
+                self.surface.damage(0, 0, i32::MAX, i32::MAX);
             } else {
-                // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                imp.surface.damage_buffer(0, 0, width.get(), height.get());
+                for rect in damage {
+                    // Introduced in version 4, it is an error to use this request in version 3 or lower.
+                    let (x, y, width, height) = (|| {
+                        Some((
+                            i32::try_from(rect.x).ok()?,
+                            i32::try_from(rect.y).ok()?,
+                            i32::try_from(rect.width.get()).ok()?,
+                            i32::try_from(rect.height.get()).ok()?,
+                        ))
+                    })()
+                    .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
+                    self.surface.damage_buffer(x, y, width, height);
+                }
             }
 
-            imp.surface.commit();
+            self.surface.commit();
         }
 
-        let _ = imp.display.event_queue.borrow_mut().flush();
+        let _ = self.display.event_queue.borrow_mut().flush();
 
         Ok(())
+    }
+}
+
+pub struct BufferImpl<'a> {
+    stack: util::BorrowStack<'a, WaylandImpl, [u32]>,
+    age: u8,
+}
+
+impl<'a> BufferImpl<'a> {
+    #[inline]
+    pub fn pixels(&self) -> &[u32] {
+        self.stack.member()
+    }
+
+    #[inline]
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        self.stack.member_mut()
+    }
+
+    pub fn age(&self) -> u8 {
+        self.age
+    }
+
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        self.stack.into_container().present_with_damage(damage)
+    }
+
+    pub fn present(self) -> Result<(), SoftBufferError> {
+        let imp = self.stack.into_container();
+        let (width, height) = imp
+            .size
+            .expect("Must set size of surface before calling `present()`");
+        imp.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            // We know width/height will be non-negative
+            width: width.try_into().unwrap(),
+            height: height.try_into().unwrap(),
+        }])
     }
 }
 

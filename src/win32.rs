@@ -2,7 +2,7 @@
 //!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
-use crate::SoftBufferError;
+use crate::{Rect, SoftBufferError};
 use raw_window_handle::Win32WindowHandle;
 
 use std::io;
@@ -27,6 +27,7 @@ struct Buffer {
     pixels: NonNull<u32>,
     width: NonZeroI32,
     height: NonZeroI32,
+    presented: bool,
 }
 
 impl Drop for Buffer {
@@ -101,6 +102,7 @@ impl Buffer {
             width,
             height,
             pixels,
+            presented: false,
         }
     }
 
@@ -203,6 +205,30 @@ impl Win32Impl {
         Ok(BufferImpl(self))
     }
 
+    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let buffer = self.buffer.as_mut().unwrap();
+        unsafe {
+            for rect in damage.iter().copied() {
+                let (x, y, width, height) = (|| {
+                    Some((
+                        i32::try_from(rect.x).ok()?,
+                        i32::try_from(rect.y).ok()?,
+                        i32::try_from(rect.width.get()).ok()?,
+                        i32::try_from(rect.height.get()).ok()?,
+                    ))
+                })()
+                .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
+                Gdi::BitBlt(self.dc, x, y, width, height, buffer.dc, x, y, Gdi::SRCCOPY);
+            }
+
+            // Validate the window.
+            Gdi::ValidateRect(self.window, ptr::null_mut());
+        }
+        buffer.presented = true;
+
+        Ok(())
+    }
+
     /// Fetch the buffer from the window.
     pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         let buffer = self.buffer.as_ref().unwrap();
@@ -245,26 +271,27 @@ impl<'a> BufferImpl<'a> {
         self.0.buffer.as_mut().unwrap().pixels_mut()
     }
 
+    pub fn age(&self) -> u8 {
+        match self.0.buffer.as_ref() {
+            Some(buffer) if buffer.presented => 1,
+            _ => 0,
+        }
+    }
+
     pub fn present(self) -> Result<(), SoftBufferError> {
         let imp = self.0;
         let buffer = imp.buffer.as_ref().unwrap();
-        unsafe {
-            Gdi::BitBlt(
-                imp.dc,
-                0,
-                0,
-                buffer.width.get(),
-                buffer.height.get(),
-                buffer.dc,
-                0,
-                0,
-                Gdi::SRCCOPY,
-            );
+        imp.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            // We know width/height will be non-negative
+            width: buffer.width.try_into().unwrap(),
+            height: buffer.height.try_into().unwrap(),
+        }])
+    }
 
-            // Validate the window.
-            Gdi::ValidateRect(imp.window, ptr::null_mut());
-        }
-
-        Ok(())
+    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let imp = self.0;
+        imp.present_with_damage(damage)
     }
 }
