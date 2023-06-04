@@ -1,6 +1,14 @@
-# UNRELEASED
+# 0.3.0
 
-* On MacOS, the contents scale is updated when set_buffer() is called, to adapt when the window is on a new screen.
+* On MacOS, the contents scale is updated when set_buffer() is called, to adapt when the window is on a new screen (#68).
+* **Breaking:** Split the `GraphicsContext` type into `Context` and `Surface` (#64).
+* On Web, cache the document in the `Context` type (#66).
+* **Breaking:** Introduce a new "owned buffer" for no-copy presentation (#65).
+* Enable support for multi-threaded WASM (#77).
+* Fix buffer resizing on X11 (#69).
+* Add a set of functions for handling buffer damage (#99).
+* Add a `fetch()` function for getting the window contents (#104).
+* Bump MSRV to 1.64 (#81).
 
 # 0.2.1
 
