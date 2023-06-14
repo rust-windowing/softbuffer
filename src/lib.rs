@@ -378,7 +378,7 @@ impl Surface {
 ///
 /// # Data representation
 ///
-/// The format of the buffer is `BGRX8888`, which is as follows. There is one `u32` in the buffer for each pixel in
+/// The format of the buffer is `BGR0`, which is as follows. There is one `u32` in the buffer for each pixel in
 /// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
 /// etc. (Row-major top to bottom left to right one `u32` per pixel). Within each `u32` the highest
 /// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
