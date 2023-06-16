@@ -14,19 +14,23 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let start = Instant::now();
 
-    let app = winit_app::WinitAppBuilder::with_init(|event_loop| {
-        let window = winit_app::make_window(event_loop, |w| w);
+    let app = winit_app::WinitAppBuilder::with_init(
+        |event_loop| {
+            let window = winit_app::make_window(event_loop, |w| w);
 
-        let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+            let context = softbuffer::Context::new(window.clone()).unwrap();
 
-        let old_size = (0, 0);
-        let frames = pre_render_frames(0, 0);
+            let old_size = (0, 0);
+            let frames = pre_render_frames(0, 0);
 
-        (window, surface, old_size, frames)
-    })
-    .with_event_handler(move |state, event, elwt| {
-        let (window, surface, old_size, frames) = state;
+            (window, context, old_size, frames)
+        },
+        |_elwft, (window, context, _old_size, _frames)| {
+            softbuffer::Surface::new(context, window.clone()).unwrap()
+        },
+    )
+    .with_event_handler(move |state, surface, event, elwt| {
+        let (window, _context, old_size, frames) = state;
 
         elwt.set_control_flow(ControlFlow::Poll);
 
@@ -35,6 +39,11 @@ fn main() {
                 window_id,
                 event: WindowEvent::Resized(size),
             } if window_id == window.id() => {
+                let Some(surface) = surface else {
+                    eprintln!("Resized fired before Resumed or after Suspended");
+                    return;
+                };
+
                 if let (Some(width), Some(height)) =
                     (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
                 {
@@ -45,6 +54,11 @@ fn main() {
                 window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
+                let Some(surface) = surface else {
+                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    return;
+                };
+
                 let size = window.inner_size();
                 if let (Some(width), Some(height)) =
                     (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
