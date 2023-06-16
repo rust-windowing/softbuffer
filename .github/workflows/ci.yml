@@ -41,7 +41,7 @@ jobs:
           - { target: i686-pc-windows-gnu,      os: windows-latest, host: -i686-pc-windows-gnu }
           - { target: i686-unknown-linux-gnu,   os: ubuntu-latest,   }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest,   }
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: x11 }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "x11,x11-dlopen" }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "wayland,wayland-dlopen" }
           - { target: x86_64-unknown-redox,     os: ubuntu-latest,   }
           - { target: x86_64-unknown-freebsd,   os: ubuntu-latest,   }
