@@ -109,6 +109,7 @@ where
         window_id: WindowId,
         event: WindowEvent,
     ) {
+        // TODO: This panics on Android if events are inevitably delivered outside a suspend()-resume() pair...
         let state = self.state.as_mut().unwrap();
         (self.event)(state, Event::WindowEvent { window_id, event }, event_loop);
     }

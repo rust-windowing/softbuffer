@@ -15,6 +15,7 @@ fn main() {
         let context = softbuffer::Context::new(window.clone()).unwrap();
         let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
+        // let mut state = None;
         (window, surface)
     })
     .with_event_handler(|state, event, elwt| {
@@ -26,6 +27,10 @@ fn main() {
                 window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
+                // let Some((_, surface)) = state.as_mut() else {
+                //     eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                //     return;
+                // };
                 if let (Some(width), Some(height)) = {
                     let size = window.inner_size();
                     (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
@@ -46,6 +51,14 @@ fn main() {
                     buffer.present().unwrap();
                 }
             }
+            // Event::Resumed => {
+            //     let context = softbuffer::Context::new(window.clone()).unwrap();
+            //     let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+            //     state = Some((context, surface));
+            // }
+            // Event::Suspended => {
+            //     state = None;
+            // }
             Event::WindowEvent {
                 event:
                     WindowEvent::CloseRequested
