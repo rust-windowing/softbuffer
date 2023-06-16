@@ -46,7 +46,7 @@ pub(crate) fn run(event_loop: EventLoop<()>) {
                             let red = x % 255;
                             let green = y % 255;
                             let blue = (x * y) % 255;
-                            let index = y as usize * width.get() as usize + x as usize;
+                            let index = y as usize * buffer.stride() as usize + x as usize;
                             buffer[index] = blue | (green << 8) | (red << 16);
                         }
                     }

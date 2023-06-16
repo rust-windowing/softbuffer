@@ -38,6 +38,7 @@ pub(crate) trait BufferInterface {
     fn pixels(&self) -> &[u32];
     fn pixels_mut(&mut self) -> &mut [u32];
     fn age(&self) -> u8;
+    fn stride(&self) -> u32;
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError>;
     fn present(self) -> Result<(), SoftBufferError>;
 }

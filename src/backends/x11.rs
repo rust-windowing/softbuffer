@@ -405,6 +405,16 @@ impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterf
         }
     }
 
+    #[inline]
+    pub fn stride(&self) -> u32 {
+        let (surface_width, _surface_height) = self
+            .0
+            .size
+            .expect("Must set size of surface before calling `present_with_damage()`");
+
+        surface_width.get() as u32
+    }
+
     /// Push the buffer to the window.
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;

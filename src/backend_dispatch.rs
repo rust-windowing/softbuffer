@@ -153,6 +153,16 @@ macro_rules! make_dispatch {
                 }
             }
 
+            #[inline]
+             fn stride(&self) -> u32 {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.stride(),
+                    )*
+                }
+            }
+
             fn present(self) -> Result<(), SoftBufferError> {
                 match self {
                     $(
