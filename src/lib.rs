@@ -8,6 +8,8 @@
 extern crate objc;
 extern crate core;
 
+#[cfg(target_os = "android")]
+mod android;
 #[cfg(target_os = "macos")]
 mod cg;
 #[cfg(kms_platform)]
@@ -176,6 +178,8 @@ macro_rules! make_dispatch {
 
 make_dispatch! {
     <D, W> =>
+    #[cfg(target_os = "android")]
+    Android(D, android::AndroidImpl<D, W>, android::BufferImpl<'a, D, W>),
     #[cfg(x11_platform)]
     X11(Rc<x11::X11DisplayImpl<D>>, x11::X11Impl<D, W>, x11::BufferImpl<'a, D, W>),
     #[cfg(wayland_platform)]
@@ -211,6 +215,8 @@ impl<D: HasDisplayHandle> Context<D> {
             }};
         }
 
+        #[cfg(target_os = "android")]
+        try_init!(Android, display => Ok(display));
         #[cfg(x11_platform)]
         try_init!(X11, display => x11::X11DisplayImpl::new(display).map(Rc::new));
         #[cfg(wayland_platform)]
@@ -277,6 +283,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         }
 
         let imple = match &context.context_impl {
+            #[cfg(target_os = "android")]
+            ContextDispatch::Android(_android_display_handle) => {
+                SurfaceDispatch::Android(leap!(android::AndroidImpl::new(window)))
+            }
             #[cfg(x11_platform)]
             ContextDispatch::X11(xcb_display_handle) => {
                 SurfaceDispatch::X11(leap!(x11::X11Impl::new(window, xcb_display_handle.clone())))

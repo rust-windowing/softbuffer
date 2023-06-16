@@ -3,10 +3,15 @@ use std::rc::Rc;
 use winit::event::{Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
+
 use winit::window::WindowBuilder;
 
+#[cfg(not(target_os = "android"))]
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
+    run(EventLoop::new().unwrap())
+}
+
+pub(crate) fn run(event_loop: EventLoop<()>) {
     let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
     #[cfg(target_arch = "wasm32")]
