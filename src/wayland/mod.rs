@@ -168,6 +168,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
                 Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
             })?,
             age,
+            width: width.get() as u32,
         })
     }
 
@@ -238,6 +239,7 @@ impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
 pub struct BufferImpl<'a, D: ?Sized, W> {
     stack: util::BorrowStack<'a, WaylandImpl<D, W>, [u32]>,
     age: u8,
+    width: u32,
 }
 
 impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferImpl<'a, D, W> {
@@ -253,6 +255,11 @@ impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferImpl<'a, D, W> 
 
     pub fn age(&self) -> u8 {
         self.age
+    }
+
+    #[inline]
+    pub fn stride(&self) -> u32 {
+        self.width
     }
 
     pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {

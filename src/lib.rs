@@ -153,6 +153,15 @@ macro_rules! make_dispatch {
                 }
             }
 
+            pub fn stride(&self) -> u32 {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.stride(),
+                    )*
+                }
+            }
+
             pub fn present(self) -> Result<(), SoftBufferError> {
                 match self {
                     $(
@@ -411,6 +420,11 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
     /// This can be used to update only a portion of the buffer.
     pub fn age(&self) -> u8 {
         self.buffer_impl.age()
+    }
+
+    /// Stride in pixels
+    pub fn stride(&self) -> u32 {
+        self.buffer_impl.stride()
     }
 
     /// Presents buffer to the window.

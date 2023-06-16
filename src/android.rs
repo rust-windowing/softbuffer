@@ -130,6 +130,12 @@ impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferImpl<'a, D, W> 
         }
     }
 
+    /// The number of _pixels_ that a line in the buffer takes in memory.
+    #[inline]
+    pub fn stride(&self) -> u32 {
+        self.0.stride() as u32
+    }
+
     pub fn age(&self) -> u8 {
         todo!()
     }
