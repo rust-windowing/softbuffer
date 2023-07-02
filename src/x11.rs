@@ -17,9 +17,7 @@ use std::{
     slice,
 };
 
-use x11_dl::xlib::Display;
-use x11_dl::xlib_xcb::Xlib_xcb;
-
+use as_raw_xcb_connection::AsRawXcbConnection;
 use x11rb::connection::{Connection, SequenceNumber};
 use x11rb::cookie::Cookie;
 use x11rb::errors::{ConnectionError, ReplyError, ReplyOrIdError};
@@ -39,9 +37,6 @@ impl X11DisplayImpl {
     pub(crate) unsafe fn from_xlib(
         display_handle: XlibDisplayHandle,
     ) -> Result<X11DisplayImpl, SoftBufferError> {
-        // Try to open the XlibXCB shared library.
-        let lib_xcb = Xlib_xcb::open().swbuf_err("Failed to open XlibXCB shared library")?;
-
         // Validate the display handle to ensure we can use it.
         if display_handle.display.is_null() {
             return Err(SoftBufferError::IncompleteDisplayHandle);
@@ -49,12 +44,14 @@ impl X11DisplayImpl {
 
         // Get the underlying XCB connection.
         // SAFETY: The user has asserted that the display handle is valid.
-        let connection =
-            unsafe { (lib_xcb.XGetXCBConnection)(display_handle.display as *mut Display) };
+        let connection = unsafe {
+            let display = tiny_xlib::Display::from_ptr(display_handle.display);
+            display.as_raw_xcb_connection()
+        };
 
         // Construct the equivalent XCB display and window handles.
         let mut xcb_display_handle = XcbDisplayHandle::empty();
-        xcb_display_handle.connection = connection;
+        xcb_display_handle.connection = connection.cast();
         xcb_display_handle.screen = display_handle.screen;
 
         // SAFETY: If the user passed in valid Xlib handles, then these are valid XCB handles.
