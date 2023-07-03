@@ -49,9 +49,12 @@ fn create_memfile() -> File {
     };
     use std::iter;
 
+    // Use a cached RNG to avoid hammering the thread local.
+    let mut rng = fastrand::Rng::new();
+
     for _ in 0..=4 {
         let mut name = String::from("softbuffer-");
-        name.extend(iter::repeat_with(fastrand::alphanumeric).take(7));
+        name.extend(iter::repeat_with(|| rng.alphanumeric()).take(7));
         name.push('\0');
 
         let name = unsafe { CStr::from_bytes_with_nul_unchecked(name.as_bytes()) };
