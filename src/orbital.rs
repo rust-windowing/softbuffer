@@ -1,5 +1,8 @@
-use raw_window_handle::OrbitalWindowHandle;
-use std::{cmp, num::NonZeroU32, slice, str};
+use crate::error::InitError;
+use raw_window_handle::{
+    HasDisplayHandle, HasRawWindowHandle, HasWindowHandle, OrbitalWindowHandle, RawWindowHandle,
+};
+use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::{Rect, SoftBufferError};
 
@@ -53,20 +56,30 @@ impl Drop for OrbitalMap {
     }
 }
 
-pub struct OrbitalImpl {
+pub struct OrbitalImpl<D, W> {
     handle: OrbitalWindowHandle,
     width: u32,
     height: u32,
     presented: bool,
+    _window_source: W,
+    _display: PhantomData<D>,
 }
 
-impl OrbitalImpl {
-    pub fn new(handle: OrbitalWindowHandle) -> Result<Self, SoftBufferError> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
+    pub(crate) fn new(window: W) -> Result<Self, InitError<W>> {
+        let raw = window.window_handle()?.raw_window_handle()?;
+        let handle = match raw {
+            RawWindowHandle::Orbital(handle) => handle,
+            _ => return Err(InitError::Unsupported(window)),
+        };
+
         Ok(Self {
             handle,
             width: 0,
             height: 0,
             presented: false,
+            _window_source: window,
+            _display: PhantomData,
         })
     }
 
@@ -105,7 +118,7 @@ impl OrbitalImpl {
         (window_width, window_height)
     }
 
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         let (window_width, window_height) = self.window_size();
         let pixels = if self.width as usize == window_width && self.height as usize == window_height
         {
@@ -162,12 +175,12 @@ enum Pixels {
     Buffer(Vec<u32>),
 }
 
-pub struct BufferImpl<'a> {
-    imp: &'a mut OrbitalImpl,
+pub struct BufferImpl<'a, D, W> {
+    imp: &'a mut OrbitalImpl<D, W>,
     pixels: Pixels,
 }
 
-impl<'a> BufferImpl<'a> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
         match &self.pixels {

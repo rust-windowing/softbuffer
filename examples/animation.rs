@@ -3,13 +3,14 @@ use instant::Instant;
 use rayon::prelude::*;
 use std::f64::consts::PI;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
 fn main() {
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -21,12 +22,12 @@ fn main() {
             .unwrap()
             .body()
             .unwrap()
-            .append_child(&window.canvas())
+            .append_child(&window.canvas().unwrap())
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     let mut old_size = (0, 0);
     let mut frames = pre_render_frames(0, 0);
@@ -37,28 +38,24 @@ fn main() {
 
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
-                let elapsed = start.elapsed().as_secs_f64() % 1.0;
-                let (width, height) = {
+                if let (Some(width), Some(height)) = {
                     let size = window.inner_size();
-                    (size.width, size.height)
-                };
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                } {
+                    let elapsed = start.elapsed().as_secs_f64() % 1.0;
 
-                if (width, height) != old_size {
-                    old_size = (width, height);
-                    frames = pre_render_frames(width as usize, height as usize);
-                };
+                    if (width.get(), height.get()) != old_size {
+                        old_size = (width.get(), height.get());
+                        frames = pre_render_frames(width.get() as usize, height.get() as usize);
+                    };
 
-                let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
+                    let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
 
-                surface
-                    .resize(
-                        NonZeroU32::new(width).unwrap(),
-                        NonZeroU32::new(height).unwrap(),
-                    )
-                    .unwrap();
-                let mut buffer = surface.buffer_mut().unwrap();
-                buffer.copy_from_slice(frame);
-                buffer.present().unwrap();
+                    surface.resize(width, height).unwrap();
+                    let mut buffer = surface.buffer_mut().unwrap();
+                    buffer.copy_from_slice(frame);
+                    buffer.present().unwrap();
+                }
             }
             Event::MainEventsCleared => {
                 window.request_redraw();

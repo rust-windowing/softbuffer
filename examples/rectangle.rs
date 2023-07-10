@@ -1,6 +1,8 @@
 use std::num::NonZeroU32;
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use std::rc::Rc;
+use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::keyboard::KeyCode;
 use winit::window::WindowBuilder;
 
 fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
@@ -22,10 +24,12 @@ fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
 fn main() {
     let event_loop = EventLoop::new();
 
-    let window = WindowBuilder::new()
-        .with_title("Press space to show/hide a rectangle")
-        .build(&event_loop)
-        .unwrap();
+    let window = Rc::new(
+        WindowBuilder::new()
+            .with_title("Press space to show/hide a rectangle")
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -37,12 +41,12 @@ fn main() {
             .unwrap()
             .body()
             .unwrap()
-            .append_child(&window.canvas())
+            .append_child(&window.canvas().unwrap())
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     let mut flag = false;
 
@@ -52,23 +56,23 @@ fn main() {
         match event {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 // Grab the window's client area dimensions
-                let (width, height) = {
+                if let (Some(width), Some(height)) = {
                     let size = window.inner_size();
-                    (size.width, size.height)
-                };
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                } {
+                    // Resize surface if needed
+                    surface.resize(width, height).unwrap();
 
-                // Resize surface if needed
-                surface
-                    .resize(
-                        NonZeroU32::new(width).unwrap(),
-                        NonZeroU32::new(height).unwrap(),
-                    )
-                    .unwrap();
-
-                // Draw something in the window
-                let mut buffer = surface.buffer_mut().unwrap();
-                redraw(&mut buffer, width as usize, height as usize, flag);
-                buffer.present().unwrap();
+                    // Draw something in the window
+                    let mut buffer = surface.buffer_mut().unwrap();
+                    redraw(
+                        &mut buffer,
+                        width.get() as usize,
+                        height.get() as usize,
+                        flag,
+                    );
+                    buffer.present().unwrap();
+                }
             }
 
             Event::WindowEvent {
@@ -81,10 +85,10 @@ fn main() {
             Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
+                        event:
+                            KeyEvent {
                                 state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Space),
+                                physical_key: KeyCode::Space,
                                 ..
                             },
                         ..

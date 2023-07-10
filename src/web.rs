@@ -7,34 +7,50 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
 use js_sys::Object;
-use raw_window_handle::WebWindowHandle;
+use raw_window_handle::{
+    HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawDisplayHandle,
+    RawWindowHandle,
+};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::ImageData;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
-use crate::error::SwResultExt;
-use crate::{util, Rect, SoftBufferError};
+use crate::error::{InitError, SwResultExt};
+use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
+use std::convert::TryInto;
+use std::marker::PhantomData;
+use std::num::NonZeroU32;
 
 /// Display implementation for the web platform.
 ///
 /// This just caches the document to prevent having to query it every time.
-pub struct WebDisplayImpl {
+pub struct WebDisplayImpl<D> {
     document: web_sys::Document,
+    _display: D,
 }
 
-impl WebDisplayImpl {
-    pub(super) fn new() -> Result<Self, SoftBufferError> {
+impl<D: HasDisplayHandle> WebDisplayImpl<D> {
+    pub(super) fn new(display: D) -> Result<Self, InitError<D>> {
+        let raw = display.display_handle()?.raw_display_handle()?;
+        match raw {
+            RawDisplayHandle::Web(..) => {}
+            _ => return Err(InitError::Unsupported(display)),
+        }
+
         let document = web_sys::window()
             .swbuf_err("`Window` is not present in this runtime")?
             .document()
             .swbuf_err("`Document` is not present in this runtime")?;
 
-        Ok(Self { document })
+        Ok(Self {
+            document,
+            _display: display,
+        })
     }
 }
 
-pub struct WebImpl {
+pub struct WebImpl<D, W> {
     /// The handle and context to the canvas that we're drawing to.
     canvas: Canvas,
 
@@ -46,6 +62,12 @@ pub struct WebImpl {
 
     /// The current canvas width/height.
     size: Option<(NonZeroU32, NonZeroU32)>,
+
+    /// The underlying window handle.
+    _window: W,
+
+    /// The underlying display handle.
+    _display: PhantomData<D>,
 }
 
 /// Holding canvas and context for [`HtmlCanvasElement`] or [`OffscreenCanvas`],
@@ -61,8 +83,13 @@ enum Canvas {
     },
 }
 
-impl WebImpl {
-    pub fn new(display: &WebDisplayImpl, handle: WebWindowHandle) -> Result<Self, SoftBufferError> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
+    pub(crate) fn new(display: &WebDisplayImpl<D>, window: W) -> Result<Self, InitError<W>> {
+        let raw = window.window_handle()?.raw_window_handle()?;
+        let handle = match raw {
+            RawWindowHandle::Web(handle) => handle,
+            _ => return Err(InitError::Unsupported(window)),
+        };
         let canvas: HtmlCanvasElement = display
             .document
             .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
@@ -72,10 +99,10 @@ impl WebImpl {
             // We already made sure this was a canvas in `querySelector`.
             .unchecked_into();
 
-        Self::from_canvas(canvas)
+        Self::from_canvas(canvas, window).map_err(InitError::Failure)
     }
 
-    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
+    fn from_canvas(canvas: HtmlCanvasElement, window: W) -> Result<Self, SoftBufferError> {
         let ctx = Self::resolve_ctx(canvas.get_context("2d").ok(), "CanvasRenderingContext2d")?;
 
         Ok(Self {
@@ -83,10 +110,12 @@ impl WebImpl {
             buffer: Vec::new(),
             buffer_presented: false,
             size: None,
+            _window: window,
+            _display: PhantomData,
         })
     }
 
-    fn from_offscreen_canvas(canvas: OffscreenCanvas) -> Result<Self, SoftBufferError> {
+    fn from_offscreen_canvas(canvas: OffscreenCanvas, window: W) -> Result<Self, SoftBufferError> {
         let ctx = Self::resolve_ctx(
             canvas.get_context("2d").ok(),
             "OffscreenCanvasRenderingContext2d",
@@ -97,6 +126,8 @@ impl WebImpl {
             buffer: Vec::new(),
             buffer_presented: false,
             size: None,
+            _window: window,
+            _display: PhantomData,
         })
     }
 
@@ -134,7 +165,7 @@ impl WebImpl {
     }
 
     /// Get a pointer to the mutable buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         Ok(BufferImpl { imp: self })
     }
 
@@ -258,9 +289,9 @@ pub trait SurfaceExtWeb: Sized {
     fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError>;
 }
 
-impl SurfaceExtWeb for crate::Surface {
+impl SurfaceExtWeb for crate::Surface<NoDisplayHandle, NoWindowHandle> {
     fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
-        let imple = crate::SurfaceDispatch::Web(WebImpl::from_canvas(canvas)?);
+        let imple = crate::SurfaceDispatch::Web(WebImpl::from_canvas(canvas, NoWindowHandle(()))?);
 
         Ok(Self {
             surface_impl: Box::new(imple),
@@ -269,7 +300,10 @@ impl SurfaceExtWeb for crate::Surface {
     }
 
     fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError> {
-        let imple = crate::SurfaceDispatch::Web(WebImpl::from_offscreen_canvas(offscreen_canvas)?);
+        let imple = crate::SurfaceDispatch::Web(WebImpl::from_offscreen_canvas(
+            offscreen_canvas,
+            NoWindowHandle(()),
+        )?);
 
         Ok(Self {
             surface_impl: Box::new(imple),
@@ -326,11 +360,11 @@ impl Canvas {
     }
 }
 
-pub struct BufferImpl<'a> {
-    imp: &'a mut WebImpl,
+pub struct BufferImpl<'a, D, W> {
+    imp: &'a mut WebImpl<D, W>,
 }
 
-impl<'a> BufferImpl<'a> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
     pub fn pixels(&self) -> &[u32] {
         &self.imp.buffer
     }

@@ -26,7 +26,7 @@ fn buffer_mut(c: &mut Criterion) {
             if let winit::event::Event::RedrawEventsCleared = ev {
                 control_flow.set_exit();
 
-                let mut surface = unsafe {
+                let mut surface = {
                     let context = Context::new(elwt).unwrap();
                     Surface::new(&context, &window).unwrap()
                 };

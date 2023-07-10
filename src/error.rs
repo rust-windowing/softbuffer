@@ -1,4 +1,4 @@
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use raw_window_handle::{HandleError, RawDisplayHandle, RawWindowHandle};
 use std::error::Error;
 use std::fmt;
 use std::num::NonZeroU32;
@@ -7,6 +7,11 @@ use std::num::NonZeroU32;
 #[non_exhaustive]
 /// A sum type of all of the errors that can occur during the operation of this crate.
 pub enum SoftBufferError {
+    /// A [`raw-window-handle`] error occurred.
+    ///
+    /// [`raw-window-handle`]: raw_window_handle
+    RawWindowHandle(HandleError),
+
     /// The [`RawDisplayHandle`] passed into [`Context::new`] is not supported by this crate.
     ///
     /// [`RawDisplayHandle`]: raw_window_handle::RawDisplayHandle
@@ -102,6 +107,7 @@ pub enum SoftBufferError {
 impl fmt::Display for SoftBufferError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::RawWindowHandle(err) => fmt::Display::fmt(err, f),
             Self::UnsupportedDisplayPlatform {
                 human_readable_display_platform_name,
                 display_handle,
@@ -137,7 +143,42 @@ impl fmt::Display for SoftBufferError {
     }
 }
 
-impl std::error::Error for SoftBufferError {}
+impl std::error::Error for SoftBufferError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::RawWindowHandle(err) => Some(err),
+            Self::PlatformError(_, err) => err.as_deref(),
+            _ => None,
+        }
+    }
+}
+
+impl From<HandleError> for SoftBufferError {
+    fn from(err: HandleError) -> Self {
+        Self::RawWindowHandle(err)
+    }
+}
+
+/// Simple unit error type used to bubble up rejected platforms.
+pub(crate) enum InitError<D> {
+    /// Failed to initialize.
+    Failure(SoftBufferError),
+
+    /// Cannot initialize this handle on this platform.
+    Unsupported(D),
+}
+
+impl<T> From<SoftBufferError> for InitError<T> {
+    fn from(err: SoftBufferError) -> Self {
+        Self::Failure(err)
+    }
+}
+
+impl<T> From<HandleError> for InitError<T> {
+    fn from(err: HandleError) -> Self {
+        Self::Failure(err.into())
+    }
+}
 
 /// Convenient wrapper to cast errors into SoftBufferError.
 pub(crate) trait SwResultExt<T> {

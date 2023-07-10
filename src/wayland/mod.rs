@@ -1,5 +1,11 @@
-use crate::{error::SwResultExt, util, Rect, SoftBufferError};
-use raw_window_handle::{WaylandDisplayHandle, WaylandWindowHandle};
+use crate::{
+    error::{InitError, SwResultExt},
+    util, Rect, SoftBufferError,
+};
+use raw_window_handle::{
+    HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawDisplayHandle,
+    RawWindowHandle,
+};
 use std::{
     cell::RefCell,
     num::{NonZeroI32, NonZeroU32},
@@ -17,17 +23,31 @@ use buffer::WaylandBuffer;
 
 struct State;
 
-pub struct WaylandDisplayImpl {
-    conn: Connection,
+pub struct WaylandDisplayImpl<D: ?Sized> {
+    conn: Option<Connection>,
     event_queue: RefCell<EventQueue<State>>,
     qh: QueueHandle<State>,
     shm: wl_shm::WlShm,
+
+    /// The object that owns the display handle.
+    ///
+    /// This has to be dropped *after* the `conn` field, because the `conn` field implicitly borrows
+    /// this.
+    _display: D,
 }
 
-impl WaylandDisplayImpl {
-    pub unsafe fn new(display_handle: WaylandDisplayHandle) -> Result<Self, SoftBufferError> {
-        // SAFETY: Ensured by user
-        let backend = unsafe { Backend::from_foreign_display(display_handle.display as *mut _) };
+impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
+    pub(crate) fn new(display: D) -> Result<Self, InitError<D>>
+    where
+        D: Sized,
+    {
+        let raw = display.display_handle()?.raw_display_handle()?;
+        let wayland_handle = match raw {
+            RawDisplayHandle::Wayland(w) => w.display,
+            _ => return Err(InitError::Unsupported(display)),
+        };
+
+        let backend = unsafe { Backend::from_foreign_display(wayland_handle.cast()) };
         let conn = Connection::from_backend(backend);
         let (globals, event_queue) =
             registry_queue_init(&conn).swbuf_err("Failed to make round trip to server")?;
@@ -36,41 +56,60 @@ impl WaylandDisplayImpl {
             .bind(&qh, 1..=1, ())
             .swbuf_err("Failed to instantiate Wayland Shm")?;
         Ok(Self {
-            conn,
+            conn: Some(conn),
             event_queue: RefCell::new(event_queue),
             qh,
             shm,
+            _display: display,
         })
+    }
+
+    fn conn(&self) -> &Connection {
+        self.conn.as_ref().unwrap()
     }
 }
 
-pub struct WaylandImpl {
-    display: Rc<WaylandDisplayImpl>,
-    surface: wl_surface::WlSurface,
-    buffers: Option<(WaylandBuffer, WaylandBuffer)>,
-    size: Option<(NonZeroI32, NonZeroI32)>,
+impl<D: ?Sized> Drop for WaylandDisplayImpl<D> {
+    fn drop(&mut self) {
+        // Make sure the connection is dropped first.
+        self.conn = None;
+    }
 }
 
-impl WaylandImpl {
-    pub unsafe fn new(
-        window_handle: WaylandWindowHandle,
-        display: Rc<WaylandDisplayImpl>,
-    ) -> Result<Self, SoftBufferError> {
-        // SAFETY: Ensured by user
+pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
+    display: Rc<WaylandDisplayImpl<D>>,
+    surface: Option<wl_surface::WlSurface>,
+    buffers: Option<(WaylandBuffer, WaylandBuffer)>,
+    size: Option<(NonZeroI32, NonZeroI32)>,
+
+    /// The pointer to the window object.
+    ///
+    /// This has to be dropped *after* the `surface` field, because the `surface` field implicitly
+    /// borrows this.
+    _window: W,
+}
+
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
+    pub(crate) fn new(window: W, display: Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+        // Get the raw Wayland window.
+        let raw = window.window_handle()?.raw_window_handle()?;
+        let wayland_handle = match raw {
+            RawWindowHandle::Wayland(w) => w.surface,
+            _ => return Err(InitError::Unsupported(window)),
+        };
+
         let surface_id = unsafe {
-            ObjectId::from_ptr(
-                wl_surface::WlSurface::interface(),
-                window_handle.surface as _,
-            )
+            ObjectId::from_ptr(wl_surface::WlSurface::interface(), wayland_handle.cast())
         }
         .swbuf_err("Failed to create proxy for surface ID.")?;
-        let surface = wl_surface::WlSurface::from_id(&display.conn, surface_id)
+        let surface = wl_surface::WlSurface::from_id(display.conn(), surface_id)
             .swbuf_err("Failed to create proxy for surface ID.")?;
         Ok(Self {
             display,
-            surface,
+            surface: Some(surface),
             buffers: Default::default(),
             size: None,
+            _window: window,
         })
     }
 
@@ -86,7 +125,7 @@ impl WaylandImpl {
         Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `buffer_mut()`");
@@ -155,13 +194,13 @@ impl WaylandImpl {
             // Swap front and back buffer
             std::mem::swap(front, back);
 
-            front.attach(&self.surface);
+            front.attach(self.surface.as_ref().unwrap());
 
             // Like Mesa's EGL/WSI implementation, we damage the whole buffer with `i32::MAX` if
             // the compositor doesn't support `damage_buffer`.
             // https://bugs.freedesktop.org/show_bug.cgi?id=78190
-            if self.surface.version() < 4 {
-                self.surface.damage(0, 0, i32::MAX, i32::MAX);
+            if self.surface().version() < 4 {
+                self.surface().damage(0, 0, i32::MAX, i32::MAX);
             } else {
                 for rect in damage {
                     // Introduced in version 4, it is an error to use this request in version 3 or lower.
@@ -174,25 +213,36 @@ impl WaylandImpl {
                         ))
                     })()
                     .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
-                    self.surface.damage_buffer(x, y, width, height);
+                    self.surface().damage_buffer(x, y, width, height);
                 }
             }
 
-            self.surface.commit();
+            self.surface().commit();
         }
 
         let _ = self.display.event_queue.borrow_mut().flush();
 
         Ok(())
     }
+
+    fn surface(&self) -> &wl_surface::WlSurface {
+        self.surface.as_ref().unwrap()
+    }
 }
 
-pub struct BufferImpl<'a> {
-    stack: util::BorrowStack<'a, WaylandImpl, [u32]>,
+impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
+    fn drop(&mut self) {
+        // Make sure the surface is dropped first.
+        self.surface = None;
+    }
+}
+
+pub struct BufferImpl<'a, D: ?Sized, W> {
+    stack: util::BorrowStack<'a, WaylandImpl<D, W>, [u32]>,
     age: u8,
 }
 
-impl<'a> BufferImpl<'a> {
+impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferImpl<'a, D, W> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
         self.stack.member()

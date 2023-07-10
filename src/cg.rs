@@ -1,3 +1,4 @@
+use crate::error::InitError;
 use crate::{Rect, SoftBufferError};
 use core_graphics::base::{
     kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
@@ -5,13 +6,14 @@ use core_graphics::base::{
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::data_provider::CGDataProvider;
 use core_graphics::image::CGImage;
-use raw_window_handle::AppKitWindowHandle;
+use raw_window_handle::{HasDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawWindowHandle};
 
 use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable, NSWindow};
 use cocoa::base::{id, nil};
 use cocoa::quartzcore::{transaction, CALayer, ContentsGravity};
 use foreign_types::ForeignType;
 
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -23,17 +25,24 @@ impl AsRef<[u8]> for Buffer {
     }
 }
 
-pub struct CGImpl {
+pub struct CGImpl<D, W> {
     layer: CALayer,
     window: id,
     color_space: CGColorSpace,
     size: Option<(NonZeroU32, NonZeroU32)>,
+    _window_source: W,
+    _display: PhantomData<D>,
 }
 
-impl CGImpl {
-    pub unsafe fn new(handle: AppKitWindowHandle) -> Result<Self, SoftBufferError> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
+    pub(crate) fn new(window_src: W) -> Result<Self, InitError<W>> {
+        let raw = window_src.window_handle()?.raw_window_handle()?;
+        let handle = match raw {
+            RawWindowHandle::AppKit(handle) => handle,
+            _ => return Err(InitError::Unsupported(window_src)),
+        };
         let window = handle.ns_window as id;
-        let window: id = msg_send![window, retain];
+        let window: id = unsafe { msg_send![window, retain] };
         let view = handle.ns_view as id;
         let layer = CALayer::new();
         unsafe {
@@ -52,6 +61,8 @@ impl CGImpl {
             window,
             color_space,
             size: None,
+            _display: PhantomData,
+            _window_source: window_src,
         })
     }
 
@@ -60,10 +71,11 @@ impl CGImpl {
         Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `buffer_mut()`");
+
         Ok(BufferImpl {
             buffer: vec![0; width.get() as usize * height.get() as usize],
             imp: self,
@@ -76,12 +88,12 @@ impl CGImpl {
     }
 }
 
-pub struct BufferImpl<'a> {
-    imp: &'a mut CGImpl,
+pub struct BufferImpl<'a, D, W> {
+    imp: &'a mut CGImpl<D, W>,
     buffer: Vec<u32>,
 }
 
-impl<'a> BufferImpl<'a> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
         &self.buffer
@@ -135,7 +147,7 @@ impl<'a> BufferImpl<'a> {
     }
 }
 
-impl Drop for CGImpl {
+impl<D, W> Drop for CGImpl<D, W> {
     fn drop(&mut self) {
         unsafe {
             let _: () = msg_send![self.window, release];

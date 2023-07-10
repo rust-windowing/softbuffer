@@ -13,13 +13,13 @@ use crate::SoftBufferError;
 ///
 /// This should be consistent with stacked borrow rules, and miri seems to
 /// accept it at least in simple cases.
-pub struct BorrowStack<'a, T: 'static + ?Sized, U: 'static + ?Sized> {
+pub struct BorrowStack<'a, T: 'a + ?Sized, U: 'a + ?Sized> {
     container: *mut T,
     member: *mut U,
     _phantom: std::marker::PhantomData<&'a mut T>,
 }
 
-impl<'a, T: 'static + ?Sized, U: 'static + ?Sized> BorrowStack<'a, T, U> {
+impl<'a, T: 'a + ?Sized, U: 'a + ?Sized> BorrowStack<'a, T, U> {
     pub fn new<F>(container: &'a mut T, f: F) -> Result<Self, SoftBufferError>
     where
         F: for<'b> FnOnce(&'b mut T) -> Result<&'b mut U, SoftBufferError>,

@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -8,7 +9,7 @@ const BUFFER_HEIGHT: usize = 128;
 
 fn main() {
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -20,12 +21,12 @@ fn main() {
             .unwrap()
             .body()
             .unwrap()
-            .append_child(&window.canvas())
+            .append_child(&window.canvas().unwrap())
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;

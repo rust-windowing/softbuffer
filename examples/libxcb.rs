@@ -2,7 +2,10 @@
 
 #[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
 mod example {
-    use raw_window_handle::{RawDisplayHandle, RawWindowHandle, XcbDisplayHandle, XcbWindowHandle};
+    use raw_window_handle::{
+        DisplayHandle, RawDisplayHandle, RawWindowHandle, WindowHandle, XcbDisplayHandle,
+        XcbWindowHandle,
+    };
     use std::num::NonZeroU32;
     use x11rb::{
         connection::Connection,
@@ -56,12 +59,12 @@ mod example {
 
         // Create a new softbuffer context.
         // SAFETY: The display and window handles outlive the context.
-        let context =
-            unsafe { softbuffer::Context::from_raw(RawDisplayHandle::Xcb(display_handle)) }
-                .unwrap();
-        let mut surface =
-            unsafe { softbuffer::Surface::from_raw(&context, RawWindowHandle::Xcb(window_handle)) }
-                .unwrap();
+        let display_handle =
+            unsafe { DisplayHandle::borrow_raw(RawDisplayHandle::Xcb(display_handle)) };
+        let window_handle =
+            unsafe { WindowHandle::borrow_raw(RawWindowHandle::Xcb(window_handle)) };
+        let context = softbuffer::Context::new(display_handle).unwrap();
+        let mut surface = softbuffer::Surface::new(&context, window_handle).unwrap();
 
         // Register an atom for closing the window.
         let wm_protocols_atom = conn

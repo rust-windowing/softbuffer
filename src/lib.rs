@@ -32,10 +32,12 @@ use std::ops;
 #[cfg(any(wayland_platform, x11_platform, kms_platform))]
 use std::rc::Rc;
 
+use error::InitError;
 pub use error::SoftBufferError;
 
 use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+    HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawDisplayHandle,
+    RawWindowHandle,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -43,28 +45,31 @@ pub use self::web::SurfaceExtWeb;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
-pub struct Context {
-    /// The inner static dispatch object.
-    context_impl: ContextDispatch,
+pub struct Context<D> {
     _marker: PhantomData<*mut ()>,
+
+    /// The inner static dispatch object.
+    context_impl: ContextDispatch<D>,
 }
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
 macro_rules! make_dispatch {
     (
+        <$dgen: ident, $wgen: ident> =>
         $(
             $(#[$attr:meta])*
-            $name: ident ($context_inner: ty, $surface_inner: ty, $buffer_inner: ty),
+            $name: ident
+            ($context_inner: ty, $surface_inner: ty, $buffer_inner: ty),
         )*
     ) => {
-        enum ContextDispatch {
+        enum ContextDispatch<$dgen> {
             $(
                 $(#[$attr])*
                 $name($context_inner),
             )*
         }
 
-        impl ContextDispatch {
+        impl<D: HasDisplayHandle> ContextDispatch<D> {
             fn variant_name(&self) -> &'static str {
                 match self {
                     $(
@@ -76,14 +81,14 @@ macro_rules! make_dispatch {
         }
 
         #[allow(clippy::large_enum_variant)] // it's boxed anyways
-        enum SurfaceDispatch {
+        enum SurfaceDispatch<$dgen, $wgen> {
             $(
                 $(#[$attr])*
                 $name($surface_inner),
             )*
         }
 
-        impl SurfaceDispatch {
+        impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceDispatch<D, W> {
             pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
                 match self {
                     $(
@@ -93,7 +98,7 @@ macro_rules! make_dispatch {
                 }
             }
 
-            pub fn buffer_mut(&mut self) -> Result<BufferDispatch, SoftBufferError> {
+            pub fn buffer_mut(&mut self) -> Result<BufferDispatch<'_, D, W>, SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -112,14 +117,14 @@ macro_rules! make_dispatch {
             }
         }
 
-        enum BufferDispatch<'a> {
+        enum BufferDispatch<'a, $dgen, $wgen> {
             $(
                 $(#[$attr])*
                 $name($buffer_inner),
             )*
         }
 
-        impl<'a> BufferDispatch<'a> {
+        impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferDispatch<'a, D, W> {
             #[inline]
             pub fn pixels(&self) -> &[u32] {
                 match self {
@@ -173,30 +178,41 @@ macro_rules! make_dispatch {
 // XXX empty enum with generic bound is invalid?
 
 make_dispatch! {
+    <D, W> =>
     #[cfg(x11_platform)]
-    X11(Rc<x11::X11DisplayImpl>, x11::X11Impl, x11::BufferImpl<'a>),
+    X11(Rc<x11::X11DisplayImpl<D>>, x11::X11Impl<D, W>, x11::BufferImpl<'a, D, W>),
     #[cfg(wayland_platform)]
-    Wayland(Rc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl, wayland::BufferImpl<'a>),
+    Wayland(Rc<wayland::WaylandDisplayImpl<D>>, wayland::WaylandImpl<D, W>, wayland::BufferImpl<'a, D, W>),
     #[cfg(kms_platform)]
     Kms(Rc<kms::KmsDisplayImpl>, kms::KmsImpl, kms::BufferImpl<'a>),
     #[cfg(target_os = "windows")]
-    Win32((), win32::Win32Impl, win32::BufferImpl<'a>),
+    Win32(D, win32::Win32Impl<D, W>, win32::BufferImpl<'a, D, W>),
     #[cfg(target_os = "macos")]
-    CG((), cg::CGImpl, cg::BufferImpl<'a>),
+    CG(D, cg::CGImpl<D, W>, cg::BufferImpl<'a, D, W>),
     #[cfg(target_arch = "wasm32")]
-    Web(web::WebDisplayImpl, web::WebImpl, web::BufferImpl<'a>),
+    Web(web::WebDisplayImpl<D>, web::WebImpl<D, W>, web::BufferImpl<'a, D, W>),
     #[cfg(target_os = "redox")]
-    Orbital((), orbital::OrbitalImpl, orbital::BufferImpl<'a>),
+    Orbital(D, orbital::OrbitalImpl<D, W>, orbital::BufferImpl<'a, D, W>),
 }
 
-impl Context {
+impl<D: HasDisplayHandle> Context<D> {
     /// Creates a new instance of this struct, using the provided display.
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided object is valid for the lifetime of the Context
-    pub unsafe fn new<D: HasRawDisplayHandle>(display: &D) -> Result<Self, SoftBufferError> {
-        unsafe { Self::from_raw(display.raw_display_handle()) }
+    pub fn new(mut dpy: D) -> Result<Self, SoftBufferError> {
+        macro_rules! try_init {
+            ($imp:ident, $x:ident => $make_it:expr) => {{
+                let $x = dpy;
+                match { $make_it } {
+                    Ok(x) => {
+                        return Ok(Self {
+                            context_impl: ContextDispatch::$imp(x),
+                            _marker: PhantomData,
+                        })
+                    }
+                    Err(InitError::Unsupported(d)) => dpy = d,
+                    Err(InitError::Failure(f)) => return Err(f),
+                }
+            }};
+        }
     }
 
     /// Creates a new instance of this struct, using the provided display handles
@@ -205,44 +221,23 @@ impl Context {
     ///
     ///  - Ensure that the provided handle is valid for the lifetime of the Context
     pub unsafe fn from_raw(raw_display_handle: RawDisplayHandle) -> Result<Self, SoftBufferError> {
-        let imple: ContextDispatch = match raw_display_handle {
-            #[cfg(x11_platform)]
-            RawDisplayHandle::Xlib(xlib_handle) => unsafe {
-                ContextDispatch::X11(Rc::new(x11::X11DisplayImpl::from_xlib(xlib_handle)?))
-            },
-            #[cfg(x11_platform)]
-            RawDisplayHandle::Xcb(xcb_handle) => unsafe {
-                ContextDispatch::X11(Rc::new(x11::X11DisplayImpl::from_xcb(xcb_handle)?))
-            },
-            #[cfg(wayland_platform)]
-            RawDisplayHandle::Wayland(wayland_handle) => unsafe {
-                ContextDispatch::Wayland(Rc::new(wayland::WaylandDisplayImpl::new(wayland_handle)?))
-            },
-            #[cfg(kms_platform)]
-            RawDisplayHandle::Drm(drm_handle) => unsafe {
-                ContextDispatch::Kms(Rc::new(kms::KmsDisplayImpl::new(drm_handle)?))
-            },
-            #[cfg(target_os = "windows")]
-            RawDisplayHandle::Windows(_) => ContextDispatch::Win32(()),
-            #[cfg(target_os = "macos")]
-            RawDisplayHandle::AppKit(_) => ContextDispatch::CG(()),
-            #[cfg(target_arch = "wasm32")]
-            RawDisplayHandle::Web(_) => ContextDispatch::Web(web::WebDisplayImpl::new()?),
-            #[cfg(target_os = "redox")]
-            RawDisplayHandle::Orbital(_) => ContextDispatch::Orbital(()),
-            unimplemented_display_handle => {
-                return Err(SoftBufferError::UnsupportedDisplayPlatform {
-                    human_readable_display_platform_name: display_handle_type_name(
-                        &unimplemented_display_handle,
-                    ),
-                    display_handle: unimplemented_display_handle,
-                })
-            }
-        };
+        #[cfg(x11_platform)]
+        try_init!(X11, display => x11::X11DisplayImpl::new(display).map(Rc::new));
+        #[cfg(wayland_platform)]
+        try_init!(Wayland, display => wayland::WaylandDisplayImpl::new(display).map(Rc::new));
+        #[cfg(target_os = "windows")]
+        try_init!(Win32, display => Ok(display));
+        #[cfg(target_os = "macos")]
+        try_init!(CG, display => Ok(display));
+        #[cfg(target_arch = "wasm32")]
+        try_init!(Web, display => web::WebDisplayImpl::new(display));
+        #[cfg(target_os = "redox")]
+        try_init!(Orbital, display => Ok(display));
 
-        Ok(Self {
-            context_impl: imple,
-            _marker: PhantomData,
+        let raw = dpy.display_handle()?.raw_display_handle()?;
+        Err(SoftBufferError::UnsupportedDisplayPlatform {
+            human_readable_display_platform_name: display_handle_type_name(&raw),
+            display_handle: raw,
         })
     }
 }
@@ -261,87 +256,56 @@ pub struct Rect {
 }
 
 /// A surface for drawing to a window with software buffers.
-pub struct Surface {
+pub struct Surface<D, W> {
     /// This is boxed so that `Surface` is the same size on every platform.
-    surface_impl: Box<SurfaceDispatch>,
+    surface_impl: Box<SurfaceDispatch<D, W>>,
     _marker: PhantomData<*mut ()>,
 }
 
-impl Surface {
+impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// Creates a new surface for the context for the provided window.
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided objects are valid to draw a 2D buffer to, and are valid for the
-    ///    lifetime of the Context
-    pub unsafe fn new<W: HasRawWindowHandle>(
-        context: &Context,
-        window: &W,
-    ) -> Result<Self, SoftBufferError> {
-        unsafe { Self::from_raw(context, window.raw_window_handle()) }
-    }
+    pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
+        macro_rules! leap {
+            ($e:expr) => {{
+                match ($e) {
+                    Ok(x) => x,
+                    Err(InitError::Unsupported(window)) => {
+                        let raw = window.window_handle()?.raw_window_handle()?;
+                        return Err(SoftBufferError::UnsupportedWindowPlatform {
+                            human_readable_window_platform_name: window_handle_type_name(&raw),
+                            human_readable_display_platform_name: context
+                                .context_impl
+                                .variant_name(),
+                            window_handle: raw,
+                        });
+                    }
+                    Err(InitError::Failure(f)) => return Err(f),
+                }
+            }};
+        }
 
-    /// Creates a new surface for the context for the provided raw window handle.
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided handles are valid to draw a 2D buffer to, and are valid for the
-    ///    lifetime of the Context
-    pub unsafe fn from_raw(
-        context: &Context,
-        raw_window_handle: RawWindowHandle,
-    ) -> Result<Self, SoftBufferError> {
-        let imple: SurfaceDispatch = match (&context.context_impl, raw_window_handle) {
+        let imple = match &context.context_impl {
             #[cfg(x11_platform)]
-            (
-                ContextDispatch::X11(xcb_display_handle),
-                RawWindowHandle::Xlib(xlib_window_handle),
-            ) => SurfaceDispatch::X11(unsafe {
-                x11::X11Impl::from_xlib(xlib_window_handle, xcb_display_handle.clone())?
-            }),
-            #[cfg(x11_platform)]
-            (ContextDispatch::X11(xcb_display_handle), RawWindowHandle::Xcb(xcb_window_handle)) => {
-                SurfaceDispatch::X11(unsafe {
-                    x11::X11Impl::from_xcb(xcb_window_handle, xcb_display_handle.clone())?
-                })
+            ContextDispatch::X11(xcb_display_handle) => {
+                SurfaceDispatch::X11(leap!(x11::X11Impl::new(window, xcb_display_handle.clone())))
             }
             #[cfg(wayland_platform)]
-            (
-                ContextDispatch::Wayland(wayland_display_impl),
-                RawWindowHandle::Wayland(wayland_window_handle),
-            ) => SurfaceDispatch::Wayland(unsafe {
-                wayland::WaylandImpl::new(wayland_window_handle, wayland_display_impl.clone())?
-            }),
-            #[cfg(kms_platform)]
-            (ContextDispatch::Kms(kms_display_impl), RawWindowHandle::Drm(drm_window_handle)) => {
-                SurfaceDispatch::Kms(unsafe {
-                    kms::KmsImpl::new(drm_window_handle, kms_display_impl.clone())?
-                })
-            }
+            ContextDispatch::Wayland(wayland_display_impl) => SurfaceDispatch::Wayland(leap!(
+                wayland::WaylandImpl::new(window, wayland_display_impl.clone())
+            )),
             #[cfg(target_os = "windows")]
-            (ContextDispatch::Win32(()), RawWindowHandle::Win32(win32_handle)) => {
-                SurfaceDispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
+            ContextDispatch::Win32(_) => {
+                SurfaceDispatch::Win32(leap!(win32::Win32Impl::new(window)))
             }
             #[cfg(target_os = "macos")]
-            (ContextDispatch::CG(()), RawWindowHandle::AppKit(appkit_handle)) => {
-                SurfaceDispatch::CG(unsafe { cg::CGImpl::new(appkit_handle)? })
-            }
+            ContextDispatch::CG(_) => SurfaceDispatch::CG(leap!(cg::CGImpl::new(window))),
             #[cfg(target_arch = "wasm32")]
-            (ContextDispatch::Web(context), RawWindowHandle::Web(web_handle)) => {
-                SurfaceDispatch::Web(web::WebImpl::new(context, web_handle)?)
+            ContextDispatch::Web(web_display_impl) => {
+                SurfaceDispatch::Web(leap!(web::WebImpl::new(web_display_impl, window)))
             }
             #[cfg(target_os = "redox")]
-            (ContextDispatch::Orbital(()), RawWindowHandle::Orbital(orbital_handle)) => {
-                SurfaceDispatch::Orbital(orbital::OrbitalImpl::new(orbital_handle)?)
-            }
-            (unsupported_display_impl, unimplemented_window_handle) => {
-                return Err(SoftBufferError::UnsupportedWindowPlatform {
-                    human_readable_window_platform_name: window_handle_type_name(
-                        &unimplemented_window_handle,
-                    ),
-                    human_readable_display_platform_name: unsupported_display_impl.variant_name(),
-                    window_handle: unimplemented_window_handle,
-                })
+            ContextDispatch::Orbital(_) => {
+                SurfaceDispatch::Orbital(leap!(orbital::OrbitalImpl::new(window)))
             }
         };
 
@@ -382,7 +346,7 @@ impl Surface {
     /// - On DRM/KMS, there is no reliable and sound way to wait for the page flip to happen from within
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
-    pub fn buffer_mut(&mut self) -> Result<Buffer, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<Buffer<'_, D, W>, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
             _marker: PhantomData,
@@ -426,12 +390,12 @@ impl Surface {
 /// Currently [`Buffer::present`] must block copying image data on:
 /// - Web
 /// - macOS
-pub struct Buffer<'a> {
-    buffer_impl: BufferDispatch<'a>,
+pub struct Buffer<'a, D, W> {
+    buffer_impl: BufferDispatch<'a, D, W>,
     _marker: PhantomData<*mut ()>,
 }
 
-impl<'a> Buffer<'a> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
     /// Is age is the number of frames ago this buffer was last presented. So if the value is
     /// `1`, it is the same as the last frame, and if it is `2`, it is the same as the frame
     /// before that (for backends using double buffering). If the value is `0`, it is a new
@@ -474,7 +438,7 @@ impl<'a> Buffer<'a> {
     }
 }
 
-impl<'a> ops::Deref for Buffer<'a> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W> {
     type Target = [u32];
 
     #[inline]
@@ -483,10 +447,34 @@ impl<'a> ops::Deref for Buffer<'a> {
     }
 }
 
-impl<'a> ops::DerefMut for Buffer<'a> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'a, D, W> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [u32] {
         self.buffer_impl.pixels_mut()
+    }
+}
+
+/// There is no display handle.
+#[derive(Debug)]
+pub struct NoDisplayHandle(core::convert::Infallible);
+
+impl HasDisplayHandle for NoDisplayHandle {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        match self.0 {}
+    }
+}
+
+/// There is no window handle.
+#[derive(Debug)]
+pub struct NoWindowHandle(());
+
+impl HasWindowHandle for NoWindowHandle {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        Err(raw_window_handle::HandleError::NotSupported)
     }
 }
 
