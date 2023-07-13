@@ -137,6 +137,8 @@ impl fmt::Display for SoftBufferError {
     }
 }
 
+impl std::error::Error for SoftBufferError {}
+
 /// Convenient wrapper to cast errors into SoftBufferError.
 pub(crate) trait SwResultExt<T> {
     fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError>;
