@@ -4,6 +4,9 @@
 # Apple platforms
 /src/cg.rs          @madsmtm
 
+# DRM/KMS (no maintainer)
+/src/kms.rs
+
 # Redox
 /src/orbital.rs     @jackpot51
 

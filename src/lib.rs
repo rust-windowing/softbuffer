@@ -10,6 +10,8 @@ extern crate core;
 
 #[cfg(target_os = "macos")]
 mod cg;
+#[cfg(kms_platform)]
+mod kms;
 #[cfg(target_os = "redox")]
 mod orbital;
 #[cfg(wayland_platform)]
@@ -174,6 +176,8 @@ make_dispatch! {
     X11(Rc<x11::X11DisplayImpl>, x11::X11Impl, x11::BufferImpl<'a>),
     #[cfg(wayland_platform)]
     Wayland(Rc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl, wayland::BufferImpl<'a>),
+    #[cfg(kms_platform)]
+    Kms(Rc<kms::KmsDisplayImpl>, kms::KmsImpl, kms::BufferImpl<'a>),
     #[cfg(target_os = "windows")]
     Win32((), win32::Win32Impl, win32::BufferImpl<'a>),
     #[cfg(target_os = "macos")]
@@ -212,6 +216,10 @@ impl Context {
             #[cfg(wayland_platform)]
             RawDisplayHandle::Wayland(wayland_handle) => unsafe {
                 ContextDispatch::Wayland(Rc::new(wayland::WaylandDisplayImpl::new(wayland_handle)?))
+            },
+            #[cfg(kms_platform)]
+            RawDisplayHandle::Drm(drm_handle) => unsafe {
+                ContextDispatch::Kms(Rc::new(kms::KmsDisplayImpl::new(drm_handle)?))
             },
             #[cfg(target_os = "windows")]
             RawDisplayHandle::Windows(_) => ContextDispatch::Win32(()),
@@ -303,6 +311,12 @@ impl Surface {
             ) => SurfaceDispatch::Wayland(unsafe {
                 wayland::WaylandImpl::new(wayland_window_handle, wayland_display_impl.clone())?
             }),
+            #[cfg(kms_platform)]
+            (ContextDispatch::Kms(kms_display_impl), RawWindowHandle::Drm(drm_window_handle)) => {
+                SurfaceDispatch::Kms(unsafe {
+                    kms::KmsImpl::new(drm_window_handle, kms_display_impl.clone())?
+                })
+            }
             #[cfg(target_os = "windows")]
             (ContextDispatch::Win32(()), RawWindowHandle::Win32(win32_handle)) => {
                 SurfaceDispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
