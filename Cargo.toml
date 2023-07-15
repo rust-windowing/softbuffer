@@ -18,7 +18,7 @@ harness = false
 
 [features]
 default = ["kms", "x11", "x11-dlopen", "wayland", "wayland-dlopen"]
-kms = ["drm"]
+kms = ["bytemuck", "drm"]
 wayland = ["wayland-backend", "wayland-client", "memmap2", "nix", "fastrand"]
 wayland-dlopen = ["wayland-sys/dlopen"]
 x11 = ["as-raw-xcb-connection", "bytemuck", "nix", "tiny-xlib", "x11rb"]

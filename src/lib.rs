@@ -29,7 +29,7 @@ mod util;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::ops;
-#[cfg(any(wayland_platform, x11_platform))]
+#[cfg(any(wayland_platform, x11_platform, kms_platform))]
 use std::rc::Rc;
 
 pub use error::SoftBufferError;
