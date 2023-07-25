@@ -27,8 +27,7 @@ pub struct CGImpl {
     layer: CALayer,
     window: id,
     color_space: CGColorSpace,
-    width: u32,
-    height: u32,
+    size: Option<(NonZeroU32, NonZeroU32)>,
 }
 
 impl CGImpl {
@@ -52,20 +51,21 @@ impl CGImpl {
             layer,
             window,
             color_space,
-            width: 0,
-            height: 0,
+            size: None,
         })
     }
 
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.width = width.get();
-        self.height = height.get();
+        self.size = Some((width, height));
         Ok(())
     }
 
     pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+        let (width, height) = self
+            .size
+            .expect("Must set size of surface before calling `buffer_mut()`");
         Ok(BufferImpl {
-            buffer: vec![0; self.width as usize * self.height as usize],
+            buffer: vec![0; width.get() as usize * height.get() as usize],
             imp: self,
         })
     }
@@ -98,12 +98,13 @@ impl<'a> BufferImpl<'a> {
 
     pub fn present(self) -> Result<(), SoftBufferError> {
         let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
+        let (width, height) = self.imp.size.unwrap();
         let image = CGImage::new(
-            self.imp.width as usize,
-            self.imp.height as usize,
+            width.get() as usize,
+            height.get() as usize,
             8,
             32,
-            (self.imp.width * 4) as usize,
+            (width.get() * 4) as usize,
             &self.imp.color_space,
             kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
             &data_provider,
