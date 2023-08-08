@@ -73,11 +73,8 @@ pub(crate) struct BufferImpl<'a> {
     /// The framebuffer.
     fb: framebuffer::Handle,
 
-    /// The connector.
-    connector: connector::Handle,
-
-    /// The CRTC info.
-    crtc_info: &'a crtc::Info,
+    /// The current size.
+    size: (NonZeroU32, NonZeroU32),
 
     /// The display implementation.
     display: &'a KmsDisplayImpl,
@@ -178,6 +175,19 @@ impl KmsImpl {
 
         // Create a new buffer.
         let buffer = BufferSet::new(&self.display, width, height)?;
+
+        // Set the framebuffer in the CRTC info.
+        // TODO: This requires root access, find a way that doesn't!
+        self.display
+            .set_crtc(
+                self.crtc.handle(),
+                Some(buffer.fb),
+                self.crtc.position(),
+                &[self.connector],
+                self.crtc.mode(),
+            )
+            .swbuf_err("failed to set CRTC")?;
+
         self.buffer = Some(buffer);
 
         Ok(())
@@ -196,6 +206,7 @@ impl KmsImpl {
             .buffer
             .as_mut()
             .expect("Must set size of surface before calling `buffer_mut()`");
+        let size = set.size();
         let mapping = self
             .display
             .map_dumb_buffer(&mut set.db)
@@ -203,9 +214,8 @@ impl KmsImpl {
 
         Ok(BufferImpl {
             mapping,
+            size,
             fb: set.fb,
-            connector: self.connector,
-            crtc_info: &self.crtc,
             display: &self.display,
             zeroes: &set.zeroes,
         })
@@ -231,26 +241,44 @@ impl BufferImpl<'_> {
     }
 
     #[inline]
-    pub fn present_with_damage(self, _damage: &[crate::Rect]) -> Result<(), SoftBufferError> {
-        // TODO: Is there a way of doing this?
-        self.present()
+    pub fn present_with_damage(self, damage: &[crate::Rect]) -> Result<(), SoftBufferError> {
+        let rectangles = damage
+            .iter()
+            .map(|&rect| {
+                let err = || SoftBufferError::DamageOutOfRange { rect };
+                Ok(drm_sys::drm_clip_rect {
+                    x1: rect.x.try_into().map_err(|_| err())?,
+                    y1: rect.y.try_into().map_err(|_| err())?,
+                    x2: rect
+                        .x
+                        .checked_add(rect.width.get())
+                        .and_then(|x| x.try_into().ok())
+                        .ok_or_else(err)?,
+                    y2: rect
+                        .y
+                        .checked_add(rect.height.get())
+                        .and_then(|y| y.try_into().ok())
+                        .ok_or_else(err)?,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        self.display
+            .dirty_framebuffer(self.fb, &rectangles)
+            .swbuf_err("failed to dirty framebuffer")?;
+
+        Ok(())
     }
 
     #[inline]
     pub fn present(self) -> Result<(), SoftBufferError> {
-        // Set the CRTC mode.
-        // TODO: This requires root access, find a way that doesn't!
-        self.display
-            .set_crtc(
-                self.crtc_info.handle(),
-                Some(self.fb),
-                (0, 0),
-                &[self.connector],
-                self.crtc_info.mode(),
-            )
-            .swbuf_err("failed to set CRTC")?;
-
-        Ok(())
+        let (width, height) = self.size;
+        self.present_with_damage(&[crate::Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        }])
     }
 }
 
