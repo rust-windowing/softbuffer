@@ -222,6 +222,21 @@ impl KmsImpl {
     }
 }
 
+impl Drop for KmsImpl {
+    fn drop(&mut self) {
+        // Map the CRTC to the information that was there before.
+        self.display
+            .set_crtc(
+                self.crtc.handle(),
+                self.crtc.framebuffer(),
+                self.crtc.position(),
+                &[self.connector],
+                self.crtc.mode(),
+            )
+            .ok();
+    }
+}
+
 impl BufferImpl<'_> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
@@ -290,10 +305,10 @@ impl BufferSet {
         height: NonZeroU32,
     ) -> Result<Self, SoftBufferError> {
         let db = display
-            .create_dumb_buffer((width.get(), height.get()), DrmFourcc::Argb8888, 32)
+            .create_dumb_buffer((width.get(), height.get()), DrmFourcc::Xrgb8888, 32)
             .swbuf_err("failed to create dumb buffer")?;
         let fb = display
-            .add_framebuffer(&db, 32, 32)
+            .add_framebuffer(&db, 24, 32)
             .swbuf_err("failed to add framebuffer")?;
 
         Ok(BufferSet {
