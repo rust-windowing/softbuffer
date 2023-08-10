@@ -85,9 +85,6 @@ pub(crate) struct BufferImpl<'a> {
     /// The framebuffer object of the current front buffer.
     front_fb: framebuffer::Handle,
 
-    /// The framebuffer object of the current back buffer.
-    back_fb: framebuffer::Handle,
-
     /// The CRTC handle.
     crtc_handle: crtc::Handle,
 
@@ -102,6 +99,12 @@ pub(crate) struct BufferImpl<'a> {
 
     /// The display implementation.
     display: &'a KmsDisplayImpl,
+
+    /// Age of the front buffer.
+    front_age: &'a mut u8,
+
+    /// Age of the back buffer.
+    back_age: &'a mut u8,
 }
 
 /// The combined frame buffer and dumb buffer.
@@ -112,6 +115,9 @@ struct SharedBuffer {
 
     /// The dumb buffer.
     db: DumbBuffer,
+
+    /// The age of this buffer.
+    age: u8,
 }
 
 impl KmsImpl {
@@ -231,14 +237,21 @@ impl KmsImpl {
             .expect("Must set size of surface before calling `buffer_mut()`");
 
         let size = set.size();
-        let (front_index, back_index) = if set.first_is_front { (0, 1) } else { (1, 0) };
 
-        let front_fb = set.buffers[front_index].fb;
-        let back_fb = set.buffers[back_index].fb;
+        let [first_buffer, second_buffer] = &mut set.buffers;
+        let (front_buffer, back_buffer) = if set.first_is_front {
+            (first_buffer, second_buffer)
+        } else {
+            (second_buffer, first_buffer)
+        };
+
+        let front_fb = front_buffer.fb;
+        let front_age = &mut front_buffer.age;
+        let back_age = &mut back_buffer.age;
 
         let mapping = self
             .display
-            .map_dumb_buffer(&mut set.buffers[front_index].db)
+            .map_dumb_buffer(&mut front_buffer.db)
             .swbuf_err("failed to map dumb buffer")?;
 
         Ok(BufferImpl {
@@ -246,10 +259,11 @@ impl KmsImpl {
             size,
             first_is_front: &mut set.first_is_front,
             front_fb,
-            back_fb,
             crtc_handle: self.crtc.handle(),
             display: &self.display,
             zeroes: &set.zeroes,
+            front_age,
+            back_age,
         })
     }
 }
@@ -284,7 +298,7 @@ impl BufferImpl<'_> {
 
     #[inline]
     pub fn age(&self) -> u8 {
-        0 // TODO: Implement this!
+        *self.front_age
     }
 
     #[inline]
@@ -316,11 +330,17 @@ impl BufferImpl<'_> {
 
         // Swap the buffers.
         self.display
-            .page_flip(self.crtc_handle, self.back_fb, PageFlipFlags::EVENT, None)
+            .page_flip(self.crtc_handle, self.front_fb, PageFlipFlags::EVENT, None)
             .swbuf_err("failed to page flip")?;
 
         // Flip the front and back buffers.
         *self.first_is_front = !*self.first_is_front;
+
+        // Set the ages.
+        *self.front_age = 1;
+        if *self.back_age != 0 {
+            *self.back_age += 1;
+        }
 
         Ok(())
     }
@@ -351,7 +371,7 @@ impl SharedBuffer {
             .add_framebuffer(&db, 24, 32)
             .swbuf_err("failed to add framebuffer")?;
 
-        Ok(SharedBuffer { fb, db })
+        Ok(SharedBuffer { fb, db, age: 0 })
     }
 
     /// Get the size of this buffer.

@@ -75,6 +75,7 @@ macro_rules! make_dispatch {
             }
         }
 
+        #[allow(clippy::large_enum_variant)] // it's boxed anyways
         enum SurfaceDispatch {
             $(
                 $(#[$attr])*

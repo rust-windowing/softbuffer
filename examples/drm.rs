@@ -2,7 +2,7 @@
 
 #[cfg(kms_platform)]
 mod imple {
-    use drm::control::{connector, Device as CtrlDevice, ModeTypeFlags, PlaneType};
+    use drm::control::{connector, Device as CtrlDevice, Event, ModeTypeFlags, PlaneType};
     use drm::Device;
 
     use raw_window_handle::{DrmDisplayHandle, DrmWindowHandle};
@@ -118,16 +118,30 @@ mod imple {
             draw_to_buffer(&mut buffer, tick);
             buffer.present()?;
 
-            // Sleep for a little.
-            std::thread::sleep(Duration::from_millis(5));
+            // Wait for the page flip to happen.
+            let events = device.receive_events()?;
+            println!("Got some events...");
+            for event in events {
+                match event {
+                    Event::PageFlip(_) => {
+                        println!("Page flip event.");
+                    }
+                    Event::Vblank(_) => {
+                        println!("Vblank event.");
+                    }
+                    _ => {
+                        println!("Unknown event.");
+                    }
+                }
+            }
         }
 
         Ok(())
     }
 
     fn draw_to_buffer(buf: &mut [u32], tick: usize) {
-        let scale = colorous::VIRIDIS;
-        let mut i = (tick as f64) / 10.0;
+        let scale = colorous::SINEBOW;
+        let mut i = (tick as f64) / 20.0;
         while i > 1.0 {
             i -= 1.0;
         }
