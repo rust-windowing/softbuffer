@@ -4,7 +4,7 @@
 
 use drm::buffer::{Buffer, DrmFourcc};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
-use drm::control::{connector, crtc, framebuffer, plane, Device as CtrlDevice};
+use drm::control::{connector, crtc, framebuffer, plane, Device as CtrlDevice, PageFlipFlags};
 use drm::Device;
 
 use raw_window_handle::{DrmDisplayHandle, DrmWindowHandle};
@@ -62,7 +62,19 @@ pub(crate) struct KmsImpl {
     crtc: crtc::Info,
 
     /// The dumb buffer we're using as a buffer.
-    buffer: Option<BufferSet>,
+    buffer: Option<Buffers>,
+}
+
+#[derive(Debug)]
+struct Buffers {
+    /// The involved set of buffers.
+    buffers: [SharedBuffer; 2],
+
+    /// Whether to use the first buffer or the second buffer as the front buffer.
+    first_is_front: bool,
+
+    /// A buffer full of zeroes.
+    zeroes: Box<[u32]>,
 }
 
 /// The buffer implementation.
@@ -70,30 +82,36 @@ pub(crate) struct BufferImpl<'a> {
     /// The mapping of the dump buffer.
     mapping: DumbMapping<'a>,
 
-    /// The framebuffer.
-    fb: framebuffer::Handle,
+    /// The framebuffer object of the current front buffer.
+    front_fb: framebuffer::Handle,
+
+    /// The framebuffer object of the current back buffer.
+    back_fb: framebuffer::Handle,
+
+    /// The CRTC handle.
+    crtc_handle: crtc::Handle,
+
+    /// This is used to change the front buffer.
+    first_is_front: &'a mut bool,
+
+    /// Buffer full of zeroes.
+    zeroes: &'a [u32],
 
     /// The current size.
     size: (NonZeroU32, NonZeroU32),
 
     /// The display implementation.
     display: &'a KmsDisplayImpl,
-
-    /// The zero buffer.
-    zeroes: &'a [u32],
 }
 
 /// The combined frame buffer and dumb buffer.
 #[derive(Debug)]
-struct BufferSet {
+struct SharedBuffer {
     /// The frame buffer.
     fb: framebuffer::Handle,
 
     /// The dumb buffer.
     db: DumbBuffer,
-
-    /// Equivalent mapping for reading.
-    zeroes: Box<[u32]>,
 }
 
 impl KmsImpl {
@@ -173,22 +191,27 @@ impl KmsImpl {
             }
         }
 
-        // Create a new buffer.
-        let buffer = BufferSet::new(&self.display, width, height)?;
+        // Create a new buffer set.
+        let front_buffer = SharedBuffer::new(&self.display, width, height)?;
+        let back_buffer = SharedBuffer::new(&self.display, width, height)?;
 
         // Set the framebuffer in the CRTC info.
-        // TODO: This requires root access, find a way that doesn't!
+        // This requires root access without libseat.
         self.display
             .set_crtc(
                 self.crtc.handle(),
-                Some(buffer.fb),
+                Some(front_buffer.fb),
                 self.crtc.position(),
                 &[self.connector],
                 self.crtc.mode(),
             )
             .swbuf_err("failed to set CRTC")?;
 
-        self.buffer = Some(buffer);
+        self.buffer = Some(Buffers {
+            first_is_front: true,
+            buffers: [front_buffer, back_buffer],
+            zeroes: vec![0; width.get() as usize * height.get() as usize].into_boxed_slice(),
+        });
 
         Ok(())
     }
@@ -206,16 +229,25 @@ impl KmsImpl {
             .buffer
             .as_mut()
             .expect("Must set size of surface before calling `buffer_mut()`");
+
         let size = set.size();
+        let (front_index, back_index) = if set.first_is_front { (0, 1) } else { (1, 0) };
+
+        let front_fb = set.buffers[front_index].fb;
+        let back_fb = set.buffers[back_index].fb;
+
         let mapping = self
             .display
-            .map_dumb_buffer(&mut set.db)
+            .map_dumb_buffer(&mut set.buffers[front_index].db)
             .swbuf_err("failed to map dumb buffer")?;
 
         Ok(BufferImpl {
             mapping,
             size,
-            fb: set.fb,
+            first_is_front: &mut set.first_is_front,
+            front_fb,
+            back_fb,
+            crtc_handle: self.crtc.handle(),
             display: &self.display,
             zeroes: &set.zeroes,
         })
@@ -252,7 +284,7 @@ impl BufferImpl<'_> {
 
     #[inline]
     pub fn age(&self) -> u8 {
-        todo!()
+        0 // TODO: Implement this!
     }
 
     #[inline]
@@ -279,8 +311,16 @@ impl BufferImpl<'_> {
             .collect::<Result<Vec<_>, _>>()?;
 
         self.display
-            .dirty_framebuffer(self.fb, &rectangles)
+            .dirty_framebuffer(self.front_fb, &rectangles)
             .swbuf_err("failed to dirty framebuffer")?;
+
+        // Swap the buffers.
+        self.display
+            .page_flip(self.crtc_handle, self.back_fb, PageFlipFlags::EVENT, None)
+            .swbuf_err("failed to page flip")?;
+
+        // Flip the front and back buffers.
+        *self.first_is_front = !*self.first_is_front;
 
         Ok(())
     }
@@ -297,7 +337,7 @@ impl BufferImpl<'_> {
     }
 }
 
-impl BufferSet {
+impl SharedBuffer {
     /// Create a new buffer set.
     pub(crate) fn new(
         display: &KmsDisplayImpl,
@@ -311,11 +351,7 @@ impl BufferSet {
             .add_framebuffer(&db, 24, 32)
             .swbuf_err("failed to add framebuffer")?;
 
-        Ok(BufferSet {
-            fb,
-            db,
-            zeroes: vec![0; width.get() as usize * height.get() as usize].into_boxed_slice(),
-        })
+        Ok(SharedBuffer { fb, db })
     }
 
     /// Get the size of this buffer.
@@ -325,5 +361,12 @@ impl BufferSet {
         NonZeroU32::new(width)
             .and_then(|width| NonZeroU32::new(height).map(|height| (width, height)))
             .expect("buffer size is zero")
+    }
+}
+
+impl Buffers {
+    /// Get the size of this buffer.
+    pub(crate) fn size(&self) -> (NonZeroU32, NonZeroU32) {
+        self.buffers[0].size()
     }
 }
