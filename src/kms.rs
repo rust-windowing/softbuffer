@@ -9,6 +9,7 @@ use drm::Device;
 
 use raw_window_handle::{DrmDisplayHandle, DrmWindowHandle};
 
+use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
 use std::rc::Rc;
@@ -55,8 +56,8 @@ pub(crate) struct KmsImpl {
     /// The display implementation.
     display: Rc<KmsDisplayImpl>,
 
-    /// The connector to use.
-    connector: connector::Handle,
+    /// The connectors to use.
+    connectors: Vec<connector::Handle>,
 
     /// The CRTC to render to.
     crtc: crtc::Info,
@@ -146,38 +147,50 @@ impl KmsImpl {
             .swbuf_err("failed to get resource handles")?;
 
         // Use either the attached CRTC or the primary CRTC.
-        let crtc = match plane_info.crtc() {
-            Some(crtc) => crtc,
-            None => {
-                log::warn!("no CRTC attached to plane, falling back to primary CRTC");
-                handles
-                    .filter_crtcs(plane_info.possible_crtcs())
-                    .first()
-                    .copied()
-                    .swbuf_err("failed to find a primary CRTC")?
-            }
+        let crtc = {
+            let handle = match plane_info.crtc() {
+                Some(crtc) => crtc,
+                None => {
+                    log::warn!("no CRTC attached to plane, falling back to primary CRTC");
+                    handles
+                        .filter_crtcs(plane_info.possible_crtcs())
+                        .first()
+                        .copied()
+                        .swbuf_err("failed to find a primary CRTC")?
+                }
+            };
+
+            // Get info about the CRTC.
+            display
+                .get_crtc(handle)
+                .swbuf_err("failed to get CRTC info")?
         };
 
-        // Use a preferred connector or just select the first one.
-        let connector = handles
+        // Figure out all of the encoders that are attached to this CRTC.
+        let encoders = handles
+            .encoders
+            .iter()
+            .flat_map(|handle| display.get_encoder(*handle))
+            .filter(|encoder| encoder.crtc() == Some(crtc.handle()))
+            .map(|encoder| encoder.handle())
+            .collect::<HashSet<_>>();
+
+        // Get a list of every connector.
+        let connectors = handles
             .connectors
             .iter()
             .flat_map(|handle| display.get_connector(*handle, false))
-            .find_map(|conn| {
-                if conn.state() == connector::State::Connected {
-                    Some(conn.handle())
-                } else {
-                    None
-                }
+            .filter(|connector| {
+                connector
+                    .current_encoder()
+                    .map_or(false, |encoder| encoders.contains(&encoder))
             })
-            .or_else(|| handles.connectors.first().copied())
-            .swbuf_err("failed to find a valid connector")?;
+            .map(|info| info.handle())
+            .collect::<Vec<_>>();
 
         Ok(Self {
-            crtc: display
-                .get_crtc(crtc)
-                .swbuf_err("failed to get CRTC info")?,
-            connector,
+            crtc,
+            connectors,
             display,
             buffer: None,
         })
@@ -200,18 +213,6 @@ impl KmsImpl {
         // Create a new buffer set.
         let front_buffer = SharedBuffer::new(&self.display, width, height)?;
         let back_buffer = SharedBuffer::new(&self.display, width, height)?;
-
-        // Set the framebuffer in the CRTC info.
-        // This requires root access without libseat.
-        self.display
-            .set_crtc(
-                self.crtc.handle(),
-                Some(front_buffer.fb),
-                self.crtc.position(),
-                &[self.connector],
-                self.crtc.mode(),
-            )
-            .swbuf_err("failed to set CRTC")?;
 
         self.buffer = Some(Buffers {
             first_is_front: true,
@@ -276,7 +277,7 @@ impl Drop for KmsImpl {
                 self.crtc.handle(),
                 self.crtc.framebuffer(),
                 self.crtc.position(),
-                &[self.connector],
+                &self.connectors,
                 self.crtc.mode(),
             )
             .ok();
@@ -329,6 +330,7 @@ impl BufferImpl<'_> {
             .swbuf_err("failed to dirty framebuffer")?;
 
         // Swap the buffers.
+        // TODO: Use atomic commits here!
         self.display
             .page_flip(self.crtc_handle, self.front_fb, PageFlipFlags::EVENT, None)
             .swbuf_err("failed to page flip")?;
