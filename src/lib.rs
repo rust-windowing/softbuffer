@@ -10,6 +10,8 @@ extern crate core;
 
 #[cfg(target_os = "macos")]
 mod cg;
+#[cfg(kms_platform)]
+mod kms;
 #[cfg(target_os = "redox")]
 mod orbital;
 #[cfg(wayland_platform)]
@@ -27,7 +29,7 @@ mod util;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::ops;
-#[cfg(any(wayland_platform, x11_platform))]
+#[cfg(any(wayland_platform, x11_platform, kms_platform))]
 use std::rc::Rc;
 
 pub use error::SoftBufferError;
@@ -73,6 +75,7 @@ macro_rules! make_dispatch {
             }
         }
 
+        #[allow(clippy::large_enum_variant)] // it's boxed anyways
         enum SurfaceDispatch {
             $(
                 $(#[$attr])*
@@ -174,6 +177,8 @@ make_dispatch! {
     X11(Rc<x11::X11DisplayImpl>, x11::X11Impl, x11::BufferImpl<'a>),
     #[cfg(wayland_platform)]
     Wayland(Rc<wayland::WaylandDisplayImpl>, wayland::WaylandImpl, wayland::BufferImpl<'a>),
+    #[cfg(kms_platform)]
+    Kms(Rc<kms::KmsDisplayImpl>, kms::KmsImpl, kms::BufferImpl<'a>),
     #[cfg(target_os = "windows")]
     Win32((), win32::Win32Impl, win32::BufferImpl<'a>),
     #[cfg(target_os = "macos")]
@@ -212,6 +217,10 @@ impl Context {
             #[cfg(wayland_platform)]
             RawDisplayHandle::Wayland(wayland_handle) => unsafe {
                 ContextDispatch::Wayland(Rc::new(wayland::WaylandDisplayImpl::new(wayland_handle)?))
+            },
+            #[cfg(kms_platform)]
+            RawDisplayHandle::Drm(drm_handle) => unsafe {
+                ContextDispatch::Kms(Rc::new(kms::KmsDisplayImpl::new(drm_handle)?))
             },
             #[cfg(target_os = "windows")]
             RawDisplayHandle::Windows(_) => ContextDispatch::Win32(()),
@@ -303,6 +312,12 @@ impl Surface {
             ) => SurfaceDispatch::Wayland(unsafe {
                 wayland::WaylandImpl::new(wayland_window_handle, wayland_display_impl.clone())?
             }),
+            #[cfg(kms_platform)]
+            (ContextDispatch::Kms(kms_display_impl), RawWindowHandle::Drm(drm_window_handle)) => {
+                SurfaceDispatch::Kms(unsafe {
+                    kms::KmsImpl::new(drm_window_handle, kms_display_impl.clone())?
+                })
+            }
             #[cfg(target_os = "windows")]
             (ContextDispatch::Win32(()), RawWindowHandle::Win32(win32_handle)) => {
                 SurfaceDispatch::Win32(unsafe { win32::Win32Impl::new(&win32_handle)? })
@@ -361,6 +376,12 @@ impl Surface {
     /// Return a [`Buffer`] that the next frame should be rendered into. The size must
     /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
     /// may contain a previous frame. Call [`Buffer::age`] to determine this.
+    ///
+    /// ## Platform Dependent Behavior
+    ///
+    /// - On DRM/KMS, there is no reliable and sound way to wait for the page flip to happen from within
+    ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
+    ///   sending another frame.
     pub fn buffer_mut(&mut self) -> Result<Buffer, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
