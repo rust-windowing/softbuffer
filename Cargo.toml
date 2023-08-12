@@ -99,6 +99,10 @@ rayon = "1.5.1"
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
+[target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox"))))'.dev-dependencies]
+rustix = { version = "0.38.8", features = ["event"] }
+udev = "0.7.0"
+
 [workspace]
 members = [
     "run-wasm",

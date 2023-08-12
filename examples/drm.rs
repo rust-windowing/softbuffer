@@ -10,6 +10,7 @@ mod imple {
 
     use std::num::NonZeroU32;
     use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd};
+    use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 
     pub(super) fn entry() -> Result<(), Box<dyn std::error::Error>> {
@@ -119,6 +120,15 @@ mod imple {
             buffer.present()?;
 
             // Wait for the page flip to happen.
+            rustix::event::poll(
+                &mut [rustix::event::PollFd::new(
+                    &device,
+                    rustix::event::PollFlags::IN,
+                )],
+                -1,
+            )?;
+
+            // Receive the events.
             let events = device.receive_events()?;
             println!("Got some events...");
             for event in events {
@@ -155,10 +165,57 @@ mod imple {
 
     impl Card {
         fn open() -> Result<Card, Box<dyn std::error::Error>> {
+            let mut enumerator = udev::Enumerator::new()?;
+
+            // Look for a drm system with name card[0-9]
+            enumerator.match_subsystem("drm")?;
+            enumerator.match_sysname("card[0-9]*")?;
+
+            // Get the first device.
+            let path = enumerator
+                .scan_devices()?
+                .filter(|device| {
+                    let seat_name = device
+                        .property_value("ID_SEAT")
+                        .map(|x| x.to_os_string())
+                        .unwrap_or_else(|| "seat0".into());
+
+                    seat_name == "seat0"
+                })
+                .filter(|device| {
+                    let pci = match device.parent_with_subsystem(Path::new("pci")) {
+                        Ok(Some(pci)) => pci,
+                        _ => return false,
+                    };
+
+                    let id = match pci.attribute_value("boot_vga") {
+                        Some(id) => id,
+                        _ => return false,
+                    };
+
+                    id.to_str() == Some("1")
+                })
+                .find_map(|dev| dev.devnode().map(PathBuf::from))
+                .or_else(|| {
+                    enumerator
+                        .scan_devices()
+                        .expect("Failed to scan devices")
+                        .filter(|device| {
+                            let seat_name = device
+                                .property_value("ID_SEAT")
+                                .map(|x| x.to_os_string())
+                                .unwrap_or_else(|| "seat0".into());
+
+                            seat_name == "seat0"
+                        })
+                        .find_map(|dev| dev.devnode().map(PathBuf::from))
+                })
+                .ok_or("No drm device found")?;
+
             let file = std::fs::OpenOptions::new()
                 .read(true)
                 .write(true)
-                .open("/dev/dri/card0")?;
+                .open(path)?;
             Ok(Card(file))
         }
     }
