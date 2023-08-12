@@ -376,6 +376,12 @@ impl Surface {
     /// Return a [`Buffer`] that the next frame should be rendered into. The size must
     /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
     /// may contain a previous frame. Call [`Buffer::age`] to determine this.
+    /// 
+    /// ## Platform Dependent Behavior
+    /// 
+    /// - On DRM/KMS, there is no reliable and sound way to wait for the page flip to happen from within
+    ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
+    ///   sending another frame.
     pub fn buffer_mut(&mut self) -> Result<Buffer, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
