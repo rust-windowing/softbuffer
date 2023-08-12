@@ -175,7 +175,12 @@ mod imple {
                     Err(_) => continue,
                 };
 
-                if !handles.connectors.is_empty() {
+                if handles
+                    .connectors
+                    .iter()
+                    .filter_map(|c| device.get_connector(*c, false).ok())
+                    .any(|c| c.state() == connector::State::Connected)
+                {
                     return Ok(device);
                 }
             }
