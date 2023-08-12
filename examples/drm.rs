@@ -10,12 +10,12 @@ mod imple {
 
     use std::num::NonZeroU32;
     use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd};
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::time::{Duration, Instant};
 
     pub(super) fn entry() -> Result<(), Box<dyn std::error::Error>> {
         // Open a new device.
-        let device = Card::open()?;
+        let device = Card::find()?;
 
         // Create the softbuffer context.
         let context = unsafe {
@@ -164,54 +164,26 @@ mod imple {
     struct Card(std::fs::File);
 
     impl Card {
-        fn open() -> Result<Card, Box<dyn std::error::Error>> {
-            let mut enumerator = udev::Enumerator::new()?;
+        fn find() -> Result<Card, Box<dyn std::error::Error>> {
+            for i in 0..10 {
+                let path = format!("/dev/dri/card{i}");
+                let device = Card::open(path)?;
 
-            // Look for a drm system with name card[0-9]
-            enumerator.match_subsystem("drm")?;
-            enumerator.match_sysname("card[0-9]*")?;
+                // Only use it if it has connectors.
+                let handles = match device.resource_handles() {
+                    Ok(handles) => handles,
+                    Err(_) => continue,
+                };
+                
+                if !handles.connectors.is_empty() {
+                    return Ok(device);
+                }
+            }
 
-            // Get the first device.
-            let path = enumerator
-                .scan_devices()?
-                .filter(|device| {
-                    let seat_name = device
-                        .property_value("ID_SEAT")
-                        .map(|x| x.to_os_string())
-                        .unwrap_or_else(|| "seat0".into());
+            Err("No DRM device found".into())
+        }
 
-                    seat_name == "seat0"
-                })
-                .filter(|device| {
-                    let pci = match device.parent_with_subsystem(Path::new("pci")) {
-                        Ok(Some(pci)) => pci,
-                        _ => return false,
-                    };
-
-                    let id = match pci.attribute_value("boot_vga") {
-                        Some(id) => id,
-                        _ => return false,
-                    };
-
-                    id.to_str() == Some("1")
-                })
-                .find_map(|dev| dev.devnode().map(PathBuf::from))
-                .or_else(|| {
-                    enumerator
-                        .scan_devices()
-                        .expect("Failed to scan devices")
-                        .filter(|device| {
-                            let seat_name = device
-                                .property_value("ID_SEAT")
-                                .map(|x| x.to_os_string())
-                                .unwrap_or_else(|| "seat0".into());
-
-                            seat_name == "seat0"
-                        })
-                        .find_map(|dev| dev.devnode().map(PathBuf::from))
-                })
-                .ok_or("No drm device found")?;
-
+        fn open(path: impl AsRef<Path>) -> Result<Card, Box<dyn std::error::Error>> {
             let file = std::fs::OpenOptions::new()
                 .read(true)
                 .write(true)
