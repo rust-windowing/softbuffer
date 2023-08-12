@@ -175,7 +175,7 @@ impl KmsImpl {
             .map(|encoder| encoder.handle())
             .collect::<HashSet<_>>();
 
-        // Get a list of every connector.
+        // Get a list of every connector that the CRTC is connected to via encoders.
         let connectors = handles
             .connectors
             .iter()
@@ -325,9 +325,24 @@ impl BufferImpl<'_> {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        self.display
-            .dirty_framebuffer(self.front_fb, &rectangles)
-            .swbuf_err("failed to dirty framebuffer")?;
+        // Dirty the framebuffer with out damage rectangles.
+        //
+        // Some drivers don't support this, so we just ignore the `ENOSYS` error.
+        // TODO: It would be nice to not have to heap-allocate the above rectangles if we know that
+        // this is going to fail. Low hanging fruit PR: add a flag that's set to false if this
+        // returns `ENOSYS` and check that before allocating the above and running this.
+        match self.display.dirty_framebuffer(self.front_fb, &rectangles) {
+            Ok(())
+            | Err(drm::SystemError::Unknown {
+                errno: nix::errno::Errno::ENOSYS,
+            }) => {}
+            Err(e) => {
+                return Err(SoftBufferError::PlatformError(
+                    Some("failed to dirty framebuffer".into()),
+                    Some(e.into()),
+                ));
+            }
+        }
 
         // Swap the buffers.
         // TODO: Use atomic commits here!
