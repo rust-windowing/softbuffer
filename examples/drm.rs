@@ -174,7 +174,7 @@ mod imple {
                     Ok(handles) => handles,
                     Err(_) => continue,
                 };
-                
+
                 if !handles.connectors.is_empty() {
                     return Ok(device);
                 }
