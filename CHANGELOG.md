@@ -1,3 +1,7 @@
+# UNRELEASED
+
+* On X11, fix the length of the returned buffer when using the wire-transferred buffer.
+
 # 0.3.0
 
 * On MacOS, the contents scale is updated when set_buffer() is called, to adapt when the window is on a new screen (#68).

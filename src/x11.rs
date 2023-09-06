@@ -486,7 +486,7 @@ impl Buffer {
         match self {
             Buffer::Shm(ref mut shm) => shm.alloc_segment(conn, total_len(width, height)),
             Buffer::Wire(wire) => {
-                wire.resize(total_len(width, height), 0);
+                wire.resize(total_len(width, height) / 4, 0);
                 Ok(())
             }
         }
