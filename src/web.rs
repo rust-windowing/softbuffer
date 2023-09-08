@@ -322,7 +322,7 @@ impl Canvas {
 
     // NOTE: suppress the lint because we mirror `CanvasRenderingContext2D`’s `putImageData`, and
     // this is just an internal API used by this module only, so it’s not too relevant.
-    #[allow(clippy::too-many-arguments)]
+    #[allow(clippy::too_many_arguments)]
     fn put_image_data(
         &self,
         imagedata: &ImageData,
@@ -330,17 +330,17 @@ impl Canvas {
         dy: f64,
         dirty_x: f64,
         dirty_y: f64,
-        widht: f64,
+        width: f64,
         height: f64,
     ) -> Result<(), JsValue> {
         match self {
             Self::Canvas { ctx, .. } => ctx
                 .put_image_data_with_dirty_x_and_dirty_y_and_dirty_width_and_dirty_height(
-                    imagedata, dx, dy, dirty_x, dirty_y, widht, height,
+                    imagedata, dx, dy, dirty_x, dirty_y, width, height,
                 ),
             Self::OffscreenCanvas { ctx, .. } => ctx
                 .put_image_data_with_dirty_x_and_dirty_y_and_dirty_width_and_dirty_height(
-                    imagedata, dx, dy, dirty_x, dirty_y, widht, height,
+                    imagedata, dx, dy, dirty_x, dirty_y, width, height,
                 ),
         }
     }
