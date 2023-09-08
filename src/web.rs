@@ -320,6 +320,9 @@ impl Canvas {
         }
     }
 
+    // NOTE: suppress the lint because we mirror `CanvasRenderingContext2D`’s `putImageData`, and
+    // this is just an internal API used by this module only, so it’s not too relevant.
+    #[allow(clippy::too-many-arguments)]
     fn put_image_data(
         &self,
         imagedata: &ImageData,
