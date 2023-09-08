@@ -2,7 +2,7 @@ use memmap2::MmapMut;
 use std::{
     ffi::CStr,
     fs::File,
-    os::unix::prelude::{AsRawFd, FromRawFd},
+    os::unix::prelude::{AsFd, AsRawFd, FromRawFd},
     slice,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -107,7 +107,7 @@ impl WaylandBuffer {
         let map = unsafe { map_file(&tempfile) };
 
         // Create wayland shm pool and buffer
-        let pool = shm.create_pool(tempfile.as_raw_fd(), pool_size, qh, ());
+        let pool = shm.create_pool(tempfile.as_fd(), pool_size, qh, ());
         let released = Arc::new(AtomicBool::new(true));
         let buffer = pool.create_buffer(
             0,
