@@ -146,7 +146,12 @@ impl WebImpl {
 
         let mut damage_iter = damage.iter();
 
-        let first_rect = damage_iter.next().expect("at least one damage rectangle");
+        let first_rect = if let Some(rect) = damage_iter.next() {
+            rect
+        } else {
+            // If there is no damage, there is nothing to do
+            return Ok(());
+        };
 
         struct UnionRegion {
             top: u32,
