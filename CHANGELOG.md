@@ -1,6 +1,7 @@
 # UNRELEASED
 
 * On X11, fix the length of the returned buffer when using the wire-transferred buffer.
+* On Web, fix incorrect starting coordinates when handling buffer damage.
 
 # 0.3.0
 
