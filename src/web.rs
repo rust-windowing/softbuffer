@@ -2,6 +2,10 @@
 
 #![allow(clippy::uninlined_format_args)]
 
+use std::convert::TryInto;
+use std::marker::PhantomData;
+use std::num::NonZeroU32;
+
 use js_sys::Object;
 use raw_window_handle::WebWindowHandle;
 use wasm_bindgen::{JsCast, JsValue};
@@ -10,10 +14,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::error::SwResultExt;
-use crate::{Rect, SoftBufferError};
-use std::convert::TryInto;
-use std::marker::PhantomData;
-use std::num::NonZeroU32;
+use crate::{util, Rect, SoftBufferError};
 
 /// Display implementation for the web platform.
 ///
@@ -138,19 +139,40 @@ impl WebImpl {
     }
 
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let (width, _height) = self
+        let (buffer_width, _buffer_height) = self
             .size
             .expect("Must set size of surface before calling `present_with_damage()`");
+
+        let union_damage = if let Some(rect) = util::union_damage(damage) {
+            rect
+        } else {
+            return Ok(());
+        };
+
         // Create a bitmap from the buffer.
         let bitmap: Vec<_> = self
             .buffer
-            .iter()
+            .chunks_exact(buffer_width.get() as usize)
+            .skip(union_damage.y as usize)
+            .take(union_damage.height.get() as usize)
+            .flat_map(|row| {
+                row.iter()
+                    .skip(union_damage.x as usize)
+                    .take(union_damage.width.get() as usize)
+            })
             .copied()
             .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
             .collect();
 
+        debug_assert_eq!(
+            bitmap.len() as u32,
+            union_damage.width.get() * union_damage.height.get() * 4
+        );
+
         #[cfg(target_feature = "atomics")]
         let result = {
+            // When using atomics, the underlying memory becomes `SharedArrayBuffer`,
+            // which can't be shared with `ImageData`.
             use js_sys::{Uint8Array, Uint8ClampedArray};
             use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -166,13 +188,15 @@ impl WebImpl {
             let array = Uint8Array::new_with_length(bitmap.len() as u32);
             array.copy_from(&bitmap);
             let array = Uint8ClampedArray::new(&array);
-            ImageDataExt::new(array, width.get())
+            ImageDataExt::new(array, union_damage.width.get())
                 .map(JsValue::from)
                 .map(ImageData::unchecked_from_js)
         };
         #[cfg(not(target_feature = "atomics"))]
-        let result =
-            ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(&bitmap), width.get());
+        let result = ImageData::new_with_u8_clamped_array(
+            wasm_bindgen::Clamped(&bitmap),
+            union_damage.width.get(),
+        );
         // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data = result.unwrap();
 
@@ -181,8 +205,10 @@ impl WebImpl {
             self.canvas
                 .put_image_data(
                     &image_data,
-                    rect.x.into(),
-                    rect.y.into(),
+                    union_damage.x.into(),
+                    union_damage.y.into(),
+                    (rect.x - union_damage.x).into(),
+                    (rect.y - union_damage.y).into(),
                     rect.width.get().into(),
                     rect.height.get().into(),
                 )
@@ -274,22 +300,27 @@ impl Canvas {
         }
     }
 
+    // NOTE: suppress the lint because we mirror `CanvasRenderingContext2D.putImageData()`, and
+    // this is just an internal API used by this module only, so it's not too relevant.
+    #[allow(clippy::too_many_arguments)]
     fn put_image_data(
         &self,
         imagedata: &ImageData,
         dx: f64,
         dy: f64,
-        widht: f64,
+        dirty_x: f64,
+        dirty_y: f64,
+        width: f64,
         height: f64,
     ) -> Result<(), JsValue> {
         match self {
             Self::Canvas { ctx, .. } => ctx
                 .put_image_data_with_dirty_x_and_dirty_y_and_dirty_width_and_dirty_height(
-                    imagedata, dx, dy, dx, dy, widht, height,
+                    imagedata, dx, dy, dirty_x, dirty_y, width, height,
                 ),
             Self::OffscreenCanvas { ctx, .. } => ctx
                 .put_image_data_with_dirty_x_and_dirty_y_and_dirty_width_and_dirty_height(
-                    imagedata, dx, dy, dx, dy, widht, height,
+                    imagedata, dx, dy, dirty_x, dirty_y, width, height,
                 ),
         }
     }
