@@ -10,7 +10,7 @@ repository = "https://github.com/rust-windowing/softbuffer"
 keywords = ["framebuffer", "windowing"]
 categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
-rust-version = "1.64.0"
+rust-version = "1.65.0"
 
 [[bench]]
 name = "buffer_mut"
@@ -36,9 +36,9 @@ drm-sys = { version = "0.4.0", default-features = false, optional = true }
 memmap2 = { version = "0.7.1", optional = true }
 nix = { version = "0.26.1", optional = true }
 tiny-xlib = { version = "0.2.1", optional = true }
-wayland-backend = { version = "0.1.0", features = ["client_system"], optional = true }
-wayland-client = { version = "0.30.0", optional = true }
-wayland-sys = "0.30.0"
+wayland-backend = { version = "0.3.0", features = ["client_system"], optional = true }
+wayland-client = { version = "0.31.0", optional = true }
+wayland-sys = "0.31.0"
 x11rb = { version = "0.12.0", features = ["allow-unsafe-code", "shm"], optional = true }
 
 [target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox", target_os = "linux", target_os = "freebsd"))))'.dependencies]

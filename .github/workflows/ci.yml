@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust_version: ['1.64.0', stable, nightly]
+        rust_version: ['1.65.0', stable, nightly]
         platform:
           - { target: x86_64-pc-windows-msvc,   os: windows-latest,  }
           - { target: i686-pc-windows-msvc,     os: windows-latest,  }
@@ -79,9 +79,13 @@ jobs:
         targets: ${{ matrix.platform.target }}
         components: clippy, rust-src
 
+    - name: Install libwayland
+      if: (matrix.platform.os == 'ubuntu-latest')
+      run: sudo apt-get update && sudo apt-get install libwayland-dev
+
     - name: Install GCC Multilib
       if: (matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')
-      run: sudo apt-get update && sudo apt-get install gcc-multilib
+      run: sudo apt-get install gcc-multilib
 
     - name: Build crate
       shell: bash
@@ -94,7 +98,7 @@ jobs:
         !contains(matrix.platform.target, 'redox') &&
         !contains(matrix.platform.target, 'freebsd') &&
         !contains(matrix.platform.target, 'netbsd') &&
-        matrix.rust_version != '1.64.0'
+        matrix.rust_version != '1.65.0'
       run: cargo $CMD test --no-run --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
     - name: Run tests
