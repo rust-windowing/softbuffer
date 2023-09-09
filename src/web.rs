@@ -2,7 +2,6 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use std::cmp;
 use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -15,7 +14,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::error::SwResultExt;
-use crate::{Rect, SoftBufferError};
+use crate::{util, Rect, SoftBufferError};
 
 /// Display implementation for the web platform.
 ///
@@ -144,60 +143,36 @@ impl WebImpl {
             .size
             .expect("Must set size of surface before calling `present_with_damage()`");
 
-        let mut damage_iter = damage.iter();
-
-        let first_rect = if let Some(rect) = damage_iter.next() {
+        let union_damage = if let Some(rect) = util::union_damage(damage) {
             rect
         } else {
-            // If there is no damage, there is nothing to do
             return Ok(());
         };
-
-        struct UnionRegion {
-            top: u32,
-            left: u32,
-            bottom: u32,
-            right: u32,
-        }
-
-        let union_region = UnionRegion {
-            top: first_rect.y,
-            left: first_rect.x,
-            bottom: (first_rect.y + first_rect.height.get()),
-            right: (first_rect.x + first_rect.width.get()),
-        };
-
-        let union_region = damage_iter.fold(union_region, |mut union, rect| {
-            union.top = cmp::min(union.top, rect.y);
-            union.left = cmp::min(union.left, rect.x);
-            union.bottom = cmp::max(union.bottom, rect.y + rect.height.get());
-            union.right = cmp::max(union.right, rect.x + rect.width.get());
-            union
-        });
-
-        debug_assert!(union_region.right <= buffer_width.get());
-        debug_assert!(union_region.bottom <= _buffer_height.get());
-
-        let union_region_left = union_region.left as usize;
-        let union_region_top = union_region.top as usize;
-        let union_region_width = (union_region.right - union_region.left) as usize;
-        let union_region_height = (union_region.bottom - union_region.top) as usize;
 
         // Create a bitmap from the buffer.
         let bitmap: Vec<_> = self
             .buffer
             .chunks_exact(buffer_width.get() as usize)
-            .skip(union_region_top)
-            .take(union_region_height)
-            .flat_map(|row| row.iter().skip(union_region_left).take(union_region_width))
+            .skip(union_damage.y as usize)
+            .take(union_damage.height.get() as usize)
+            .flat_map(|row| {
+                row.iter()
+                    .skip(union_damage.x as usize)
+                    .take(union_damage.width.get() as usize)
+            })
             .copied()
             .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
             .collect();
 
-        debug_assert_eq!(bitmap.len(), union_region_height * union_region_width * 4);
+        debug_assert_eq!(
+            bitmap.len() as u32,
+            union_damage.width.get() * union_damage.height.get() * 4
+        );
 
         #[cfg(target_feature = "atomics")]
         let result = {
+            // When using atomics, the underlying memory becomes `SharedArrayBuffer`,
+            // which can't be shared with `ImageData`.
             use js_sys::{Uint8Array, Uint8ClampedArray};
             use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -213,14 +188,14 @@ impl WebImpl {
             let array = Uint8Array::new_with_length(bitmap.len() as u32);
             array.copy_from(&bitmap);
             let array = Uint8ClampedArray::new(&array);
-            ImageDataExt::new(array, union_region_width as u32)
+            ImageDataExt::new(array, union_damage.width.get())
                 .map(JsValue::from)
                 .map(ImageData::unchecked_from_js)
         };
         #[cfg(not(target_feature = "atomics"))]
         let result = ImageData::new_with_u8_clamped_array(
             wasm_bindgen::Clamped(&bitmap),
-            union_region_width as u32,
+            union_damage.width.get(),
         );
         // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data = result.unwrap();
@@ -230,10 +205,10 @@ impl WebImpl {
             self.canvas
                 .put_image_data(
                     &image_data,
-                    union_region.left.into(),
-                    union_region.top.into(),
-                    (rect.x - union_region.left).into(),
-                    (rect.y - union_region.top).into(),
+                    union_damage.x.into(),
+                    union_damage.y.into(),
+                    (rect.x - union_damage.x).into(),
+                    (rect.y - union_damage.y).into(),
                     rect.width.get().into(),
                     rect.height.get().into(),
                 )
@@ -325,8 +300,8 @@ impl Canvas {
         }
     }
 
-    // NOTE: suppress the lint because we mirror `CanvasRenderingContext2D`’s `putImageData`, and
-    // this is just an internal API used by this module only, so it’s not too relevant.
+    // NOTE: suppress the lint because we mirror `CanvasRenderingContext2D.putImageData()`, and
+    // this is just an internal API used by this module only, so it's not too relevant.
     #[allow(clippy::too_many_arguments)]
     fn put_image_data(
         &self,
