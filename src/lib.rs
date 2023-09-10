@@ -466,6 +466,7 @@ impl<'a> Buffer<'a> {
     /// - Wayland
     /// - X, when XShm is available
     /// - Win32
+    /// - Web
     ///
     /// Otherwise this is equivalent to [`Self::present`].
     pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
