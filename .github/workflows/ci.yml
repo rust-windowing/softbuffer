@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: hecrj/setup-rust-action@v1
+    - uses: hecrj/setup-rust-action@v2
       with:
         rust-version: stable
         components: rustfmt
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: hecrj/setup-rust-action@v1
+    - uses: hecrj/setup-rust-action@v2
       with:
         rust-version: nightly
         components: miri
@@ -73,7 +73,7 @@ jobs:
       with:
         tool: wasm-bindgen-cli
 
-    - uses: hecrj/setup-rust-action@v1
+    - uses: hecrj/setup-rust-action@v2
       with:
         rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
         targets: ${{ matrix.platform.target }}
