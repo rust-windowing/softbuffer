@@ -2,7 +2,7 @@ use memmap2::MmapMut;
 use std::{
     ffi::CStr,
     fs::File,
-    os::unix::prelude::{AsFd, AsRawFd, FromRawFd},
+    os::unix::prelude::{AsFd, AsRawFd},
     slice,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -30,11 +30,11 @@ fn create_memfile() -> File {
     )
     .expect("Failed to create memfd to store buffer.");
     let _ = fcntl(
-        fd,
+        fd.as_raw_fd(),
         FcntlArg::F_ADD_SEALS(SealFlag::F_SEAL_SHRINK | SealFlag::F_SEAL_SEAL),
     )
     .expect("Failed to seal memfd.");
-    unsafe { File::from_raw_fd(fd) }
+    File::from(fd)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
@@ -64,10 +64,10 @@ fn create_memfile() -> File {
             OFlag::O_RDWR | OFlag::O_CREAT | OFlag::O_EXCL,
             Mode::S_IRWXU,
         );
-        if fd != Err(Errno::EEXIST) {
+        if !matches!(fd, Err(Errno::EEXIST)) {
             let fd = fd.expect("Failed to create POSIX shm to store buffer.");
             let _ = shm_unlink(name);
-            return unsafe { File::from_raw_fd(fd) };
+            return File::from(fd);
         }
     }
 

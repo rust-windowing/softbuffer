@@ -4,7 +4,9 @@
 
 use drm::buffer::{Buffer, DrmFourcc};
 use drm::control::dumbbuffer::{DumbBuffer, DumbMapping};
-use drm::control::{connector, crtc, framebuffer, plane, Device as CtrlDevice, PageFlipFlags};
+use drm::control::{
+    connector, crtc, framebuffer, plane, ClipRect, Device as CtrlDevice, PageFlipFlags,
+};
 use drm::Device;
 
 use raw_window_handle::{DrmDisplayHandle, DrmWindowHandle};
@@ -308,20 +310,18 @@ impl BufferImpl<'_> {
             .iter()
             .map(|&rect| {
                 let err = || SoftBufferError::DamageOutOfRange { rect };
-                Ok(drm_sys::drm_clip_rect {
-                    x1: rect.x.try_into().map_err(|_| err())?,
-                    y1: rect.y.try_into().map_err(|_| err())?,
-                    x2: rect
-                        .x
+                Ok(ClipRect::new(
+                    rect.x.try_into().map_err(|_| err())?,
+                    rect.y.try_into().map_err(|_| err())?,
+                    rect.x
                         .checked_add(rect.width.get())
                         .and_then(|x| x.try_into().ok())
                         .ok_or_else(err)?,
-                    y2: rect
-                        .y
+                    rect.y
                         .checked_add(rect.height.get())
                         .and_then(|y| y.try_into().ok())
                         .ok_or_else(err)?,
-                })
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
