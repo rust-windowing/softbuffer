@@ -18,35 +18,19 @@ use super::State;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn create_memfile() -> File {
-    use nix::{
-        fcntl::{fcntl, FcntlArg, SealFlag},
-        sys::memfd::{memfd_create, MemFdCreateFlag},
-    };
+    use rustix::fs::{MemfdFlags, SealFlags};
 
     let name = unsafe { CStr::from_bytes_with_nul_unchecked("softbuffer\0".as_bytes()) };
-    let fd = memfd_create(
-        name,
-        MemFdCreateFlag::MFD_CLOEXEC | MemFdCreateFlag::MFD_ALLOW_SEALING,
-    )
-    .expect("Failed to create memfd to store buffer.");
-    let _ = fcntl(
-        fd.as_raw_fd(),
-        FcntlArg::F_ADD_SEALS(SealFlag::F_SEAL_SHRINK | SealFlag::F_SEAL_SEAL),
-    )
-    .expect("Failed to seal memfd.");
+    let fd = rustix::fs::memfd_create(name, MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING)
+        .expect("Failed to create memfd to store buffer.");
+    rustix::fs::fcntl_add_seals(&fd, SealFlags::SHRINK | SealFlags::SEAL)
+        .expect("Failed to seal memfd.");
     File::from(fd)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 fn create_memfile() -> File {
-    use nix::{
-        errno::Errno,
-        fcntl::OFlag,
-        sys::{
-            mman::{shm_open, shm_unlink},
-            stat::Mode,
-        },
-    };
+    use rustix::{fs::Mode, io::Errno, shm::ShmOFlags};
     use std::iter;
 
     // Use a cached RNG to avoid hammering the thread local.
@@ -59,14 +43,14 @@ fn create_memfile() -> File {
 
         let name = unsafe { CStr::from_bytes_with_nul_unchecked(name.as_bytes()) };
         // `CLOEXEC` is implied with `shm_open`
-        let fd = shm_open(
+        let fd = rustix::shm::shm_open(
             name,
-            OFlag::O_RDWR | OFlag::O_CREAT | OFlag::O_EXCL,
-            Mode::S_IRWXU,
+            ShmOFlags::RDWR | ShmOFlags::CREATE | ShmOFlags::EXCL,
+            Mode::RWXU,
         );
-        if !matches!(fd, Err(Errno::EEXIST)) {
+        if !matches!(fd, Err(Errno::EXIST)) {
             let fd = fd.expect("Failed to create POSIX shm to store buffer.");
-            let _ = shm_unlink(name);
+            let _ = rustix::shm::shm_unlink(name);
             return File::from(fd);
         }
     }

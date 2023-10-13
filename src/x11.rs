@@ -7,7 +7,7 @@
 
 use crate::error::SwResultExt;
 use crate::{Rect, SoftBufferError};
-use nix::libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
+use libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
 use std::ptr::{null_mut, NonNull};
 use std::{

@@ -332,10 +332,8 @@ impl BufferImpl<'_> {
         // this is going to fail. Low hanging fruit PR: add a flag that's set to false if this
         // returns `ENOSYS` and check that before allocating the above and running this.
         match self.display.dirty_framebuffer(self.front_fb, &rectangles) {
-            Ok(())
-            | Err(drm::SystemError::Unknown {
-                errno: nix::errno::Errno::ENOSYS,
-            }) => {}
+            Ok(()) => {}
+            Err(drm::SystemError::Unknown { errno }) if errno as i32 == libc::ENOSYS => {}
             Err(e) => {
                 return Err(SoftBufferError::PlatformError(
                     Some("failed to dirty framebuffer".into()),
