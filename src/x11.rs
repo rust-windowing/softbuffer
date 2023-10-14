@@ -7,12 +7,14 @@
 
 use crate::error::SwResultExt;
 use crate::{Rect, SoftBufferError};
-use libc::{shmat, shmctl, shmdt, shmget, IPC_PRIVATE, IPC_RMID};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
-use std::ptr::{null_mut, NonNull};
+use rustix::{fd, mm, shm as posix_shm};
 use std::{
-    fmt, io, mem,
+    fmt,
+    fs::File,
+    io, mem,
     num::{NonZeroU16, NonZeroU32},
+    ptr::{null_mut, NonNull},
     rc::Rc,
     slice,
 };
@@ -606,7 +608,8 @@ impl ShmBuffer {
     ) -> Result<(), PushBufferError> {
         // Register the guard.
         let new_id = conn.generate_id()?;
-        conn.shm_attach(new_id, seg.id(), true)?.ignore_error();
+        conn.shm_attach_fd(new_id, fd::AsRawFd::as_raw_fd(&seg), true)?
+            .ignore_error();
 
         // Take out the old one and detach it.
         if let Some((old_seg, old_id)) = self.seg.replace((seg, new_id)) {
@@ -643,7 +646,7 @@ impl ShmBuffer {
 }
 
 struct ShmSegment {
-    id: i32,
+    id: File,
     ptr: NonNull<i8>,
     size: usize,
     buffer_size: usize,
@@ -654,32 +657,40 @@ impl ShmSegment {
     fn new(size: usize, buffer_size: usize) -> io::Result<Self> {
         assert!(size >= buffer_size);
 
-        unsafe {
-            // Create the shared memory segment.
-            let id = shmget(IPC_PRIVATE, size, 0o600);
-            if id == -1 {
-                return Err(io::Error::last_os_error());
-            }
+        // Create a shared memory segment.
+        let id = File::from(create_shm_id()?);
 
-            // Map the SHM to our memory space.
-            let ptr = {
-                let ptr = shmat(id, null_mut(), 0);
-                match NonNull::new(ptr as *mut i8) {
-                    Some(ptr) => ptr,
-                    None => {
-                        shmctl(id, IPC_RMID, null_mut());
-                        return Err(io::Error::last_os_error());
-                    }
-                }
-            };
+        // Set its length.
+        id.set_len(size as u64)?;
 
-            Ok(Self {
-                id,
-                ptr,
+        // Map the shared memory to our file descriptor space.
+        let ptr = unsafe {
+            let ptr = mm::mmap(
+                null_mut(),
                 size,
-                buffer_size,
-            })
-        }
+                mm::ProtFlags::READ | mm::ProtFlags::WRITE,
+                mm::MapFlags::SHARED,
+                &id,
+                0,
+            )?;
+
+            match NonNull::new(ptr.cast()) {
+                Some(ptr) => ptr,
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "unexpected null when mapping SHM segment",
+                    ));
+                }
+            }
+        };
+
+        Ok(Self {
+            id,
+            ptr,
+            size,
+            buffer_size,
+        })
     }
 
     /// Get this shared memory segment as a reference.
@@ -715,21 +726,19 @@ impl ShmSegment {
     fn size(&self) -> usize {
         self.size
     }
+}
 
-    /// Get the shared memory ID.
-    fn id(&self) -> u32 {
-        self.id as _
+impl fd::AsRawFd for ShmSegment {
+    fn as_raw_fd(&self) -> fd::RawFd {
+        self.id.as_raw_fd()
     }
 }
 
 impl Drop for ShmSegment {
     fn drop(&mut self) {
         unsafe {
-            // Detach the shared memory segment.
-            shmdt(self.ptr.as_ptr() as _);
-
-            // Delete the shared memory segment.
-            shmctl(self.id, IPC_RMID, null_mut());
+            // Unmap the shared memory segment.
+            mm::munmap(self.ptr.as_ptr().cast(), self.size).ok();
         }
     }
 }
@@ -758,6 +767,45 @@ impl Drop for X11Impl {
     }
 }
 
+/// Create a shared memory identifier.
+fn create_shm_id() -> io::Result<fd::OwnedFd> {
+    use posix_shm::{Mode, ShmOFlags};
+
+    let mut rng = fastrand::Rng::new();
+    let mut name = String::with_capacity(23);
+
+    // Only try four times; the chances of a collision on this space is astronomically low, so if
+    // we miss four times in a row we're probably under attack.
+    for i in 0..4 {
+        name.clear();
+        name.push_str("softbuffer-x11-");
+        name.extend(std::iter::repeat_with(|| rng.alphanumeric()).take(7));
+
+        // Try to create the shared memory segment.
+        match posix_shm::shm_open(
+            &name,
+            ShmOFlags::RDWR | ShmOFlags::CREATE | ShmOFlags::EXCL,
+            Mode::RWXU,
+        ) {
+            Ok(id) => {
+                posix_shm::shm_unlink(&name).ok();
+                return Ok(id);
+            }
+
+            Err(rustix::io::Errno::EXIST) => {
+                log::warn!("x11: SHM ID collision at {} on try number {}", name, i);
+            }
+
+            Err(e) => return Err(e.into()),
+        };
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "failed to generate a non-existent SHM name",
+    ))
+}
+
 /// Test to see if SHM is available.
 fn is_shm_available(c: &impl Connection) -> bool {
     // Create a small SHM segment.
@@ -773,7 +821,7 @@ fn is_shm_available(c: &impl Connection) -> bool {
     };
 
     let (attach, detach) = {
-        let attach = c.shm_attach(seg_id, seg.id(), false);
+        let attach = c.shm_attach_fd(seg_id, fd::AsRawFd::as_raw_fd(&seg), false);
         let detach = c.shm_detach(seg_id);
 
         match (attach, detach) {
