@@ -333,7 +333,8 @@ impl BufferImpl<'_> {
         // returns `ENOSYS` and check that before allocating the above and running this.
         match self.display.dirty_framebuffer(self.front_fb, &rectangles) {
             Ok(()) => {}
-            Err(drm::SystemError::Unknown { errno }) if errno as i32 == libc::ENOSYS => {}
+            Err(drm::SystemError::Unknown { errno })
+                if errno as i32 == rustix::io::Errno::NOSYS.raw_os_error() => {}
             Err(e) => {
                 return Err(SoftBufferError::PlatformError(
                     Some("failed to dirty framebuffer".into()),

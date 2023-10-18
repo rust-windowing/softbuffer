@@ -18,10 +18,10 @@ harness = false
 
 [features]
 default = ["kms", "x11", "x11-dlopen", "wayland", "wayland-dlopen"]
-kms = ["bytemuck", "drm", "libc", "rustix"]
+kms = ["bytemuck", "drm", "rustix"]
 wayland = ["wayland-backend", "wayland-client", "memmap2", "rustix", "fastrand"]
 wayland-dlopen = ["wayland-sys/dlopen"]
-x11 = ["as-raw-xcb-connection", "bytemuck", "libc", "rustix", "tiny-xlib", "x11rb"]
+x11 = ["as-raw-xcb-connection", "bytemuck", "fastrand", "rustix", "tiny-xlib", "x11rb"]
 x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
 
 [dependencies]
@@ -32,17 +32,14 @@ raw-window-handle = "0.5.0"
 as-raw-xcb-connection = { version = "1.0.0", optional = true }
 bytemuck = { version = "1.12.3", optional = true }
 drm = { version = "0.10.0", default-features = false, optional = true }
+fastrand = { version = "2.0.0", optional = true }
 memmap2 = { version = "0.9.0", optional = true }
-libc = { version = "0.2.149", optional = true }
-rustix = { version = "0.38.19", features = ["fs", "mm", "shm"], optional = true }
+rustix = { version = "0.38.19", features = ["fs", "mm", "shm", "std"], default-features = false, optional = true }
 tiny-xlib = { version = "0.2.1", optional = true }
 wayland-backend = { version = "0.3.0", features = ["client_system"], optional = true }
 wayland-client = { version = "0.31.0", optional = true }
 wayland-sys = "0.31.0"
 x11rb = { version = "0.12.0", features = ["allow-unsafe-code", "shm"], optional = true }
-
-[target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox", target_os = "linux", target_os = "freebsd"))))'.dependencies]
-fastrand = { version = "2.0.0", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-sys]
 version = "0.48.0"
