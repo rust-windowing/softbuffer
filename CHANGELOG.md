@@ -1,3 +1,13 @@
+# 0.3.2
+
+* Document that `present_with_damage` is supported on web platforms. (#152)
+* Replace our usage of `nix` with `rustix`. This enables this crate to run without `libc`. (#164)
+* Use POSIX shared memory instead of Sys-V shared memory for the X11 backend. (#165)
+* Bump version for the following dependencies:
+  * `memmap2` (#156)
+  * `redox_syscall` (#161)
+  * `drm` (#163)
+
 # 0.3.1
 
 * On X11, fix the length of the returned buffer when using the wire-transferred buffer.
