@@ -2,10 +2,7 @@ use crate::{
     error::{InitError, SwResultExt},
     util, Rect, SoftBufferError,
 };
-use raw_window_handle::{
-    HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawDisplayHandle,
-    RawWindowHandle,
-};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
     cell::RefCell,
     num::{NonZeroI32, NonZeroU32},
@@ -41,13 +38,13 @@ impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
     where
         D: Sized,
     {
-        let raw = display.display_handle()?.raw_display_handle()?;
+        let raw = display.display_handle()?.as_raw();
         let wayland_handle = match raw {
             RawDisplayHandle::Wayland(w) => w.display,
             _ => return Err(InitError::Unsupported(display)),
         };
 
-        let backend = unsafe { Backend::from_foreign_display(wayland_handle.cast()) };
+        let backend = unsafe { Backend::from_foreign_display(wayland_handle.as_ptr().cast()) };
         let conn = Connection::from_backend(backend);
         let (globals, event_queue) =
             registry_queue_init(&conn).swbuf_err("Failed to make round trip to server")?;
@@ -92,14 +89,17 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
     pub(crate) fn new(window: W, display: Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the raw Wayland window.
-        let raw = window.window_handle()?.raw_window_handle()?;
+        let raw = window.window_handle()?.as_raw();
         let wayland_handle = match raw {
             RawWindowHandle::Wayland(w) => w.surface,
             _ => return Err(InitError::Unsupported(window)),
         };
 
         let surface_id = unsafe {
-            ObjectId::from_ptr(wl_surface::WlSurface::interface(), wayland_handle.cast())
+            ObjectId::from_ptr(
+                wl_surface::WlSurface::interface(),
+                wayland_handle.as_ptr().cast(),
+            )
         }
         .swbuf_err("Failed to create proxy for surface ID.")?;
         let surface = wl_surface::WlSurface::from_id(display.conn(), surface_id)

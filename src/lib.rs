@@ -35,10 +35,7 @@ use std::rc::Rc;
 use error::InitError;
 pub use error::SoftBufferError;
 
-use raw_window_handle::{
-    HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawDisplayHandle,
-    RawWindowHandle,
-};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 #[cfg(target_arch = "wasm32")]
 pub use self::web::SurfaceExtWeb;
@@ -184,7 +181,7 @@ make_dispatch! {
     #[cfg(wayland_platform)]
     Wayland(Rc<wayland::WaylandDisplayImpl<D>>, wayland::WaylandImpl<D, W>, wayland::BufferImpl<'a, D, W>),
     #[cfg(kms_platform)]
-    Kms(Rc<kms::KmsDisplayImpl>, kms::KmsImpl, kms::BufferImpl<'a>),
+    Kms(Rc<kms::KmsDisplayImpl<D>>, kms::KmsImpl<D, W>, kms::BufferImpl<'a, D, W>),
     #[cfg(target_os = "windows")]
     Win32(D, win32::Win32Impl<D, W>, win32::BufferImpl<'a, D, W>),
     #[cfg(target_os = "macos")]
@@ -213,18 +210,13 @@ impl<D: HasDisplayHandle> Context<D> {
                 }
             }};
         }
-    }
 
-    /// Creates a new instance of this struct, using the provided display handles
-    ///
-    /// # Safety
-    ///
-    ///  - Ensure that the provided handle is valid for the lifetime of the Context
-    pub unsafe fn from_raw(raw_display_handle: RawDisplayHandle) -> Result<Self, SoftBufferError> {
         #[cfg(x11_platform)]
         try_init!(X11, display => x11::X11DisplayImpl::new(display).map(Rc::new));
         #[cfg(wayland_platform)]
         try_init!(Wayland, display => wayland::WaylandDisplayImpl::new(display).map(Rc::new));
+        #[cfg(kms_platform)]
+        try_init!(Kms, display => kms::KmsDisplayImpl::new(display).map(Rc::new));
         #[cfg(target_os = "windows")]
         try_init!(Win32, display => Ok(display));
         #[cfg(target_os = "macos")]
@@ -234,7 +226,7 @@ impl<D: HasDisplayHandle> Context<D> {
         #[cfg(target_os = "redox")]
         try_init!(Orbital, display => Ok(display));
 
-        let raw = dpy.display_handle()?.raw_display_handle()?;
+        let raw = dpy.display_handle()?.as_raw();
         Err(SoftBufferError::UnsupportedDisplayPlatform {
             human_readable_display_platform_name: display_handle_type_name(&raw),
             display_handle: raw,
@@ -270,7 +262,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
                 match ($e) {
                     Ok(x) => x,
                     Err(InitError::Unsupported(window)) => {
-                        let raw = window.window_handle()?.raw_window_handle()?;
+                        let raw = window.window_handle()?.as_raw();
                         return Err(SoftBufferError::UnsupportedWindowPlatform {
                             human_readable_window_platform_name: window_handle_type_name(&raw),
                             human_readable_display_platform_name: context
@@ -293,6 +285,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
             ContextDispatch::Wayland(wayland_display_impl) => SurfaceDispatch::Wayland(leap!(
                 wayland::WaylandImpl::new(window, wayland_display_impl.clone())
             )),
+            #[cfg(kms_platform)]
+            ContextDispatch::Kms(kms_display_impl) => {
+                SurfaceDispatch::Kms(leap!(kms::KmsImpl::new(window, kms_display_impl.clone())))
+            }
             #[cfg(target_os = "windows")]
             ContextDispatch::Win32(_) => {
                 SurfaceDispatch::Win32(leap!(win32::Win32Impl::new(window)))

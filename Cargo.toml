@@ -120,6 +120,3 @@ targets = [
     "wasm32-unknown-unknown",
 ]
 
-[patch.crates-io]
-raw_window_handle = { package = "raw-window-handle", git = "https://github.com/rust-windowing/raw-window-handle.git", branch = "notgull/next" }
-winit = { git = "https://github.com/forkgull/winit.git", branch = "rwh-0.6" }

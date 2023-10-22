@@ -9,54 +9,59 @@ use drm::control::{
 };
 use drm::Device;
 
-use raw_window_handle::{DrmDisplayHandle, DrmWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 use std::collections::HashSet;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
 use std::rc::Rc;
 
-use crate::error::{SoftBufferError, SwResultExt};
+use crate::error::{InitError, SoftBufferError, SwResultExt};
 
 #[derive(Debug)]
-pub(crate) struct KmsDisplayImpl {
+pub(crate) struct KmsDisplayImpl<D: ?Sized> {
     /// The underlying raw device file descriptor.
-    ///
-    /// Once rwh v0.6 support is merged, this an be made safe. Until then,
-    /// we use this hacky workaround, since this FD's validity is guaranteed by
-    /// the unsafe constructor.
     fd: BorrowedFd<'static>,
+
+    /// Holds a reference to the display.
+    _display: D,
 }
 
-impl AsFd for KmsDisplayImpl {
+impl<D: ?Sized> AsFd for KmsDisplayImpl<D> {
     fn as_fd(&self) -> BorrowedFd<'_> {
         self.fd
     }
 }
 
-impl Device for KmsDisplayImpl {}
-impl CtrlDevice for KmsDisplayImpl {}
+impl<D: ?Sized> Device for KmsDisplayImpl<D> {}
+impl<D: ?Sized> CtrlDevice for KmsDisplayImpl<D> {}
 
-impl KmsDisplayImpl {
-    /// SAFETY: The underlying fd must not outlive the display.
-    pub(crate) unsafe fn new(handle: DrmDisplayHandle) -> Result<KmsDisplayImpl, SoftBufferError> {
-        let fd = handle.fd;
+impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
+    pub(crate) fn new(display: D) -> Result<Self, InitError<D>> {
+        let fd = match display.display_handle()?.as_raw() {
+            RawDisplayHandle::Drm(drm) => drm.fd,
+            _ => return Err(InitError::Unsupported(display)),
+        };
         if fd == -1 {
-            return Err(SoftBufferError::IncompleteDisplayHandle);
+            return Err(SoftBufferError::IncompleteDisplayHandle.into());
         }
 
         // SAFETY: Invariants guaranteed by the user.
         let fd = unsafe { BorrowedFd::borrow_raw(fd) };
 
-        Ok(KmsDisplayImpl { fd })
+        Ok(KmsDisplayImpl {
+            fd,
+            _display: display,
+        })
     }
 }
 
 /// All the necessary types for the Drm/Kms backend.
 #[derive(Debug)]
-pub(crate) struct KmsImpl {
+pub(crate) struct KmsImpl<D: ?Sized, W: ?Sized> {
     /// The display implementation.
-    display: Rc<KmsDisplayImpl>,
+    display: Rc<KmsDisplayImpl<D>>,
 
     /// The connectors to use.
     connectors: Vec<connector::Handle>,
@@ -66,6 +71,9 @@ pub(crate) struct KmsImpl {
 
     /// The dumb buffer we're using as a buffer.
     buffer: Option<Buffers>,
+
+    /// Window handle that we are keeping around.
+    _window: W,
 }
 
 #[derive(Debug)]
@@ -81,7 +89,7 @@ struct Buffers {
 }
 
 /// The buffer implementation.
-pub(crate) struct BufferImpl<'a> {
+pub(crate) struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
     /// The mapping of the dump buffer.
     mapping: DumbMapping<'a>,
 
@@ -101,13 +109,16 @@ pub(crate) struct BufferImpl<'a> {
     size: (NonZeroU32, NonZeroU32),
 
     /// The display implementation.
-    display: &'a KmsDisplayImpl,
+    display: &'a KmsDisplayImpl<D>,
 
     /// Age of the front buffer.
     front_age: &'a mut u8,
 
     /// Age of the back buffer.
     back_age: &'a mut u8,
+
+    /// Window reference.
+    _window: PhantomData<&'a mut W>,
 }
 
 /// The combined frame buffer and dumb buffer.
@@ -123,22 +134,16 @@ struct SharedBuffer {
     age: u8,
 }
 
-impl KmsImpl {
+impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
     /// Create a new KMS backend.
-    ///
-    /// # Safety
-    ///
-    /// The plane must be valid for the lifetime of the backend.
-    pub(crate) unsafe fn new(
-        window_handle: DrmWindowHandle,
-        display: Rc<KmsDisplayImpl>,
-    ) -> Result<Self, SoftBufferError> {
-        log::trace!("new: window_handle={:X}", window_handle.plane);
-
+    pub(crate) fn new(window: W, display: Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Make sure that the window handle is valid.
-        let plane_handle = match NonZeroU32::new(window_handle.plane) {
-            Some(handle) => plane::Handle::from(handle),
-            None => return Err(SoftBufferError::IncompleteWindowHandle),
+        let plane_handle = match window.window_handle()?.as_raw() {
+            RawWindowHandle::Drm(drm) => match NonZeroU32::new(drm.plane) {
+                Some(handle) => plane::Handle::from(handle),
+                None => return Err(SoftBufferError::IncompleteWindowHandle.into()),
+            },
+            _ => return Err(InitError::Unsupported(window)),
         };
 
         let plane_info = display
@@ -195,6 +200,7 @@ impl KmsImpl {
             connectors,
             display,
             buffer: None,
+            _window: window,
         })
     }
 
@@ -232,7 +238,7 @@ impl KmsImpl {
     }
 
     /// Get a mutable reference to the buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         // Map the dumb buffer.
         let set = self
             .buffer
@@ -267,11 +273,12 @@ impl KmsImpl {
             zeroes: &set.zeroes,
             front_age,
             back_age,
+            _window: PhantomData,
         })
     }
 }
 
-impl Drop for KmsImpl {
+impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
     fn drop(&mut self) {
         // Map the CRTC to the information that was there before.
         self.display
@@ -286,7 +293,7 @@ impl Drop for KmsImpl {
     }
 }
 
-impl BufferImpl<'_> {
+impl<D: ?Sized, W: ?Sized> BufferImpl<'_, D, W> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
         // drm-rs doesn't let us have the immutable reference... so just use a bunch of zeroes.
@@ -310,7 +317,7 @@ impl BufferImpl<'_> {
             .iter()
             .map(|&rect| {
                 let err = || SoftBufferError::DamageOutOfRange { rect };
-                Ok(ClipRect::new(
+                Ok::<_, SoftBufferError>(ClipRect::new(
                     rect.x.try_into().map_err(|_| err())?,
                     rect.y.try_into().map_err(|_| err())?,
                     rect.x
@@ -375,8 +382,8 @@ impl BufferImpl<'_> {
 
 impl SharedBuffer {
     /// Create a new buffer set.
-    pub(crate) fn new(
-        display: &KmsDisplayImpl,
+    pub(crate) fn new<D: ?Sized>(
+        display: &KmsDisplayImpl<D>,
         width: NonZeroU32,
         height: NonZeroU32,
     ) -> Result<Self, SoftBufferError> {

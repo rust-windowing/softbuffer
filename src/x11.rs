@@ -7,7 +7,10 @@
 
 use crate::error::{InitError, SwResultExt};
 use crate::{Rect, SoftBufferError};
-use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
+use raw_window_handle::{
+    HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, XcbDisplayHandle,
+    XcbWindowHandle,
+};
 use rustix::{fd, mm, shm as posix_shm};
 
 use std::{
@@ -50,41 +53,40 @@ impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
         D: Sized,
     {
         // Get the underlying libxcb handle.
-        let raw = display.display_handle()?.raw_display_handle()?;
+        let raw = display.display_handle()?.as_raw();
         let xcb_handle = match raw {
             RawDisplayHandle::Xcb(xcb_handle) => xcb_handle,
             RawDisplayHandle::Xlib(xlib) => {
                 // Convert to an XCB handle.
-                if xlib.display.is_null() {
-                    return Err(SoftBufferError::IncompleteDisplayHandle.into());
-                }
+                let display = match xlib.display {
+                    Some(display) => display,
+                    None => return Err(SoftBufferError::IncompleteDisplayHandle.into()),
+                };
 
                 // Get the underlying XCB connection.
                 // SAFETY: The user has asserted that the display handle is valid.
                 let connection = unsafe {
-                    let display = tiny_xlib::Display::from_ptr(xlib.display);
-                    display.as_raw_xcb_connection()
+                    let display = tiny_xlib::Display::from_ptr(display.as_ptr());
+                    NonNull::new_unchecked(display.as_raw_xcb_connection())
                 };
 
                 // Construct the equivalent XCB display and window handles.
-                let mut xcb_display_handle = XcbDisplayHandle::empty();
-                xcb_display_handle.connection = connection.cast();
-                xcb_display_handle.screen = xlib.screen;
-                xcb_display_handle
+                XcbDisplayHandle::new(Some(connection.cast()), xlib.screen)
             }
             _ => return Err(InitError::Unsupported(display)),
         };
 
         // Validate the display handle to ensure we can use it.
-        if xcb_handle.connection.is_null() {
-            return Err(SoftBufferError::IncompleteDisplayHandle.into());
-        }
+        let connection = match xcb_handle.connection {
+            Some(conn) => conn,
+            None => return Err(SoftBufferError::IncompleteDisplayHandle.into()),
+        };
 
         // Wrap the display handle in an x11rb connection.
         // SAFETY: We don't own the connection, so don't drop it. We also assert that the connection is valid.
         let connection = {
             let result =
-                unsafe { XCBConnection::from_raw_xcb_connection(xcb_handle.connection, false) };
+                unsafe { XCBConnection::from_raw_xcb_connection(connection.as_ptr(), false) };
 
             result.swbuf_err("Failed to wrap XCB connection")?
         };
@@ -172,13 +174,16 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
     /// Create a new `X11Impl` from a `HasWindowHandle`.
     pub(crate) fn new(window_src: W, display: Rc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the underlying raw window handle.
-        let raw = window_src.window_handle()?.raw_window_handle()?;
+        let raw = window_src.window_handle()?.as_raw();
         let window_handle = match raw {
             RawWindowHandle::Xcb(xcb) => xcb,
             RawWindowHandle::Xlib(xlib) => {
-                let mut xcb_window_handle = XcbWindowHandle::empty();
-                xcb_window_handle.window = xlib.window as _;
-                xcb_window_handle.visual_id = xlib.visual_id as _;
+                let window = match NonZeroU32::new(xlib.window as u32) {
+                    Some(window) => window,
+                    None => return Err(SoftBufferError::IncompleteWindowHandle.into()),
+                };
+                let mut xcb_window_handle = XcbWindowHandle::new(window);
+                xcb_window_handle.visual_id = NonZeroU32::new(xlib.visual_id as u32);
                 xcb_window_handle
             }
             _ => {
@@ -187,13 +192,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
         };
 
         log::trace!("new: window_handle={:X}", window_handle.window);
-
-        // Check that the handle is valid.
-        if window_handle.window == 0 {
-            return Err(SoftBufferError::IncompleteWindowHandle.into());
-        }
-
-        let window = window_handle.window;
+        let window = window_handle.window.get();
 
         // Run in parallel: start getting the window depth and (if necessary) visual.
         let display2 = display.clone();
@@ -202,7 +201,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
                 .connection()
                 .get_geometry(window)
                 .swbuf_err("Failed to send geometry request")?;
-            let window_attrs_token = if window_handle.visual_id == 0 {
+            let window_attrs_token = if window_handle.visual_id.is_none() {
                 Some(
                     display2
                         .connection()
@@ -239,7 +238,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
                 .reply()
                 .swbuf_err("Failed to get geometry reply")?;
             let visual_id = match window_attrs_token {
-                None => window_handle.visual_id,
+                None => window_handle.visual_id.unwrap().get(),
                 Some(window_attrs) => {
                     window_attrs
                         .reply()

@@ -6,7 +6,7 @@ use core_graphics::base::{
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::data_provider::CGDataProvider;
 use core_graphics::image::CGImage;
-use raw_window_handle::{HasDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable, NSWindow};
 use cocoa::base::{id, nil};
@@ -36,14 +36,13 @@ pub struct CGImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
     pub(crate) fn new(window_src: W) -> Result<Self, InitError<W>> {
-        let raw = window_src.window_handle()?.raw_window_handle()?;
+        let raw = window_src.window_handle()?.as_raw();
         let handle = match raw {
             RawWindowHandle::AppKit(handle) => handle,
             _ => return Err(InitError::Unsupported(window_src)),
         };
-        let window = handle.ns_window as id;
-        let window: id = unsafe { msg_send![window, retain] };
-        let view = handle.ns_view as id;
+        let view = handle.ns_view.as_ptr() as id;
+        let window = unsafe { msg_send![view, window] };
         let layer = CALayer::new();
         unsafe {
             let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));

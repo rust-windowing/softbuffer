@@ -1,7 +1,5 @@
 use crate::error::InitError;
-use raw_window_handle::{
-    HasDisplayHandle, HasRawWindowHandle, HasWindowHandle, OrbitalWindowHandle, RawWindowHandle,
-};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, RawWindowHandle};
 use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::{Rect, SoftBufferError};
@@ -67,7 +65,7 @@ pub struct OrbitalImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
     pub(crate) fn new(window: W) -> Result<Self, InitError<W>> {
-        let raw = window.window_handle()?.raw_window_handle()?;
+        let raw = window.window_handle()?.as_raw();
         let handle = match raw {
             RawWindowHandle::Orbital(handle) => handle,
             _ => return Err(InitError::Unsupported(window)),
@@ -95,7 +93,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
     }
 
     fn window_fd(&self) -> usize {
-        self.handle.window as usize
+        self.handle.window.as_ptr() as usize
     }
 
     // Read the current width and size

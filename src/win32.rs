@@ -3,7 +3,7 @@
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
 use crate::{Rect, SoftBufferError};
-use raw_window_handle::{HasDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
 use std::marker::PhantomData;
@@ -160,20 +160,15 @@ struct BitmapInfo {
 impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
     pub(crate) fn new(window: W) -> Result<Self, crate::error::InitError<W>> {
-        let raw = window.window_handle()?.raw_window_handle()?;
+        let raw = window.window_handle()?.as_raw();
         let handle = match raw {
             RawWindowHandle::Win32(handle) => handle,
             _ => return Err(crate::InitError::Unsupported(window)),
         };
 
-        // It is valid for the window handle to be null here. Error out if it is.
-        if handle.hwnd.is_null() {
-            return Err(SoftBufferError::IncompleteWindowHandle.into());
-        }
-
         // Get the handle to the device context.
         // SAFETY: We have confirmed that the window handle is valid.
-        let hwnd = handle.hwnd as HWND;
+        let hwnd = handle.hwnd.get() as HWND;
         let dc = unsafe { Gdi::GetDC(hwnd) };
 
         // GetDC returns null if there is a platform error.

@@ -2,15 +2,8 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use std::convert::TryInto;
-use std::marker::PhantomData;
-use std::num::NonZeroU32;
-
 use js_sys::Object;
-use raw_window_handle::{
-    HasDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle, HasWindowHandle, RawDisplayHandle,
-    RawWindowHandle,
-};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::ImageData;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
@@ -32,7 +25,7 @@ pub struct WebDisplayImpl<D> {
 
 impl<D: HasDisplayHandle> WebDisplayImpl<D> {
     pub(super) fn new(display: D) -> Result<Self, InitError<D>> {
-        let raw = display.display_handle()?.raw_display_handle()?;
+        let raw = display.display_handle()?.as_raw();
         match raw {
             RawDisplayHandle::Web(..) => {}
             _ => return Err(InitError::Unsupported(display)),
@@ -85,7 +78,7 @@ enum Canvas {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
     pub(crate) fn new(display: &WebDisplayImpl<D>, window: W) -> Result<Self, InitError<W>> {
-        let raw = window.window_handle()?.raw_window_handle()?;
+        let raw = window.window_handle()?.as_raw();
         let handle = match raw {
             RawWindowHandle::Web(handle) => handle,
             _ => return Err(InitError::Unsupported(window)),
