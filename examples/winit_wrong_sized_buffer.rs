@@ -28,41 +28,43 @@ fn main() {
     let context = softbuffer::Context::new(window.clone()).unwrap();
     let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Wait);
+    event_loop
+        .run(move |event, elwt| {
+            elwt.set_control_flow(ControlFlow::Wait);
 
-        match event {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::RedrawRequested,
-            } if window_id == window.id() => {
-                surface
-                    .resize(
-                        NonZeroU32::new(BUFFER_WIDTH as u32).unwrap(),
-                        NonZeroU32::new(BUFFER_HEIGHT as u32).unwrap(),
-                    )
-                    .unwrap();
+            match event {
+                Event::WindowEvent {
+                    window_id,
+                    event: WindowEvent::RedrawRequested,
+                } if window_id == window.id() => {
+                    surface
+                        .resize(
+                            NonZeroU32::new(BUFFER_WIDTH as u32).unwrap(),
+                            NonZeroU32::new(BUFFER_HEIGHT as u32).unwrap(),
+                        )
+                        .unwrap();
 
-                let mut buffer = surface.buffer_mut().unwrap();
-                for y in 0..BUFFER_HEIGHT {
-                    for x in 0..BUFFER_WIDTH {
-                        let red = x as u32 % 255;
-                        let green = y as u32 % 255;
-                        let blue = (x as u32 * y as u32) % 255;
+                    let mut buffer = surface.buffer_mut().unwrap();
+                    for y in 0..BUFFER_HEIGHT {
+                        for x in 0..BUFFER_WIDTH {
+                            let red = x as u32 % 255;
+                            let green = y as u32 % 255;
+                            let blue = (x as u32 * y as u32) % 255;
 
-                        let color = blue | (green << 8) | (red << 16);
-                        buffer[y * BUFFER_WIDTH + x] = color;
+                            let color = blue | (green << 8) | (red << 16);
+                            buffer[y * BUFFER_WIDTH + x] = color;
+                        }
                     }
+                    buffer.present().unwrap();
                 }
-                buffer.present().unwrap();
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    window_id,
+                } if window_id == window.id() => {
+                    elwt.exit();
+                }
+                _ => {}
             }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == window.id() => {
-                elwt.exit();
-            }
-            _ => {}
-        }
-    }).unwrap();
+        })
+        .unwrap();
 }

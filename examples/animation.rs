@@ -33,45 +33,47 @@ fn main() {
     let mut frames = pre_render_frames(0, 0);
 
     let start = Instant::now();
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Poll);
+    event_loop
+        .run(move |event, elwt| {
+            elwt.set_control_flow(ControlFlow::Poll);
 
-        match event {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::RedrawRequested,
-            } if window_id == window.id() => {
-                if let (Some(width), Some(height)) = {
-                    let size = window.inner_size();
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                } {
-                    let elapsed = start.elapsed().as_secs_f64() % 1.0;
+            match event {
+                Event::WindowEvent {
+                    window_id,
+                    event: WindowEvent::RedrawRequested,
+                } if window_id == window.id() => {
+                    if let (Some(width), Some(height)) = {
+                        let size = window.inner_size();
+                        (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                    } {
+                        let elapsed = start.elapsed().as_secs_f64() % 1.0;
 
-                    if (width.get(), height.get()) != old_size {
-                        old_size = (width.get(), height.get());
-                        frames = pre_render_frames(width.get() as usize, height.get() as usize);
-                    };
+                        if (width.get(), height.get()) != old_size {
+                            old_size = (width.get(), height.get());
+                            frames = pre_render_frames(width.get() as usize, height.get() as usize);
+                        };
 
-                    let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
+                        let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
 
-                    surface.resize(width, height).unwrap();
-                    let mut buffer = surface.buffer_mut().unwrap();
-                    buffer.copy_from_slice(frame);
-                    buffer.present().unwrap();
+                        surface.resize(width, height).unwrap();
+                        let mut buffer = surface.buffer_mut().unwrap();
+                        buffer.copy_from_slice(frame);
+                        buffer.present().unwrap();
+                    }
                 }
+                Event::AboutToWait => {
+                    window.request_redraw();
+                }
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    window_id,
+                } if window_id == window.id() => {
+                    elwt.exit();
+                }
+                _ => {}
             }
-            Event::AboutToWait => {
-                window.request_redraw();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == window.id() => {
-                elwt.exit();
-            }
-            _ => {}
-        }
-    }).unwrap();
+        })
+        .unwrap();
 }
 
 fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>> {

@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::keyboard::{PhysicalKey, KeyCode};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowBuilder;
 
 fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
@@ -50,60 +50,62 @@ fn main() {
 
     let mut flag = false;
 
-    event_loop.run(move |event, elwt| {
-        elwt.set_control_flow(ControlFlow::Wait);
+    event_loop
+        .run(move |event, elwt| {
+            elwt.set_control_flow(ControlFlow::Wait);
 
-        match event {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::RedrawRequested,
-            } if window_id == window.id() => {
-                // Grab the window's client area dimensions
-                if let (Some(width), Some(height)) = {
-                    let size = window.inner_size();
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                } {
-                    // Resize surface if needed
-                    surface.resize(width, height).unwrap();
+            match event {
+                Event::WindowEvent {
+                    window_id,
+                    event: WindowEvent::RedrawRequested,
+                } if window_id == window.id() => {
+                    // Grab the window's client area dimensions
+                    if let (Some(width), Some(height)) = {
+                        let size = window.inner_size();
+                        (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                    } {
+                        // Resize surface if needed
+                        surface.resize(width, height).unwrap();
 
-                    // Draw something in the window
-                    let mut buffer = surface.buffer_mut().unwrap();
-                    redraw(
-                        &mut buffer,
-                        width.get() as usize,
-                        height.get() as usize,
-                        flag,
-                    );
-                    buffer.present().unwrap();
+                        // Draw something in the window
+                        let mut buffer = surface.buffer_mut().unwrap();
+                        redraw(
+                            &mut buffer,
+                            width.get() as usize,
+                            height.get() as usize,
+                            flag,
+                        );
+                        buffer.present().unwrap();
+                    }
                 }
-            }
 
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == window.id() => {
-                elwt.exit();
-            }
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    window_id,
+                } if window_id == window.id() => {
+                    elwt.exit();
+                }
 
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                state: ElementState::Pressed,
-                                physical_key: PhysicalKey::Code(KeyCode::Space),
-                                ..
-                            },
-                        ..
-                    },
-                window_id,
-            } if window_id == window.id() => {
-                // Flip the rectangle flag and request a redraw to show the changed image
-                flag = !flag;
-                window.request_redraw();
-            }
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    state: ElementState::Pressed,
+                                    physical_key: PhysicalKey::Code(KeyCode::Space),
+                                    ..
+                                },
+                            ..
+                        },
+                    window_id,
+                } if window_id == window.id() => {
+                    // Flip the rectangle flag and request a redraw to show the changed image
+                    flag = !flag;
+                    window.request_redraw();
+                }
 
-            _ => {}
-        }
-    }).unwrap();
+                _ => {}
+            }
+        })
+        .unwrap();
 }
