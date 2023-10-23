@@ -65,16 +65,16 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
 fn main() {
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
     let context = softbuffer::Context::new(window.clone()).unwrap();
     let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
+            Event::WindowEvent { window_id, event: WindowEvent::RedrawRequested } if window_id == window.id() => {
                 let (width, height) = {
                     let size = window.inner_size();
                     (size.width, size.height)
@@ -97,17 +97,17 @@ fn main() {
                     buffer[index as usize] = blue | (green << 8) | (red << 16);
                 }
 
-		buffer.present().unwrap();
+                buffer.present().unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             _ => {}
         }
-    });
+    }).unwrap();
 }
 ```
 

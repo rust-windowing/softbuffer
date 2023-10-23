@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::keyboard::KeyCode;
+use winit::keyboard::{PhysicalKey, KeyCode};
 use winit::window::WindowBuilder;
 
 fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
@@ -22,7 +22,7 @@ fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
 }
 
 fn main() {
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
     let window = Rc::new(
         WindowBuilder::new()
@@ -50,11 +50,14 @@ fn main() {
 
     let mut flag = false;
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::RedrawRequested,
+            } if window_id == window.id() => {
                 // Grab the window's client area dimensions
                 if let (Some(width), Some(height)) = {
                     let size = window.inner_size();
@@ -79,7 +82,7 @@ fn main() {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
 
             Event::WindowEvent {
@@ -88,7 +91,7 @@ fn main() {
                         event:
                             KeyEvent {
                                 state: ElementState::Pressed,
-                                physical_key: KeyCode::Space,
+                                physical_key: PhysicalKey::Code(KeyCode::Space),
                                 ..
                             },
                         ..
@@ -102,5 +105,5 @@ fn main() {
 
             _ => {}
         }
-    });
+    }).unwrap();
 }

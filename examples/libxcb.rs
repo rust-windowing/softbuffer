@@ -6,7 +6,7 @@ mod example {
         DisplayHandle, RawDisplayHandle, RawWindowHandle, WindowHandle, XcbDisplayHandle,
         XcbWindowHandle,
     };
-    use std::num::NonZeroU32;
+    use std::{num::NonZeroU32, ptr::NonNull};
     use x11rb::{
         connection::Connection,
         protocol::{
@@ -23,9 +23,10 @@ mod example {
         let (conn, screen) = XCBConnection::connect(None).expect("Failed to connect to X server");
 
         // x11rb doesn't use raw-window-handle yet, so just create our own.
-        let mut display_handle = XcbDisplayHandle::empty();
-        display_handle.connection = conn.get_raw_xcb_connection() as *mut _;
-        display_handle.screen = screen as _;
+        let display_handle = XcbDisplayHandle::new(
+            NonNull::new(conn.get_raw_xcb_connection() as *mut _),
+            screen as _,
+        );
 
         // Create a new window.
         let mut width = 640u16;
@@ -53,9 +54,8 @@ mod example {
         .check()
         .unwrap();
 
-        let mut window_handle = XcbWindowHandle::empty();
-        window_handle.window = window as _;
-        window_handle.visual_id = root_visual as _;
+        let mut window_handle = XcbWindowHandle::new(NonZeroU32::new(window).unwrap());
+        window_handle.visual_id = NonZeroU32::new(root_visual);
 
         // Create a new softbuffer context.
         // SAFETY: The display and window handles outlive the context.

@@ -5,7 +5,7 @@ mod imple {
     use drm::control::{connector, Device as CtrlDevice, Event, ModeTypeFlags, PlaneType};
     use drm::Device;
 
-    use raw_window_handle::{DrmDisplayHandle, DrmWindowHandle};
+    use raw_window_handle::{DisplayHandle, DrmDisplayHandle, DrmWindowHandle, WindowHandle};
     use softbuffer::{Context, Surface};
 
     use std::num::NonZeroU32;
@@ -19,11 +19,10 @@ mod imple {
 
         // Create the softbuffer context.
         let context = unsafe {
-            Context::from_raw({
-                let mut handle = DrmDisplayHandle::empty();
-                handle.fd = device.as_fd().as_raw_fd();
+            Context::new(DisplayHandle::borrow_raw({
+                let handle = DrmDisplayHandle::new(device.as_fd().as_raw_fd());
                 handle.into()
-            })
+            }))
         }?;
 
         // Get the DRM handles.
@@ -93,11 +92,13 @@ mod imple {
         // Create the surface on top of this plane.
         // Note: This requires root on DRM/KMS.
         let mut surface = unsafe {
-            Surface::from_raw(&context, {
-                let mut handle = DrmWindowHandle::empty();
-                handle.plane = (**plane).into();
-                handle.into()
-            })
+            Surface::new(
+                &context,
+                WindowHandle::borrow_raw({
+                    let handle = DrmWindowHandle::new((**plane).into());
+                    handle.into()
+                }),
+            )
         }?;
 
         // Resize the surface.

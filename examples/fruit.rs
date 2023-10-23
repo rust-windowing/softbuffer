@@ -9,7 +9,7 @@ fn main() {
     //see fruit.jpg.license for the license of fruit.jpg
     let fruit = image::load_from_memory(include_bytes!("fruit.jpg")).unwrap();
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let window = Rc::new(
         WindowBuilder::new()
             .with_inner_size(winit::dpi::PhysicalSize::new(fruit.width(), fruit.height()))
@@ -34,11 +34,14 @@ fn main() {
     let context = softbuffer::Context::new(window.clone()).unwrap();
     let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::CloseRequested,
+            } if window_id == window.id() => {
                 surface
                     .resize(
                         NonZeroU32::new(fruit.width()).unwrap(),
@@ -63,9 +66,9 @@ fn main() {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             _ => {}
         }
-    });
+    }).unwrap();
 }

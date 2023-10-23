@@ -9,7 +9,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
 fn main() {
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
     #[cfg(target_arch = "wasm32")]
@@ -33,11 +33,14 @@ fn main() {
     let mut frames = pre_render_frames(0, 0);
 
     let start = Instant::now();
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
+    event_loop.run(move |event, elwt| {
+        elwt.set_control_flow(ControlFlow::Poll);
 
         match event {
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::RedrawRequested,
+            } if window_id == window.id() => {
                 if let (Some(width), Some(height)) = {
                     let size = window.inner_size();
                     (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
@@ -57,18 +60,18 @@ fn main() {
                     buffer.present().unwrap();
                 }
             }
-            Event::MainEventsCleared => {
+            Event::AboutToWait => {
                 window.request_redraw();
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
             _ => {}
         }
-    });
+    }).unwrap();
 }
 
 fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>> {
