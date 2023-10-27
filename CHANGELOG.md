@@ -1,3 +1,7 @@
+# Unreleased
+
+* **Breaking:** Port to use `raw-window-handle` v0.6.
+
 # 0.3.2
 
 * Document that `present_with_damage` is supported on web platforms. (#152)

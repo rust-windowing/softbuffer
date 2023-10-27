@@ -1,6 +1,8 @@
 use std::num::NonZeroU32;
-use winit::event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use std::rc::Rc;
+use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowBuilder;
 
 fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
@@ -20,12 +22,14 @@ fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
 }
 
 fn main() {
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
 
-    let window = WindowBuilder::new()
-        .with_title("Press space to show/hide a rectangle")
-        .build(&event_loop)
-        .unwrap();
+    let window = Rc::new(
+        WindowBuilder::new()
+            .with_title("Press space to show/hide a rectangle")
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -37,66 +41,71 @@ fn main() {
             .unwrap()
             .body()
             .unwrap()
-            .append_child(&window.canvas())
+            .append_child(&window.canvas().unwrap())
             .unwrap();
     }
 
-    let context = unsafe { softbuffer::Context::new(&window) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, &window) }.unwrap();
+    let context = softbuffer::Context::new(window.clone()).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
     let mut flag = false;
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    event_loop
+        .run(move |event, elwt| {
+            elwt.set_control_flow(ControlFlow::Wait);
 
-        match event {
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
-                // Grab the window's client area dimensions
-                let (width, height) = {
-                    let size = window.inner_size();
-                    (size.width, size.height)
-                };
+            match event {
+                Event::WindowEvent {
+                    window_id,
+                    event: WindowEvent::RedrawRequested,
+                } if window_id == window.id() => {
+                    // Grab the window's client area dimensions
+                    if let (Some(width), Some(height)) = {
+                        let size = window.inner_size();
+                        (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                    } {
+                        // Resize surface if needed
+                        surface.resize(width, height).unwrap();
 
-                // Resize surface if needed
-                surface
-                    .resize(
-                        NonZeroU32::new(width).unwrap(),
-                        NonZeroU32::new(height).unwrap(),
-                    )
-                    .unwrap();
+                        // Draw something in the window
+                        let mut buffer = surface.buffer_mut().unwrap();
+                        redraw(
+                            &mut buffer,
+                            width.get() as usize,
+                            height.get() as usize,
+                            flag,
+                        );
+                        buffer.present().unwrap();
+                    }
+                }
 
-                // Draw something in the window
-                let mut buffer = surface.buffer_mut().unwrap();
-                redraw(&mut buffer, width as usize, height as usize, flag);
-                buffer.present().unwrap();
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    window_id,
+                } if window_id == window.id() => {
+                    elwt.exit();
+                }
+
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    state: ElementState::Pressed,
+                                    physical_key: PhysicalKey::Code(KeyCode::Space),
+                                    ..
+                                },
+                            ..
+                        },
+                    window_id,
+                } if window_id == window.id() => {
+                    // Flip the rectangle flag and request a redraw to show the changed image
+                    flag = !flag;
+                    window.request_redraw();
+                }
+
+                _ => {}
             }
-
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == window.id() => {
-                *control_flow = ControlFlow::Exit;
-            }
-
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Space),
-                                ..
-                            },
-                        ..
-                    },
-                window_id,
-            } if window_id == window.id() => {
-                // Flip the rectangle flag and request a redraw to show the changed image
-                flag = !flag;
-                window.request_redraw();
-            }
-
-            _ => {}
-        }
-    });
+        })
+        .unwrap();
 }

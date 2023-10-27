@@ -12,21 +12,22 @@ fn buffer_mut(c: &mut Criterion) {
         use criterion::black_box;
         use softbuffer::{Context, Surface};
         use std::num::NonZeroU32;
-        use winit::platform::run_return::EventLoopExtRunReturn;
+        use winit::event_loop::ControlFlow;
+        use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
 
-        let mut evl = winit::event_loop::EventLoop::new();
+        let mut evl = winit::event_loop::EventLoop::new().unwrap();
         let window = winit::window::WindowBuilder::new()
             .with_visible(false)
             .build(&evl)
             .unwrap();
 
-        evl.run_return(move |ev, elwt, control_flow| {
-            control_flow.set_poll();
+        evl.run_on_demand(move |ev, elwt| {
+            elwt.set_control_flow(ControlFlow::Poll);
 
-            if let winit::event::Event::RedrawEventsCleared = ev {
-                control_flow.set_exit();
+            if let winit::event::Event::AboutToWait = ev {
+                elwt.exit();
 
-                let mut surface = unsafe {
+                let mut surface = {
                     let context = Context::new(elwt).unwrap();
                     Surface::new(&context, &window).unwrap()
                 };
@@ -57,7 +58,8 @@ fn buffer_mut(c: &mut Criterion) {
                     });
                 });
             }
-        });
+        })
+        .unwrap();
     }
 }
 

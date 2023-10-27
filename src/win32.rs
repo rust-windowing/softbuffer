@@ -3,9 +3,10 @@
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
 use crate::{Rect, SoftBufferError};
-use raw_window_handle::Win32WindowHandle;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
+use std::marker::PhantomData;
 use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
 use std::ptr::{self, NonNull};
@@ -128,7 +129,7 @@ impl Buffer {
 }
 
 /// The handle to a window for software buffering.
-pub struct Win32Impl {
+pub struct Win32Impl<D: ?Sized, W> {
     /// The window handle.
     window: HWND,
 
@@ -137,6 +138,16 @@ pub struct Win32Impl {
 
     /// The buffer used to hold the image.
     buffer: Option<Buffer>,
+
+    /// The handle for the window.
+    ///
+    /// This should be kept alive in order to keep `window` valid.
+    _window: W,
+
+    /// The display handle.
+    ///
+    /// We don't use this, but other code might.
+    _display: PhantomData<D>,
 }
 
 /// The Win32-compatible bitmap information.
@@ -146,21 +157,18 @@ struct BitmapInfo {
     bmi_colors: [Gdi::RGBQUAD; 3],
 }
 
-impl Win32Impl {
+impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
-    ///
-    /// # Safety
-    ///
-    /// The `Win32WindowHandle` must be a valid window handle.
-    pub unsafe fn new(handle: &Win32WindowHandle) -> Result<Self, crate::SoftBufferError> {
-        // It is valid for the window handle to be null here. Error out if it is.
-        if handle.hwnd.is_null() {
-            return Err(SoftBufferError::IncompleteWindowHandle);
-        }
+    pub(crate) fn new(window: W) -> Result<Self, crate::error::InitError<W>> {
+        let raw = window.window_handle()?.as_raw();
+        let handle = match raw {
+            RawWindowHandle::Win32(handle) => handle,
+            _ => return Err(crate::InitError::Unsupported(window)),
+        };
 
         // Get the handle to the device context.
         // SAFETY: We have confirmed that the window handle is valid.
-        let hwnd = handle.hwnd as HWND;
+        let hwnd = handle.hwnd.get() as HWND;
         let dc = unsafe { Gdi::GetDC(hwnd) };
 
         // GetDC returns null if there is a platform error.
@@ -168,13 +176,16 @@ impl Win32Impl {
             return Err(SoftBufferError::PlatformError(
                 Some("Device Context is null".into()),
                 Some(Box::new(io::Error::last_os_error())),
-            ));
+            )
+            .into());
         }
 
         Ok(Self {
             dc,
             window: hwnd,
             buffer: None,
+            _window: window,
+            _display: PhantomData,
         })
     }
 
@@ -197,7 +208,7 @@ impl Win32Impl {
         Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         if self.buffer.is_none() {
             panic!("Must set size of surface before calling `buffer_mut()`");
         }
@@ -235,9 +246,9 @@ impl Win32Impl {
     }
 }
 
-pub struct BufferImpl<'a>(&'a mut Win32Impl);
+pub struct BufferImpl<'a, D, W>(&'a mut Win32Impl<D, W>);
 
-impl<'a> BufferImpl<'a> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
         self.0.buffer.as_ref().unwrap().pixels()

@@ -5,10 +5,14 @@
 
 #![allow(clippy::uninlined_format_args)]
 
-use crate::error::SwResultExt;
+use crate::error::{InitError, SwResultExt};
 use crate::{Rect, SoftBufferError};
-use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
+use raw_window_handle::{
+    HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, XcbDisplayHandle,
+    XcbWindowHandle,
+};
 use rustix::{fd, mm, shm as posix_shm};
+
 use std::{
     fmt,
     fs::File,
@@ -27,57 +31,62 @@ use x11rb::protocol::shm::{self, ConnectionExt as _};
 use x11rb::protocol::xproto::{self, ConnectionExt as _};
 use x11rb::xcb_ffi::XCBConnection;
 
-pub struct X11DisplayImpl {
+pub struct X11DisplayImpl<D: ?Sized> {
     /// The handle to the XCB connection.
-    connection: XCBConnection,
+    connection: Option<XCBConnection>,
 
     /// SHM extension is available.
     is_shm_available: bool,
+
+    /// The generic display where the `connection` field comes from.
+    ///
+    /// Without `&mut`, the underlying connection cannot be closed without other unsafe behavior.
+    /// With `&mut`, the connection can be dropped without us knowing about it. Therefore, we
+    /// cannot provide `&mut` access to this field.
+    _display: D,
 }
 
-impl X11DisplayImpl {
-    pub(crate) unsafe fn from_xlib(
-        display_handle: XlibDisplayHandle,
-    ) -> Result<X11DisplayImpl, SoftBufferError> {
-        // Validate the display handle to ensure we can use it.
-        if display_handle.display.is_null() {
-            return Err(SoftBufferError::IncompleteDisplayHandle);
-        }
+impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
+    /// Create a new `X11DisplayImpl`.
+    pub(crate) fn new(display: D) -> Result<Self, InitError<D>>
+    where
+        D: Sized,
+    {
+        // Get the underlying libxcb handle.
+        let raw = display.display_handle()?.as_raw();
+        let xcb_handle = match raw {
+            RawDisplayHandle::Xcb(xcb_handle) => xcb_handle,
+            RawDisplayHandle::Xlib(xlib) => {
+                // Convert to an XCB handle.
+                let display = match xlib.display {
+                    Some(display) => display,
+                    None => return Err(SoftBufferError::IncompleteDisplayHandle.into()),
+                };
 
-        // Get the underlying XCB connection.
-        // SAFETY: The user has asserted that the display handle is valid.
-        let connection = unsafe {
-            let display = tiny_xlib::Display::from_ptr(display_handle.display);
-            display.as_raw_xcb_connection()
+                // Get the underlying XCB connection.
+                // SAFETY: The user has asserted that the display handle is valid.
+                let connection = unsafe {
+                    let display = tiny_xlib::Display::from_ptr(display.as_ptr());
+                    NonNull::new_unchecked(display.as_raw_xcb_connection())
+                };
+
+                // Construct the equivalent XCB display and window handles.
+                XcbDisplayHandle::new(Some(connection.cast()), xlib.screen)
+            }
+            _ => return Err(InitError::Unsupported(display)),
         };
 
-        // Construct the equivalent XCB display and window handles.
-        let mut xcb_display_handle = XcbDisplayHandle::empty();
-        xcb_display_handle.connection = connection.cast();
-        xcb_display_handle.screen = display_handle.screen;
-
-        // SAFETY: If the user passed in valid Xlib handles, then these are valid XCB handles.
-        unsafe { Self::from_xcb(xcb_display_handle) }
-    }
-
-    /// Create a new `X11Impl` from a `XcbWindowHandle` and `XcbDisplayHandle`.
-    ///
-    /// # Safety
-    ///
-    /// The `XcbWindowHandle` and `XcbDisplayHandle` must be valid.
-    pub(crate) unsafe fn from_xcb(
-        display_handle: XcbDisplayHandle,
-    ) -> Result<Self, SoftBufferError> {
-        // Check that the handle is valid.
-        if display_handle.connection.is_null() {
-            return Err(SoftBufferError::IncompleteDisplayHandle);
-        }
+        // Validate the display handle to ensure we can use it.
+        let connection = match xcb_handle.connection {
+            Some(conn) => conn,
+            None => return Err(SoftBufferError::IncompleteDisplayHandle.into()),
+        };
 
         // Wrap the display handle in an x11rb connection.
         // SAFETY: We don't own the connection, so don't drop it. We also assert that the connection is valid.
         let connection = {
             let result =
-                unsafe { XCBConnection::from_raw_xcb_connection(display_handle.connection, false) };
+                unsafe { XCBConnection::from_raw_xcb_connection(connection.as_ptr(), false) };
 
             result.swbuf_err("Failed to wrap XCB connection")?
         };
@@ -88,16 +97,25 @@ impl X11DisplayImpl {
         }
 
         Ok(Self {
-            connection,
+            connection: Some(connection),
             is_shm_available,
+            _display: display,
         })
     }
 }
 
+impl<D: ?Sized> X11DisplayImpl<D> {
+    fn connection(&self) -> &XCBConnection {
+        self.connection
+            .as_ref()
+            .expect("X11DisplayImpl::connection() called after X11DisplayImpl::drop()")
+    }
+}
+
 /// The handle to an X11 drawing context.
-pub struct X11Impl {
+pub struct X11Impl<D: ?Sized, W: ?Sized> {
     /// X display this window belongs to.
-    display: Rc<X11DisplayImpl>,
+    display: Rc<X11DisplayImpl<D>>,
 
     /// The window to draw to.
     window: xproto::Window,
@@ -119,6 +137,9 @@ pub struct X11Impl {
 
     /// The current buffer width/height.
     size: Option<(NonZeroU16, NonZeroU16)>,
+
+    /// Keep the window alive.
+    _window_handle: W,
 }
 
 /// The buffer that is being drawn to.
@@ -149,53 +170,41 @@ struct ShmBuffer {
     done_processing: Option<SequenceNumber>,
 }
 
-impl X11Impl {
-    /// Create a new `X11Impl` from a `XlibWindowHandle` and `XlibDisplayHandle`.
-    ///
-    /// # Safety
-    ///
-    /// The `XlibWindowHandle` and `XlibDisplayHandle` must be valid.
-    pub unsafe fn from_xlib(
-        window_handle: XlibWindowHandle,
-        display: Rc<X11DisplayImpl>,
-    ) -> Result<Self, SoftBufferError> {
-        let mut xcb_window_handle = XcbWindowHandle::empty();
-        xcb_window_handle.window = window_handle.window as _;
-        xcb_window_handle.visual_id = window_handle.visual_id as _;
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
+    /// Create a new `X11Impl` from a `HasWindowHandle`.
+    pub(crate) fn new(window_src: W, display: Rc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
+        // Get the underlying raw window handle.
+        let raw = window_src.window_handle()?.as_raw();
+        let window_handle = match raw {
+            RawWindowHandle::Xcb(xcb) => xcb,
+            RawWindowHandle::Xlib(xlib) => {
+                let window = match NonZeroU32::new(xlib.window as u32) {
+                    Some(window) => window,
+                    None => return Err(SoftBufferError::IncompleteWindowHandle.into()),
+                };
+                let mut xcb_window_handle = XcbWindowHandle::new(window);
+                xcb_window_handle.visual_id = NonZeroU32::new(xlib.visual_id as u32);
+                xcb_window_handle
+            }
+            _ => {
+                return Err(InitError::Unsupported(window_src));
+            }
+        };
 
-        // SAFETY: If the user passed in valid Xlib handles, then these are valid XCB handles.
-        unsafe { Self::from_xcb(xcb_window_handle, display) }
-    }
-
-    /// Create a new `X11Impl` from a `XcbWindowHandle` and `XcbDisplayHandle`.
-    ///
-    /// # Safety
-    ///
-    /// The `XcbWindowHandle` and `XcbDisplayHandle` must be valid.
-    pub(crate) unsafe fn from_xcb(
-        window_handle: XcbWindowHandle,
-        display: Rc<X11DisplayImpl>,
-    ) -> Result<Self, SoftBufferError> {
-        log::trace!("new: window_handle={:X}", window_handle.window,);
-
-        // Check that the handle is valid.
-        if window_handle.window == 0 {
-            return Err(SoftBufferError::IncompleteWindowHandle);
-        }
-
-        let window = window_handle.window;
+        log::trace!("new: window_handle={:X}", window_handle.window);
+        let window = window_handle.window.get();
 
         // Run in parallel: start getting the window depth and (if necessary) visual.
         let display2 = display.clone();
         let tokens = {
             let geometry_token = display2
-                .connection
+                .connection()
                 .get_geometry(window)
                 .swbuf_err("Failed to send geometry request")?;
-            let window_attrs_token = if window_handle.visual_id == 0 {
+            let window_attrs_token = if window_handle.visual_id.is_none() {
                 Some(
                     display2
-                        .connection
+                        .connection()
                         .get_window_attributes(window)
                         .swbuf_err("Failed to send window attributes request")?,
                 )
@@ -208,11 +217,11 @@ impl X11Impl {
 
         // Create a new graphics context to draw to.
         let gc = display
-            .connection
+            .connection()
             .generate_id()
             .swbuf_err("Failed to generate GC ID")?;
         display
-            .connection
+            .connection()
             .create_gc(
                 gc,
                 window,
@@ -229,7 +238,7 @@ impl X11Impl {
                 .reply()
                 .swbuf_err("Failed to get geometry reply")?;
             let visual_id = match window_attrs_token {
-                None => window_handle.visual_id,
+                None => window_handle.visual_id.unwrap().get(),
                 Some(window_attrs) => {
                     window_attrs
                         .reply()
@@ -262,6 +271,7 @@ impl X11Impl {
             buffer,
             buffer_presented: false,
             size: None,
+            _window_handle: window_src,
         })
     }
 
@@ -290,7 +300,7 @@ impl X11Impl {
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
             self.buffer
-                .resize(&self.display.connection, width.get(), height.get())
+                .resize(self.display.connection(), width.get(), height.get())
                 .swbuf_err("Failed to resize X11 buffer")?;
 
             // We successfully resized the buffer.
@@ -301,11 +311,11 @@ impl X11Impl {
     }
 
     /// Get a mutable reference to the buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl, SoftBufferError> {
+    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         log::trace!("buffer_mut: window={:X}", self.window);
 
         // Finish waiting on the previous `shm::PutImage` request, if any.
-        self.buffer.finish_wait(&self.display.connection)?;
+        self.buffer.finish_wait(self.display.connection())?;
 
         // We can now safely call `buffer_mut` on the buffer.
         Ok(BufferImpl(self))
@@ -322,7 +332,7 @@ impl X11Impl {
         // TODO: Is it worth it to do SHM here? Probably not.
         let reply = self
             .display
-            .connection
+            .connection()
             .get_image(
                 xproto::ImageFormat::Z_PIXMAP,
                 self.window,
@@ -349,9 +359,9 @@ impl X11Impl {
     }
 }
 
-pub struct BufferImpl<'a>(&'a mut X11Impl);
+pub struct BufferImpl<'a, D: ?Sized, W: ?Sized>(&'a mut X11Impl<D, W>);
 
-impl<'a> BufferImpl<'a> {
+impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferImpl<'a, D, W> {
     #[inline]
     pub fn pixels(&self) -> &[u32] {
         // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer()`.
@@ -388,7 +398,7 @@ impl<'a> BufferImpl<'a> {
                 log::debug!("Falling back to non-SHM method for window drawing.");
 
                 imp.display
-                    .connection
+                    .connection()
                     .put_image(
                         xproto::ImageFormat::Z_PIXMAP,
                         imp.window,
@@ -427,7 +437,7 @@ impl<'a> BufferImpl<'a> {
                             )
                             .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
                             imp.display
-                                .connection
+                                .connection()
                                 .shm_put_image(
                                     imp.window,
                                     imp.gc,
@@ -451,7 +461,7 @@ impl<'a> BufferImpl<'a> {
                         })
                         .and_then(|()| {
                             // Send a short request to act as a notification for when the X server is done processing the image.
-                            shm.begin_wait(&imp.display.connection)
+                            shm.begin_wait(imp.display.connection())
                                 .swbuf_err("Failed to draw image to window")
                         })?;
                 }
@@ -743,15 +753,22 @@ impl Drop for ShmSegment {
     }
 }
 
-impl Drop for X11Impl {
+impl<D: ?Sized> Drop for X11DisplayImpl<D> {
+    fn drop(&mut self) {
+        // Make sure that the x11rb connection is dropped before its source is.
+        self.connection = None;
+    }
+}
+
+impl<D: ?Sized, W: ?Sized> Drop for X11Impl<D, W> {
     fn drop(&mut self) {
         // If we used SHM, make sure it's detached from the server.
         if let Buffer::Shm(mut shm) = mem::replace(&mut self.buffer, Buffer::Wire(Vec::new())) {
             // If we were in the middle of processing a buffer, wait for it to finish.
-            shm.finish_wait(&self.display.connection).ok();
+            shm.finish_wait(self.display.connection()).ok();
 
             if let Some((segment, seg_id)) = shm.seg.take() {
-                if let Ok(token) = self.display.connection.shm_detach(seg_id) {
+                if let Ok(token) = self.display.connection().shm_detach(seg_id) {
                     token.ignore_error();
                 }
 
@@ -761,7 +778,7 @@ impl Drop for X11Impl {
         }
 
         // Close the graphics context that we created.
-        if let Ok(token) = self.display.connection.free_gc(self.gc) {
+        if let Ok(token) = self.display.connection().free_gc(self.gc) {
             token.ignore_error();
         }
     }
