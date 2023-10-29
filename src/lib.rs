@@ -383,6 +383,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
 /// - X, when XShm is available
 /// - Win32
 /// - Orbital, when buffer size matches window size
+///
 /// Currently [`Buffer::present`] must block copying image data on:
 /// - Web
 /// - macOS
