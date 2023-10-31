@@ -8,7 +8,8 @@
 use crate::error::SwResultExt;
 use crate::{Rect, SoftBufferError};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
-use rustix::{fd, mm, shm as posix_shm};
+use rustix::{fd::{AsFd, BorrowedFd, OwnedFd}, mm, shm as posix_shm};
+
 use std::{
     fmt,
     fs::File,
@@ -608,7 +609,7 @@ impl ShmBuffer {
     ) -> Result<(), PushBufferError> {
         // Register the guard.
         let new_id = conn.generate_id()?;
-        conn.shm_attach_fd(new_id, fd::AsRawFd::as_raw_fd(&seg), true)?
+        conn.shm_attach_fd(new_id, seg.as_fd().try_clone_to_owned().unwrap(), true)?
             .ignore_error();
 
         // Take out the old one and detach it.
@@ -728,9 +729,9 @@ impl ShmSegment {
     }
 }
 
-impl fd::AsRawFd for ShmSegment {
-    fn as_raw_fd(&self) -> fd::RawFd {
-        self.id.as_raw_fd()
+impl AsFd for ShmSegment {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.id.as_fd()
     }
 }
 
@@ -768,7 +769,7 @@ impl Drop for X11Impl {
 }
 
 /// Create a shared memory identifier.
-fn create_shm_id() -> io::Result<fd::OwnedFd> {
+fn create_shm_id() -> io::Result<OwnedFd> {
     use posix_shm::{Mode, ShmOFlags};
 
     let mut rng = fastrand::Rng::new();
@@ -821,7 +822,7 @@ fn is_shm_available(c: &impl Connection) -> bool {
     };
 
     let (attach, detach) = {
-        let attach = c.shm_attach_fd(seg_id, fd::AsRawFd::as_raw_fd(&seg), false);
+        let attach = c.shm_attach_fd(seg_id, seg.as_fd().try_clone_to_owned().unwrap(), false);
         let detach = c.shm_detach(seg_id);
 
         match (attach, detach) {
