@@ -1,3 +1,6 @@
+# 0.3.3
+* Fix bad file descriptor crash on X11. (#168)
+
 # 0.3.2
 
 * Document that `present_with_damage` is supported on web platforms. (#152)
