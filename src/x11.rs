@@ -85,11 +85,13 @@ impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
                     unsafe { XCBConnection::from_raw_xcb_connection(connection.as_ptr(), false) };
 
                 result.swbuf_err("Failed to wrap XCB connection")?
-            },
+            }
             None => {
                 // The user didn't provide an XCB connection, so create our own.
                 log::info!("no XCB connection provided by the user, so spawning our own");
-                XCBConnection::connect(None).swbuf_err("Failed to spawn XCB connection")?.0
+                XCBConnection::connect(None)
+                    .swbuf_err("Failed to spawn XCB connection")?
+                    .0
             }
         };
 
