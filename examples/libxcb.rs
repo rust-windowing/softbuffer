@@ -6,7 +6,7 @@ mod example {
         DisplayHandle, RawDisplayHandle, RawWindowHandle, WindowHandle, XcbDisplayHandle,
         XcbWindowHandle,
     };
-    use std::{num::NonZeroU32, ptr::NonNull};
+    use std::{env, num::NonZeroU32, ptr::NonNull};
     use x11rb::{
         connection::Connection,
         protocol::{
@@ -24,7 +24,11 @@ mod example {
 
         // x11rb doesn't use raw-window-handle yet, so just create our own.
         let display_handle = XcbDisplayHandle::new(
-            NonNull::new(conn.get_raw_xcb_connection() as *mut _),
+            if env::var_os("SOFTBUFFER_NO_DISPLAY").is_some() {
+                None
+            } else {
+                NonNull::new(conn.get_raw_xcb_connection() as *mut _)
+            },
             screen as _,
         );
 

@@ -61,37 +61,38 @@ impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
             RawDisplayHandle::Xcb(xcb_handle) => xcb_handle,
             RawDisplayHandle::Xlib(xlib) => {
                 // Convert to an XCB handle.
-                let display = match xlib.display {
-                    Some(display) => display,
-                    None => return Err(SoftBufferError::IncompleteDisplayHandle.into()),
-                };
-
-                // Get the underlying XCB connection.
-                // SAFETY: The user has asserted that the display handle is valid.
-                let connection = unsafe {
-                    let display = tiny_xlib::Display::from_ptr(display.as_ptr());
-                    NonNull::new_unchecked(display.as_raw_xcb_connection())
-                };
+                let connection = xlib.display.map(|display| {
+                    // Get the underlying XCB connection.
+                    // SAFETY: The user has asserted that the display handle is valid.
+                    unsafe {
+                        let display = tiny_xlib::Display::from_ptr(display.as_ptr());
+                        NonNull::new_unchecked(display.as_raw_xcb_connection()).cast()
+                    }
+                });
 
                 // Construct the equivalent XCB display and window handles.
-                XcbDisplayHandle::new(Some(connection.cast()), xlib.screen)
+                XcbDisplayHandle::new(connection, xlib.screen)
             }
             _ => return Err(InitError::Unsupported(display)),
         };
 
         // Validate the display handle to ensure we can use it.
         let connection = match xcb_handle.connection {
-            Some(conn) => conn,
-            None => return Err(SoftBufferError::IncompleteDisplayHandle.into()),
-        };
+            Some(connection) => {
+                // Wrap the display handle in an x11rb connection.
+                // SAFETY: We don't own the connection, so don't drop it. We also assert that the connection is valid.
+                let result =
+                    unsafe { XCBConnection::from_raw_xcb_connection(connection.as_ptr(), false) };
 
-        // Wrap the display handle in an x11rb connection.
-        // SAFETY: We don't own the connection, so don't drop it. We also assert that the connection is valid.
-        let connection = {
-            let result =
-                unsafe { XCBConnection::from_raw_xcb_connection(connection.as_ptr(), false) };
-
-            result.swbuf_err("Failed to wrap XCB connection")?
+                result.swbuf_err("Failed to wrap XCB connection")?
+            }
+            None => {
+                // The user didn't provide an XCB connection, so create our own.
+                log::info!("no XCB connection provided by the user, so spawning our own");
+                XCBConnection::connect(None)
+                    .swbuf_err("Failed to spawn XCB connection")?
+                    .0
+            }
         };
 
         let is_shm_available = is_shm_available(&connection);
