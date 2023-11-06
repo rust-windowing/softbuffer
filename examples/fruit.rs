@@ -41,7 +41,7 @@ fn main() {
             match event {
                 Event::WindowEvent {
                     window_id,
-                    event: WindowEvent::CloseRequested,
+                    event: WindowEvent::RedrawRequested,
                 } if window_id == window.id() => {
                     surface
                         .resize(
