@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{Key, NamedKey};
 use winit::window::WindowBuilder;
 
 fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
@@ -80,7 +80,16 @@ fn main() {
                 }
 
                 Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
+                    event:
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    logical_key: Key::Named(NamedKey::Escape),
+                                    ..
+                                },
+                            ..
+                        },
                     window_id,
                 } if window_id == window.id() => {
                     elwt.exit();
@@ -92,7 +101,7 @@ fn main() {
                             event:
                                 KeyEvent {
                                     state: ElementState::Pressed,
-                                    physical_key: PhysicalKey::Code(KeyCode::Space),
+                                    logical_key: Key::Named(NamedKey::Space),
                                     ..
                                 },
                             ..
