@@ -4,8 +4,9 @@ use rayon::prelude::*;
 use std::f64::consts::PI;
 use std::num::NonZeroU32;
 use std::rc::Rc;
-use winit::event::{Event, WindowEvent};
+use winit::event::{Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::keyboard::{Key, NamedKey};
 use winit::window::WindowBuilder;
 
 fn main() {
@@ -65,7 +66,16 @@ fn main() {
                     window.request_redraw();
                 }
                 Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
+                    event:
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            event:
+                                KeyEvent {
+                                    logical_key: Key::Named(NamedKey::Escape),
+                                    ..
+                                },
+                            ..
+                        },
                     window_id,
                 } if window_id == window.id() => {
                     elwt.exit();
