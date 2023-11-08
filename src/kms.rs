@@ -39,16 +39,15 @@ impl<D: ?Sized> CtrlDevice for KmsDisplayImpl<D> {}
 
 impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
     pub(crate) fn new(display: D) -> Result<Self, InitError<D>> {
-        let fd = match display.display_handle()?.as_raw() {
-            RawDisplayHandle::Drm(drm) => drm.fd,
-            _ => return Err(InitError::Unsupported(display)),
+        let RawDisplayHandle::Drm(drm) = display.display_handle()?.as_raw() else {
+            return Err(InitError::Unsupported(display));
         };
-        if fd == -1 {
+        if drm.fd == -1 {
             return Err(SoftBufferError::IncompleteDisplayHandle.into());
         }
 
         // SAFETY: Invariants guaranteed by the user.
-        let fd = unsafe { BorrowedFd::borrow_raw(fd) };
+        let fd = unsafe { BorrowedFd::borrow_raw(drm.fd) };
 
         Ok(KmsDisplayImpl {
             fd,
@@ -138,13 +137,12 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
     /// Create a new KMS backend.
     pub(crate) fn new(window: W, display: Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Make sure that the window handle is valid.
-        let plane_handle = match window.window_handle()?.as_raw() {
-            RawWindowHandle::Drm(drm) => match NonZeroU32::new(drm.plane) {
-                Some(handle) => plane::Handle::from(handle),
-                None => return Err(SoftBufferError::IncompleteWindowHandle.into()),
-            },
-            _ => return Err(InitError::Unsupported(window)),
+        let RawWindowHandle::Drm(drm) = window.window_handle()?.as_raw() else {
+            return Err(InitError::Unsupported(window));
         };
+        let plane_handle =
+            NonZeroU32::new(drm.plane).ok_or(SoftBufferError::IncompleteWindowHandle)?;
+        let plane_handle = plane::Handle::from(plane_handle);
 
         let plane_info = display
             .get_plane(plane_handle)
