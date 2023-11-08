@@ -132,9 +132,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
 
     fn new(window: W, _display: &D) -> Result<Self, InitError<W>> {
         let raw = window.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::Orbital(handle) => handle,
-            _ => return Err(InitError::Unsupported(window)),
+        let RawWindowHandle::Orbital(handle) = raw else {
+            return Err(InitError::Unsupported(window));
         };
 
         Ok(Self {

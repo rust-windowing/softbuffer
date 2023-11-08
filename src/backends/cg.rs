@@ -49,9 +49,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
     fn new(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
         let raw = window_src.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::AppKit(handle) => handle,
-            _ => return Err(InitError::Unsupported(window_src)),
+        let RawWindowHandle::AppKit(handle) = raw else {
+            return Err(InitError::Unsupported(window_src));
         };
 
         // `NSView` can only be accessed from the main thread.

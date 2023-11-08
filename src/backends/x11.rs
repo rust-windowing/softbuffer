@@ -193,10 +193,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         let window_handle = match raw {
             RawWindowHandle::Xcb(xcb) => xcb,
             RawWindowHandle::Xlib(xlib) => {
-                let window = match NonZeroU32::new(xlib.window as u32) {
-                    Some(window) => window,
-                    None => return Err(SoftBufferError::IncompleteWindowHandle.into()),
-                };
+                let window = NonZeroU32::new(xlib.window as u32)
+                    .ok_or(SoftBufferError::IncompleteWindowHandle)?;
                 let mut xcb_window_handle = XcbWindowHandle::new(window);
                 xcb_window_handle.visual_id = NonZeroU32::new(xlib.visual_id as u32);
                 xcb_window_handle
@@ -702,26 +700,21 @@ impl ShmSegment {
         id.set_len(size as u64)?;
 
         // Map the shared memory to our file descriptor space.
-        let ptr = unsafe {
-            let ptr = mm::mmap(
+        let ptr = NonNull::new(unsafe {
+            mm::mmap(
                 null_mut(),
                 size,
                 mm::ProtFlags::READ | mm::ProtFlags::WRITE,
                 mm::MapFlags::SHARED,
                 &id,
                 0,
-            )?;
-
-            match NonNull::new(ptr.cast()) {
-                Some(ptr) => ptr,
-                None => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "unexpected null when mapping SHM segment",
-                    ));
-                }
-            }
-        };
+            )?
+        })
+        .ok_or(io::Error::new(
+            io::ErrorKind::Other,
+            "unexpected null when mapping SHM segment",
+        ))?
+        .cast();
 
         Ok(Self {
             id,
