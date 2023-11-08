@@ -26,10 +26,9 @@ pub struct WebDisplayImpl<D> {
 impl<D: HasDisplayHandle> ContextInterface<D> for WebDisplayImpl<D> {
     fn new(display: D) -> Result<Self, InitError<D>> {
         let raw = display.display_handle()?.as_raw();
-        match raw {
-            RawDisplayHandle::Web(..) => {}
-            _ => return Err(InitError::Unsupported(display)),
-        }
+        let RawDisplayHandle::Web(..) = raw else {
+            return Err(InitError::Unsupported(display));
+        };
 
         let document = web_sys::window()
             .swbuf_err("`Window` is not present in this runtime")?
