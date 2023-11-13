@@ -1,6 +1,11 @@
-# Unreleased
+# 0.4.0
 
-* **Breaking:** Port to use `raw-window-handle` v0.6.
+- **Breaking:** Port to use `raw-window-handle` v0.6.(#132)
+- Enable creating X11 displays without an existing connection. (#171)
+
+# 0.3.3
+
+- Fix a bug in the new shared memory model in X11. (#170)
 
 # 0.3.2
 
