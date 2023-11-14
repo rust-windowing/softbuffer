@@ -1,5 +1,3 @@
-// TODO: Once winit is updated again, restore this test.
-/*
 use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use winit::event_loop::EventLoopWindowTarget;
@@ -56,6 +54,3 @@ fn all_red(elwt: &EventLoopWindowTarget<()>) {
 }
 
 winit_test::main!(all_red);
-*/
-
-fn main() {}
