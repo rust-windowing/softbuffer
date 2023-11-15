@@ -1,3 +1,7 @@
+# Unreleased
+
+- MacOS: Fix double-free of `NSWindow`.
+
 # 0.4.0
 
 - **Breaking:** Port to use `raw-window-handle` v0.6.(#132)
