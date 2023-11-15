@@ -3,24 +3,17 @@ use std::num::NonZeroU32;
 use winit::event_loop::EventLoopWindowTarget;
 
 fn all_red(elwt: &EventLoopWindowTarget<()>) {
-    let window = winit::window::WindowBuilder::new()
-        .with_title("all_red")
-        .build(elwt)
-        .unwrap();
+    #[cfg_attr(not(target_arch = "wasm32"), allow(unused_mut))]
+    let mut builder = winit::window::WindowBuilder::new().with_title("all_red");
 
     #[cfg(target_arch = "wasm32")]
     {
-        use winit::platform::web::WindowExtWebSys;
+        use winit::platform::web::WindowBuilderExtWebSys;
 
-        web_sys::window()
-            .unwrap()
-            .document()
-            .unwrap()
-            .body()
-            .unwrap()
-            .append_child(&window.canvas())
-            .unwrap();
+        builder = builder.with_append(true);
     }
+
+    let window = builder.build(elwt).unwrap();
 
     // winit does not wait for the window to be mapped... sigh
     #[cfg(not(target_arch = "wasm32"))]
