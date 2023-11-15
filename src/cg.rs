@@ -42,7 +42,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
             _ => return Err(InitError::Unsupported(window_src)),
         };
         let view = handle.ns_view.as_ptr() as id;
-        let window = unsafe { msg_send![view, window] };
+        let window: id = unsafe { msg_send![view, window] };
+        let window: id = unsafe { msg_send![window, retain] };
         let layer = CALayer::new();
         unsafe {
             let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));
