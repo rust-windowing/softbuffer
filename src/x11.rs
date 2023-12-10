@@ -911,10 +911,8 @@ fn supported_visuals(c: &impl Connection) -> HashSet<Visualid> {
                         .iter()
                         .filter(|visual| {
                             // Ignore grayscale or indexes / color palette visuals
-                            matches!(
-                                visual.class,
-                                VisualClass::TRUE_COLOR | VisualClass::DIRECT_COLOR
-                            )
+                            visual.class == VisualClass::TRUE_COLOR
+                                || visual.class == VisualClass::DIRECT_COLOR
                         })
                         .filter(|visual| {
                             // Colors must be laid out as softbuffer expects
