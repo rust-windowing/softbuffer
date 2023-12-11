@@ -17,6 +17,7 @@ use rustix::{
 };
 
 use std::{
+    collections::HashSet,
     fmt,
     fs::File,
     io, mem,
@@ -31,7 +32,7 @@ use x11rb::connection::{Connection, SequenceNumber};
 use x11rb::cookie::Cookie;
 use x11rb::errors::{ConnectionError, ReplyError, ReplyOrIdError};
 use x11rb::protocol::shm::{self, ConnectionExt as _};
-use x11rb::protocol::xproto::{self, ConnectionExt as _};
+use x11rb::protocol::xproto::{self, ConnectionExt as _, ImageOrder, VisualClass, Visualid};
 use x11rb::xcb_ffi::XCBConnection;
 
 pub struct X11DisplayImpl<D: ?Sized> {
@@ -40,6 +41,9 @@ pub struct X11DisplayImpl<D: ?Sized> {
 
     /// SHM extension is available.
     is_shm_available: bool,
+
+    /// All visuals using softbuffer's pixel representation
+    supported_visuals: HashSet<Visualid>,
 
     /// The generic display where the `connection` field comes from.
     ///
@@ -100,9 +104,12 @@ impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
             log::warn!("SHM extension is not available. Performance may be poor.");
         }
 
+        let supported_visuals = supported_visuals(&connection);
+
         Ok(Self {
             connection: Some(connection),
             is_shm_available,
+            supported_visuals,
             _display: display,
         })
     }
@@ -253,6 +260,16 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
 
             (geometry_reply, visual_id)
         };
+
+        if !display.supported_visuals.contains(&visual_id) {
+            return Err(SoftBufferError::PlatformError(
+                Some(format!(
+                    "Visual 0x{visual_id:x} does not use softbuffer's pixel format and is unsupported"
+                )),
+                None,
+            )
+            .into());
+        }
 
         // See if SHM is available.
         let buffer = if display.is_shm_available {
@@ -853,6 +870,58 @@ fn is_shm_available(c: &impl Connection) -> bool {
 
     // Check the replies.
     matches!((attach.check(), detach.check()), (Ok(()), Ok(())))
+}
+
+/// Collect all visuals that use softbuffer's pixel format
+fn supported_visuals(c: &impl Connection) -> HashSet<Visualid> {
+    // Check that depth 24 uses 32 bits per pixels
+    if !c
+        .setup()
+        .pixmap_formats
+        .iter()
+        .any(|f| f.depth == 24 && f.bits_per_pixel == 32)
+    {
+        log::warn!("X11 server does not have a depth 24 format with 32 bits per pixel");
+        return HashSet::new();
+    }
+
+    // How does the server represent red, green, blue components of a pixel?
+    #[cfg(target_endian = "little")]
+    let own_byte_order = ImageOrder::LSB_FIRST;
+    #[cfg(target_endian = "big")]
+    let own_byte_order = ImageOrder::MSB_FIRST;
+    let expected_masks = if c.setup().image_byte_order == own_byte_order {
+        (0xff0000, 0xff00, 0xff)
+    } else {
+        // This is the byte-swapped version of our wished-for format
+        (0xff00, 0xff0000, 0xff000000)
+    };
+
+    c.setup()
+        .roots
+        .iter()
+        .flat_map(|screen| {
+            screen
+                .allowed_depths
+                .iter()
+                .filter(|depth| depth.depth == 24)
+                .flat_map(|depth| {
+                    depth
+                        .visuals
+                        .iter()
+                        .filter(|visual| {
+                            // Ignore grayscale or indexes / color palette visuals
+                            visual.class == VisualClass::TRUE_COLOR
+                                || visual.class == VisualClass::DIRECT_COLOR
+                        })
+                        .filter(|visual| {
+                            // Colors must be laid out as softbuffer expects
+                            expected_masks == (visual.red_mask, visual.green_mask, visual.blue_mask)
+                        })
+                        .map(|visual| visual.visual_id)
+                })
+        })
+        .collect()
 }
 
 /// An error that can occur when pushing a buffer to the window.
