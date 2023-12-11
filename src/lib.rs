@@ -75,6 +75,15 @@ macro_rules! make_dispatch {
                     )*
                 }
             }
+
+            pub fn formats(&mut self) -> Vec<Format> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.formats(),
+                    )*
+                }
+            }
         }
 
         #[allow(clippy::large_enum_variant)] // it's boxed anyways
@@ -256,7 +265,7 @@ pub struct Surface<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// Creates a new surface for the context for the provided window.
-    pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
+    pub fn new(context: &Context<D>, window: W, format: Format) -> Result<Self, SoftBufferError> {
         macro_rules! leap {
             ($e:expr) => {{
                 match ($e) {
@@ -283,7 +292,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
             }
             #[cfg(wayland_platform)]
             ContextDispatch::Wayland(wayland_display_impl) => SurfaceDispatch::Wayland(leap!(
-                wayland::WaylandImpl::new(window, wayland_display_impl.clone())
+                wayland::WaylandImpl::new(window, wayland_display_impl.clone(), format)
             )),
             #[cfg(kms_platform)]
             ContextDispatch::Kms(kms_display_impl) => {
@@ -510,4 +519,12 @@ fn display_handle_type_name(handle: &RawDisplayHandle) -> &'static str {
         RawDisplayHandle::Android(_) => "Android",
         _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Format {
+    RGBA,
+    RGBX,
+    BGRA,
+    BGRX,
 }

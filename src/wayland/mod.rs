@@ -1,6 +1,6 @@
 use crate::{
     error::{InitError, SwResultExt},
-    util, Rect, SoftBufferError,
+    util, Format, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
@@ -12,19 +12,24 @@ use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
     protocol::{wl_registry, wl_shm, wl_surface},
-    Connection, Dispatch, EventQueue, Proxy, QueueHandle,
+    Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum,
 };
 
 mod buffer;
 use buffer::WaylandBuffer;
 
-struct State;
+#[derive(Default)]
+struct State {
+    formats: Vec<wl_shm::Format>,
+}
 
+// formats
 pub struct WaylandDisplayImpl<D: ?Sized> {
     conn: Option<Connection>,
     event_queue: RefCell<EventQueue<State>>,
     qh: QueueHandle<State>,
     shm: wl_shm::WlShm,
+    formats: Vec<wl_shm::Format>,
 
     /// The object that owns the display handle.
     ///
@@ -46,23 +51,44 @@ impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
 
         let backend = unsafe { Backend::from_foreign_display(wayland_handle.as_ptr().cast()) };
         let conn = Connection::from_backend(backend);
-        let (globals, event_queue) =
+        let (globals, mut event_queue) =
             registry_queue_init(&conn).swbuf_err("Failed to make round trip to server")?;
         let qh = event_queue.handle();
         let shm: wl_shm::WlShm = globals
             .bind(&qh, 1..=1, ())
             .swbuf_err("Failed to instantiate Wayland Shm")?;
+
+        let mut state = State::default();
+        event_queue
+            .roundtrip(&mut state)
+            .swbuf_err("Failled to to make round trip to server")?;
+
         Ok(Self {
             conn: Some(conn),
             event_queue: RefCell::new(event_queue),
             qh,
             shm,
+            formats: state.formats,
             _display: display,
         })
     }
 
     fn conn(&self) -> &Connection {
         self.conn.as_ref().unwrap()
+    }
+
+    // XXX iterator? slice?
+    pub(crate) fn formats(&self) -> Vec<Format> {
+        self.formats
+            .iter()
+            .filter_map(|format| match format {
+                wl_shm::Format::Argb8888 => Some(Format::BGRA),
+                wl_shm::Format::Xrgb8888 => Some(Format::BGRX),
+                wl_shm::Format::Abgr8888 => Some(Format::RGBA),
+                wl_shm::Format::Xbgr8888 => Some(Format::RGBX),
+                _ => None,
+            })
+            .collect()
     }
 }
 
@@ -78,6 +104,7 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
     surface: Option<wl_surface::WlSurface>,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
     size: Option<(NonZeroI32, NonZeroI32)>,
+    format: wl_shm::Format,
 
     /// The pointer to the window object.
     ///
@@ -87,7 +114,11 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
-    pub(crate) fn new(window: W, display: Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    pub(crate) fn new(
+        window: W,
+        display: Rc<WaylandDisplayImpl<D>>,
+        format: Format,
+    ) -> Result<Self, InitError<W>> {
         // Get the raw Wayland window.
         let raw = window.window_handle()?.as_raw();
         let wayland_handle = match raw {
@@ -109,6 +140,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
             surface: Some(surface),
             buffers: Default::default(),
             size: None,
+            format: wayland_format(format),
             _window: window,
         })
     }
@@ -135,12 +167,14 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
             if !back.released() {
                 let mut event_queue = self.display.event_queue.borrow_mut();
                 while !back.released() {
-                    event_queue.blocking_dispatch(&mut State).map_err(|err| {
-                        SoftBufferError::PlatformError(
-                            Some("Wayland dispatch failure".to_string()),
-                            Some(Box::new(err)),
-                        )
-                    })?;
+                    event_queue
+                        .blocking_dispatch(&mut State::default())
+                        .map_err(|err| {
+                            SoftBufferError::PlatformError(
+                                Some("Wayland dispatch failure".to_string()),
+                                Some(Box::new(err)),
+                            )
+                        })?;
                 }
             }
 
@@ -151,12 +185,14 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
             self.buffers = Some((
                 WaylandBuffer::new(
                     &self.display.shm,
+                    self.format,
                     width.get(),
                     height.get(),
                     &self.display.qh,
                 ),
                 WaylandBuffer::new(
                     &self.display.shm,
+                    self.format,
                     width.get(),
                     height.get(),
                     &self.display.qh,
@@ -183,7 +219,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
             .display
             .event_queue
             .borrow_mut()
-            .dispatch_pending(&mut State);
+            .dispatch_pending(&mut State::default());
 
         if let Some((front, back)) = &mut self.buffers {
             front.age = 1;
@@ -291,12 +327,29 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
 
 impl Dispatch<wl_shm::WlShm, ()> for State {
     fn event(
-        _: &mut State,
+        state: &mut State,
         _: &wl_shm::WlShm,
-        _: wl_shm::Event,
+        event: wl_shm::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<State>,
     ) {
+        match event {
+            wl_shm::Event::Format { format } => {
+                if let WEnum::Value(format) = format {
+                    state.formats.push(format);
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+fn wayland_format(format: Format) -> wl_shm::Format {
+    match format {
+        Format::BGRA => wl_shm::Format::Argb8888,
+        Format::BGRX => wl_shm::Format::Xrgb8888,
+        Format::RGBA => wl_shm::Format::Abgr8888,
+        Format::RGBX => wl_shm::Format::Xbgr8888,
     }
 }

@@ -6,7 +6,7 @@
 #![allow(clippy::uninlined_format_args)]
 
 use crate::error::{InitError, SwResultExt};
-use crate::{Rect, SoftBufferError};
+use crate::{Format, Rect, SoftBufferError};
 use raw_window_handle::{
     HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, XcbDisplayHandle,
     XcbWindowHandle,
@@ -112,6 +112,10 @@ impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
             supported_visuals,
             _display: display,
         })
+    }
+
+    pub(crate) fn formats(&self) -> Vec<Format> {
+        vec![Format::BGRX]
     }
 }
 
