@@ -26,10 +26,9 @@ pub struct WebDisplayImpl<D> {
 impl<D: HasDisplayHandle> WebDisplayImpl<D> {
     pub(super) fn new(display: D) -> Result<Self, InitError<D>> {
         let raw = display.display_handle()?.as_raw();
-        match raw {
-            RawDisplayHandle::Web(..) => {}
-            _ => return Err(InitError::Unsupported(display)),
-        }
+        let RawDisplayHandle::Web(..) = raw else {
+            return Err(InitError::Unsupported(display));
+        };
 
         let document = web_sys::window()
             .swbuf_err("`Window` is not present in this runtime")?
@@ -79,9 +78,8 @@ enum Canvas {
 impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
     pub(crate) fn new(display: &WebDisplayImpl<D>, window: W) -> Result<Self, InitError<W>> {
         let raw = window.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::Web(handle) => handle,
-            _ => return Err(InitError::Unsupported(window)),
+        let RawWindowHandle::Web(handle) = raw else {
+            return Err(InitError::Unsupported(window));
         };
         let canvas: HtmlCanvasElement = display
             .document

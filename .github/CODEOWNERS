@@ -1,6 +1,9 @@
 # Core maintainers
 *                   @john01dav
 
+# Android
+/src/android.rs     @marijns95
+
 # Apple platforms
 /src/cg.rs          @madsmtm
 

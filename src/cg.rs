@@ -37,9 +37,8 @@ pub struct CGImpl<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
     pub(crate) fn new(window_src: W) -> Result<Self, InitError<W>> {
         let raw = window_src.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::AppKit(handle) => handle,
-            _ => return Err(InitError::Unsupported(window_src)),
+        let RawWindowHandle::AppKit(handle) = raw else {
+            return Err(InitError::Unsupported(window_src));
         };
         let view = handle.ns_view.as_ptr() as id;
         let window: id = unsafe { msg_send![view, window] };

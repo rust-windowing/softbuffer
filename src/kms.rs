@@ -39,16 +39,15 @@ impl<D: ?Sized> CtrlDevice for KmsDisplayImpl<D> {}
 
 impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
     pub(crate) fn new(display: D) -> Result<Self, InitError<D>> {
-        let fd = match display.display_handle()?.as_raw() {
-            RawDisplayHandle::Drm(drm) => drm.fd,
-            _ => return Err(InitError::Unsupported(display)),
+        let RawDisplayHandle::Drm(drm) = display.display_handle()?.as_raw() else {
+            return Err(InitError::Unsupported(display));
         };
-        if fd == -1 {
+        if drm.fd == -1 {
             return Err(SoftBufferError::IncompleteDisplayHandle.into());
         }
 
         // SAFETY: Invariants guaranteed by the user.
-        let fd = unsafe { BorrowedFd::borrow_raw(fd) };
+        let fd = unsafe { BorrowedFd::borrow_raw(drm.fd) };
 
         Ok(KmsDisplayImpl {
             fd,
@@ -108,6 +107,9 @@ pub(crate) struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
     /// The current size.
     size: (NonZeroU32, NonZeroU32),
 
+    /// The current stride/pitch (length of a single row of pixels) in bytes.
+    stride: NonZeroU32,
+
     /// The display implementation.
     display: &'a KmsDisplayImpl<D>,
 
@@ -138,13 +140,12 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
     /// Create a new KMS backend.
     pub(crate) fn new(window: W, display: Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Make sure that the window handle is valid.
-        let plane_handle = match window.window_handle()?.as_raw() {
-            RawWindowHandle::Drm(drm) => match NonZeroU32::new(drm.plane) {
-                Some(handle) => plane::Handle::from(handle),
-                None => return Err(SoftBufferError::IncompleteWindowHandle.into()),
-            },
-            _ => return Err(InitError::Unsupported(window)),
+        let RawWindowHandle::Drm(drm) = window.window_handle()?.as_raw() else {
+            return Err(InitError::Unsupported(window));
         };
+        let plane_handle =
+            NonZeroU32::new(drm.plane).ok_or(SoftBufferError::IncompleteWindowHandle)?;
+        let plane_handle = plane::Handle::from(plane_handle);
 
         let plane_info = display
             .get_plane(plane_handle)
@@ -246,6 +247,7 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
             .expect("Must set size of surface before calling `buffer_mut()`");
 
         let size = set.size();
+        let stride = set.pitch();
 
         let [first_buffer, second_buffer] = &mut set.buffers;
         let (front_buffer, back_buffer) = if set.first_is_front {
@@ -266,6 +268,7 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
         Ok(BufferImpl {
             mapping,
             size,
+            stride,
             first_is_front: &mut set.first_is_front,
             front_fb,
             crtc_handle: self.crtc.handle(),
@@ -304,6 +307,19 @@ impl<D: ?Sized, W: ?Sized> BufferImpl<'_, D, W> {
     #[inline]
     pub fn pixels_mut(&mut self) -> &mut [u32] {
         bytemuck::cast_slice_mut(self.mapping.as_mut())
+    }
+
+    /// The number of _pixels_ that a line in the buffer takes in memory.
+    #[inline]
+    pub fn stride(&self) -> u32 {
+        // TODO Return NonZeroU32?
+        let bpp: u32 = todo!();
+        assert_eq!(self.stride.get() & bpp, 0);
+        // TODO: Since this may not always be a multiple of BPP, this API should return the size in
+        // bytes... And then the user is left to mess around with `fn pixels()`. We'll need a helper
+        // iterator accessor like:
+        // https://docs.rs/ndk/latest/ndk/native_window/struct.NativeWindowBufferLockGuard.html#method.lines
+        self.stride.get() / bpp
     }
 
     #[inline]
@@ -404,11 +420,20 @@ impl SharedBuffer {
             .and_then(|width| NonZeroU32::new(height).map(|height| (width, height)))
             .expect("buffer size is zero")
     }
+
+    pub(crate) fn pitch(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.db.pitch()).expect("Pitch (stride in bytes) is zero")
+    }
 }
 
 impl Buffers {
     /// Get the size of this buffer.
     pub(crate) fn size(&self) -> (NonZeroU32, NonZeroU32) {
         self.buffers[0].size()
+    }
+
+    /// Get the pitch (stride) of this buffer.
+    pub(crate) fn pitch(&self) -> NonZeroU32 {
+        self.buffers[0].pitch()
     }
 }
