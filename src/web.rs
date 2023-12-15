@@ -275,7 +275,7 @@ pub trait SurfaceExtWeb: Sized {
     /// - If a another context then "2d" was already created for this canvas.
     fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
 
-    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
+    /// Creates a new instance of this struct, using the provided [`OffscreenCanvas`].
     ///
     /// # Errors
     /// If a another context then "2d" was already created for this canvas.
