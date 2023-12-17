@@ -1,6 +1,7 @@
 # Unreleased
 
 - MacOS: Fix double-free of `NSWindow`.
+- On Web, add support for more `RawWindowHandle` variants.
 
 # 0.4.0
 
