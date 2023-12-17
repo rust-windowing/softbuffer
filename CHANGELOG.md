@@ -1,6 +1,6 @@
 # Unreleased
 
-- MacOS: Fix double-free of `NSWindow`.
+- On MacOS, Fix double-free of `NSWindow`.
 - On Web, add support for more `RawWindowHandle` variants.
 
 # 0.4.0
@@ -26,7 +26,7 @@
 
 * On X11, fix the length of the returned buffer when using the wire-transferred buffer.
 * On Web, fix incorrect starting coordinates when handling buffer damage.
-* Or Redox, use `MAP_SHARED`; fixing behavior with latest Orbital.
+* On Redox, use `MAP_SHARED`; fixing behavior with latest Orbital.
 * Error instead of segfault on macOS if size isn't set.
 * Add `OffscreenCanvas` support in web backend.
 * Add DRM/KMS backend, for running on tty without X/Wayland.
