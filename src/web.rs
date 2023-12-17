@@ -79,18 +79,29 @@ enum Canvas {
 impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
     pub(crate) fn new(display: &WebDisplayImpl<D>, window: W) -> Result<Self, InitError<W>> {
         let raw = window.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::Web(handle) => handle,
+        let canvas: HtmlCanvasElement = match raw {
+            RawWindowHandle::Web(handle) => {
+                display
+                    .document
+                    .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
+                    // `querySelector` only throws an error if the selector is invalid.
+                    .unwrap()
+                    .swbuf_err("No canvas found with the given id")?
+                    // We already made sure this was a canvas in `querySelector`.
+                    .unchecked_into()
+            }
+            RawWindowHandle::WebCanvas(handle) => {
+                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
+                value.clone().unchecked_into()
+            }
+            RawWindowHandle::WebOffscreenCanvas(handle) => {
+                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
+                let canvas: OffscreenCanvas = value.clone().unchecked_into();
+
+                return Self::from_offscreen_canvas(canvas, window).map_err(InitError::Failure);
+            }
             _ => return Err(InitError::Unsupported(window)),
         };
-        let canvas: HtmlCanvasElement = display
-            .document
-            .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
-            // `querySelector` only throws an error if the selector is invalid.
-            .unwrap()
-            .swbuf_err("No canvas found with the given id")?
-            // We already made sure this was a canvas in `querySelector`.
-            .unchecked_into();
 
         Self::from_canvas(canvas, window).map_err(InitError::Failure)
     }
