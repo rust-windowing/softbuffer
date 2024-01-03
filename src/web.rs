@@ -177,6 +177,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
             return Ok(());
         };
 
+        // XXX no-copy
         // Create a bitmap from the buffer.
         let bitmap: Vec<_> = self
             .buffer
@@ -189,7 +190,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
                     .take(union_damage.width.get() as usize)
             })
             .copied()
-            .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
             .collect();
 
         debug_assert_eq!(
