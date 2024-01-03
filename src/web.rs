@@ -10,7 +10,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::error::{InitError, SwResultExt};
-use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
+use crate::{util, NoDisplayHandle, NoWindowHandle, Format, Rect, SoftBufferError};
 use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -40,6 +40,10 @@ impl<D: HasDisplayHandle> WebDisplayImpl<D> {
             document,
             _display: display,
         })
+    }
+
+    pub(crate) fn formats(&self) -> Vec<Format> {
+        vec![Format::RGBA]
     }
 }
 

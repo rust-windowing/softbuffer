@@ -528,3 +528,6 @@ pub enum Format {
     BGRA,
     BGRX,
 }
+
+// XXX format conversion: swap components? seperate buffer?
+// damage, age
