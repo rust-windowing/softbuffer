@@ -8,7 +8,10 @@
 use crate::error::SwResultExt;
 use crate::{Rect, SoftBufferError};
 use raw_window_handle::{XcbDisplayHandle, XcbWindowHandle, XlibDisplayHandle, XlibWindowHandle};
-use rustix::{fd::{AsFd, BorrowedFd, OwnedFd}, mm, shm as posix_shm};
+use rustix::{
+    fd::{AsFd, BorrowedFd, OwnedFd},
+    mm, shm as posix_shm,
+};
 
 use std::{
     fmt,
