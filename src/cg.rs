@@ -30,7 +30,7 @@ pub struct CGImpl<D, W> {
     window: id,
     color_space: CGColorSpace,
     size: Option<(NonZeroU32, NonZeroU32)>,
-    _window_source: W,
+    window_handle: W,
     _display: PhantomData<D>,
 }
 
@@ -62,8 +62,20 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
             color_space,
             size: None,
             _display: PhantomData,
-            _window_source: window_src,
+            window_handle: window_src,
         })
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    pub fn get_ref(&self) -> &W {
+        &self.window_handle
+    }
+
+    /// Get a mutable reference to the inner window handle.
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut W {
+        &mut self.window_handle
     }
 
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {

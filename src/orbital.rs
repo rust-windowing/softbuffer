@@ -59,7 +59,7 @@ pub struct OrbitalImpl<D, W> {
     width: u32,
     height: u32,
     presented: bool,
-    _window_source: W,
+    window_handle: W,
     _display: PhantomData<D>,
 }
 
@@ -76,9 +76,21 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
             width: 0,
             height: 0,
             presented: false,
-            _window_source: window,
+            window_handle: window,
             _display: PhantomData,
         })
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    pub fn get_ref(&self) -> &W {
+        &self.window_handle
+    }
+
+    /// Get a mutable reference to the inner window handle.
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut W {
+        &mut self.window_handle
     }
 
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {

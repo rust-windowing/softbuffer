@@ -73,7 +73,7 @@ pub(crate) struct KmsImpl<D: ?Sized, W: ?Sized> {
     buffer: Option<Buffers>,
 
     /// Window handle that we are keeping around.
-    _window: W,
+    window_handle: W,
 }
 
 #[derive(Debug)]
@@ -200,8 +200,20 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
             connectors,
             display,
             buffer: None,
-            _window: window,
+            window_handle: window,
         })
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    pub fn get_ref(&self) -> &W {
+        &self.window_handle
+    }
+
+    /// Get a mutable reference to the inner window handle.
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut W {
+        &mut self.window_handle
     }
 
     /// Resize the internal buffer to the given size.

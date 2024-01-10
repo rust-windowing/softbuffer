@@ -86,6 +86,24 @@ macro_rules! make_dispatch {
         }
 
         impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceDispatch<D, W> {
+            fn get_ref(&self) -> &W {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.get_ref(),
+                    )*
+                }
+            }
+
+            fn get_mut(&mut self) -> &mut W {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.get_mut(),
+                    )*
+                }
+            }
+
             pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
                 match self {
                     $(
@@ -311,6 +329,16 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         })
     }
 
+    /// Get a reference to the underlying window handle.
+    pub fn get_ref(&self) -> &W {
+        self.surface_impl.get_ref()
+    }
+
+    /// Get a mutable reference to the underlying window handle.
+    pub fn get_mut(&mut self) -> &mut W {
+        self.surface_impl.get_mut()
+    }
+
     /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
     ///
     /// If the size of the buffer does not match the size of the window, the buffer is drawn
@@ -347,6 +375,29 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
             buffer_impl: self.surface_impl.buffer_mut()?,
             _marker: PhantomData,
         })
+    }
+}
+
+impl<D: HasDisplayHandle, W: HasWindowHandle> AsRef<W> for Surface<D, W> {
+    #[inline]
+    fn as_ref(&self) -> &W {
+        self.get_ref()
+    }
+}
+
+impl<D: HasDisplayHandle, W: HasWindowHandle> AsMut<W> for Surface<D, W> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut W {
+        self.get_mut()
+    }
+}
+
+impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> {
+    #[inline]
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        self.get_ref().window_handle()
     }
 }
 
