@@ -186,13 +186,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
             .dispatch_pending(&mut State);
 
         if let Some((front, back)) = &mut self.buffers {
+            // Swap front and back buffer
+            std::mem::swap(front, back);
+
             front.age = 1;
             if back.age != 0 {
                 back.age += 1;
             }
-
-            // Swap front and back buffer
-            std::mem::swap(front, back);
 
             front.attach(self.surface.as_ref().unwrap());
 
