@@ -1,3 +1,8 @@
+# 0.3.4
+* Fix buffer age on Wayland. (#191)
+* Update `drm` to 0.11. (#178)
+  * Fixes build on architectures where drm-rs did not have generated bindings.
+
 # 0.3.3
 * Fix bad file descriptor crash on X11. (#168)
 
