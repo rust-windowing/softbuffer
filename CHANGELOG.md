@@ -1,7 +1,11 @@
 # Unreleased
 
-- On MacOS, Fix double-free of `NSWindow`.
-- On Web, add support for more `RawWindowHandle` variants.
+- On MacOS, Fix double-free of `NSWindow`. (#180)
+- On Web, add support for more `RawWindowHandle` variants. (#188)
+- On Wayland, fix buffer age. (#191)
+- Update `drm` to 0.11 (#178)
+  * Fixes build on architectures where drm-rs did not have generated bindings.
+- Update x11rb to v0.13 (#183)
 
 # 0.4.0
 
