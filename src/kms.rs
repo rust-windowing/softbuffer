@@ -18,6 +18,7 @@ use std::os::unix::io::{AsFd, BorrowedFd};
 use std::rc::Rc;
 
 use crate::error::{InitError, SoftBufferError, SwResultExt};
+use crate::Format;
 
 #[derive(Debug)]
 pub(crate) struct KmsDisplayImpl<D: ?Sized> {
@@ -54,6 +55,10 @@ impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
             fd,
             _display: display,
         })
+    }
+
+    pub(crate) fn formats(&self) -> Vec<Format> {
+        vec![Format::BGRX]
     }
 }
 

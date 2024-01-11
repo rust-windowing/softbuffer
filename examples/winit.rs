@@ -24,7 +24,8 @@ fn main() {
     }
 
     let context = softbuffer::Context::new(window.clone()).unwrap();
-    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+    let mut surface =
+        softbuffer::Surface::new(&context, window.clone(), softbuffer::Format::BGRX).unwrap();
 
     event_loop
         .run(move |event, elwt| {

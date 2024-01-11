@@ -92,6 +92,9 @@ pub enum SoftBufferError {
         rect: crate::Rect,
     },
 
+    /// The requested format is not supported by the display.
+    UnsupportedFormat { format: crate::Format },
+
     /// A platform-specific backend error occurred.
     ///
     /// The first field provides a human-readable description of the error. The second field
@@ -138,6 +141,7 @@ impl fmt::Display for SoftBufferError {
                 "Damage rect {}x{} at ({}, {}) out of range for backend.",
                 rect.width, rect.height, rect.x, rect.y
             ),
+            Self::UnsupportedFormat { format } => write!(f, "Format {:?} unsupported on display.", format),
             Self::Unimplemented => write!(f, "This function is unimplemented on this platform."),
         }
     }

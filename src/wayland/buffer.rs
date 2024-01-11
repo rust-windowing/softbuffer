@@ -81,7 +81,13 @@ pub(super) struct WaylandBuffer {
 }
 
 impl WaylandBuffer {
-    pub fn new(shm: &wl_shm::WlShm, width: i32, height: i32, qh: &QueueHandle<State>) -> Self {
+    pub fn new(
+        shm: &wl_shm::WlShm,
+        format: wl_shm::Format,
+        width: i32,
+        height: i32,
+        qh: &QueueHandle<State>,
+    ) -> Self {
         // Calculate size to use for shm pool
         let pool_size = get_pool_size(width, height);
 
@@ -93,15 +99,7 @@ impl WaylandBuffer {
         // Create wayland shm pool and buffer
         let pool = shm.create_pool(tempfile.as_fd(), pool_size, qh, ());
         let released = Arc::new(AtomicBool::new(true));
-        let buffer = pool.create_buffer(
-            0,
-            width,
-            height,
-            width * 4,
-            wl_shm::Format::Xrgb8888,
-            qh,
-            released.clone(),
-        );
+        let buffer = pool.create_buffer(0, width, height, width * 4, format, qh, released.clone());
 
         Self {
             qh: qh.clone(),
