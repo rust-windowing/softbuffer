@@ -115,13 +115,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
 
     /// Get the inner window handle.
     #[inline]
-    pub fn get_ref(&self) -> &W {
+    pub fn window(&self) -> &W {
         &self.window_handle
     }
 
     /// Get a mutable reference to the inner window handle.
     #[inline]
-    pub fn get_mut(&mut self) -> &mut W {
+    pub fn window_mut(&mut self) -> &mut W {
         &mut self.window_handle
     }
 

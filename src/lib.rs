@@ -86,20 +86,20 @@ macro_rules! make_dispatch {
         }
 
         impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceDispatch<D, W> {
-            fn get_ref(&self) -> &W {
+            fn window(&self) -> &W {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => inner.get_ref(),
+                        Self::$name(inner) => inner.window(),
                     )*
                 }
             }
 
-            fn get_mut(&mut self) -> &mut W {
+            fn window_mut(&mut self) -> &mut W {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => inner.get_mut(),
+                        Self::$name(inner) => inner.window_mut(),
                     )*
                 }
             }
@@ -330,13 +330,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     }
 
     /// Get a reference to the underlying window handle.
-    pub fn get_ref(&self) -> &W {
-        self.surface_impl.get_ref()
+    pub fn window(&self) -> &W {
+        self.surface_impl.window()
     }
 
     /// Get a mutable reference to the underlying window handle.
-    pub fn get_mut(&mut self) -> &mut W {
-        self.surface_impl.get_mut()
+    pub fn window_mut(&mut self) -> &mut W {
+        self.surface_impl.window_mut()
     }
 
     /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
@@ -381,14 +381,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> AsRef<W> for Surface<D, W> {
     #[inline]
     fn as_ref(&self) -> &W {
-        self.get_ref()
+        self.window()
     }
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> AsMut<W> for Surface<D, W> {
     #[inline]
     fn as_mut(&mut self) -> &mut W {
-        self.get_mut()
+        self.window_mut()
     }
 }
 
@@ -397,7 +397,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
     fn window_handle(
         &self,
     ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
-        self.get_ref().window_handle()
+        self.window().window_handle()
     }
 }
 
