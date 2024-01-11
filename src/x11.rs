@@ -302,12 +302,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
         &self.window_handle
     }
 
-    /// Get a mutable reference to the inner window handle.
-    #[inline]
-    pub fn window_mut(&mut self) -> &mut W {
-        &mut self.window_handle
-    }
-
     /// Resize the internal buffer to the given width and height.
     pub(crate) fn resize(
         &mut self,

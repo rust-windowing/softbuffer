@@ -95,15 +95,6 @@ macro_rules! make_dispatch {
                 }
             }
 
-            fn window_mut(&mut self) -> &mut W {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.window_mut(),
-                    )*
-                }
-            }
-
             pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
                 match self {
                     $(
@@ -334,11 +325,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.window()
     }
 
-    /// Get a mutable reference to the underlying window handle.
-    pub fn window_mut(&mut self) -> &mut W {
-        self.surface_impl.window_mut()
-    }
-
     /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
     ///
     /// If the size of the buffer does not match the size of the window, the buffer is drawn
@@ -382,13 +368,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> AsRef<W> for Surface<D, W> {
     #[inline]
     fn as_ref(&self) -> &W {
         self.window()
-    }
-}
-
-impl<D: HasDisplayHandle, W: HasWindowHandle> AsMut<W> for Surface<D, W> {
-    #[inline]
-    fn as_mut(&mut self) -> &mut W {
-        self.window_mut()
     }
 }
 

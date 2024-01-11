@@ -141,12 +141,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
         &self.window_handle
     }
 
-    /// Get a mutable reference to the inner window handle.
-    #[inline]
-    pub fn window_mut(&mut self) -> &mut W {
-        &mut self.window_handle
-    }
-
     /// De-duplicates the error handling between `HtmlCanvasElement` and `OffscreenCanvas`.
     fn resolve_ctx<T: JsCast>(
         result: Option<Option<Object>>,

@@ -195,12 +195,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
         &self.handle
     }
 
-    /// Get a mutable reference to the inner window handle.
-    #[inline]
-    pub fn window_mut(&mut self) -> &mut W {
-        &mut self.handle
-    }
-
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
             let width = NonZeroI32::new(i32::try_from(width.get()).ok()?)?;

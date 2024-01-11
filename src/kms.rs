@@ -210,12 +210,6 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
         &self.window_handle
     }
 
-    /// Get a mutable reference to the inner window handle.
-    #[inline]
-    pub fn window_mut(&mut self) -> &mut W {
-        &mut self.window_handle
-    }
-
     /// Resize the internal buffer to the given size.
     pub(crate) fn resize(
         &mut self,

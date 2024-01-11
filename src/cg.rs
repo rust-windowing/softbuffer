@@ -72,12 +72,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
         &self.window_handle
     }
 
-    /// Get a mutable reference to the inner window handle.
-    #[inline]
-    pub fn window_mut(&mut self) -> &mut W {
-        &mut self.window_handle
-    }
-
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         self.size = Some((width, height));
         Ok(())
