@@ -150,7 +150,7 @@ pub struct X11Impl<D: ?Sized, W: ?Sized> {
     size: Option<(NonZeroU16, NonZeroU16)>,
 
     /// Keep the window alive.
-    _window_handle: W,
+    window_handle: W,
 }
 
 /// The buffer that is being drawn to.
@@ -292,8 +292,14 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
             buffer,
             buffer_presented: false,
             size: None,
-            _window_handle: window_src,
+            window_handle: window_src,
         })
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    pub fn window(&self) -> &W {
+        &self.window_handle
     }
 
     /// Resize the internal buffer to the given width and height.

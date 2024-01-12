@@ -83,7 +83,7 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
     ///
     /// This has to be dropped *after* the `surface` field, because the `surface` field implicitly
     /// borrows this.
-    _window: W,
+    window_handle: W,
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
@@ -109,8 +109,14 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
             surface: Some(surface),
             buffers: Default::default(),
             size: None,
-            _window: window,
+            window_handle: window,
         })
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    pub fn window(&self) -> &W {
+        &self.window_handle
     }
 
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {

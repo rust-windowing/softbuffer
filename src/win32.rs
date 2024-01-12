@@ -142,7 +142,7 @@ pub struct Win32Impl<D: ?Sized, W> {
     /// The handle for the window.
     ///
     /// This should be kept alive in order to keep `window` valid.
-    _window: W,
+    handle: W,
 
     /// The display handle.
     ///
@@ -184,9 +184,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
             dc,
             window: hwnd,
             buffer: None,
-            _window: window,
+            handle: window,
             _display: PhantomData,
         })
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    pub fn window(&self) -> &W {
+        &self.handle
     }
 
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {

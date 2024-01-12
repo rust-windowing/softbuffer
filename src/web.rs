@@ -57,7 +57,7 @@ pub struct WebImpl<D, W> {
     size: Option<(NonZeroU32, NonZeroU32)>,
 
     /// The underlying window handle.
-    _window: W,
+    window_handle: W,
 
     /// The underlying display handle.
     _display: PhantomData<D>,
@@ -114,7 +114,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
             buffer: Vec::new(),
             buffer_presented: false,
             size: None,
-            _window: window,
+            window_handle: window,
             _display: PhantomData,
         })
     }
@@ -130,9 +130,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
             buffer: Vec::new(),
             buffer_presented: false,
             size: None,
-            _window: window,
+            window_handle: window,
             _display: PhantomData,
         })
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    pub fn window(&self) -> &W {
+        &self.window_handle
     }
 
     /// De-duplicates the error handling between `HtmlCanvasElement` and `OffscreenCanvas`.
