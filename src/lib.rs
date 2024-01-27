@@ -24,6 +24,7 @@ mod win32;
 mod x11;
 
 mod error;
+mod format;
 mod util;
 
 use std::marker::PhantomData;

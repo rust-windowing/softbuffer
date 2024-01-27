@@ -10,7 +10,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::error::{InitError, SwResultExt};
-use crate::{util, NoDisplayHandle, NoWindowHandle, Format, Rect, SoftBufferError};
+use crate::{util, Format, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
 use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;

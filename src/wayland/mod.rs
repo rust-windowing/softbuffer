@@ -1,5 +1,6 @@
 use crate::{
     error::{InitError, SwResultExt},
+    format::ConvertFormat,
     util, Format, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
