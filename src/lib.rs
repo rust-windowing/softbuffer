@@ -23,6 +23,10 @@ mod win32;
 #[cfg(x11_platform)]
 mod x11;
 
+mod backend_dispatch;
+use backend_dispatch::*;
+mod backend_interface;
+use backend_interface::*;
 mod error;
 mod util;
 
@@ -47,158 +51,6 @@ pub struct Context<D> {
 
     /// The inner static dispatch object.
     context_impl: ContextDispatch<D>,
-}
-
-/// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
-macro_rules! make_dispatch {
-    (
-        <$dgen: ident, $wgen: ident> =>
-        $(
-            $(#[$attr:meta])*
-            $name: ident
-            ($context_inner: ty, $surface_inner: ty, $buffer_inner: ty),
-        )*
-    ) => {
-        enum ContextDispatch<$dgen> {
-            $(
-                $(#[$attr])*
-                $name($context_inner),
-            )*
-        }
-
-        impl<D: HasDisplayHandle> ContextDispatch<D> {
-            fn variant_name(&self) -> &'static str {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(_) => stringify!($name),
-                    )*
-                }
-            }
-        }
-
-        #[allow(clippy::large_enum_variant)] // it's boxed anyways
-        enum SurfaceDispatch<$dgen, $wgen> {
-            $(
-                $(#[$attr])*
-                $name($surface_inner),
-            )*
-        }
-
-        impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceDispatch<D, W> {
-            fn window(&self) -> &W {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.window(),
-                    )*
-                }
-            }
-
-            pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.resize(width, height),
-                    )*
-                }
-            }
-
-            pub fn buffer_mut(&mut self) -> Result<BufferDispatch<'_, D, W>, SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.buffer_mut()?)),
-                    )*
-                }
-            }
-
-            pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.fetch(),
-                    )*
-                }
-            }
-        }
-
-        enum BufferDispatch<'a, $dgen, $wgen> {
-            $(
-                $(#[$attr])*
-                $name($buffer_inner),
-            )*
-        }
-
-        impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferDispatch<'a, D, W> {
-            #[inline]
-            pub fn pixels(&self) -> &[u32] {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.pixels(),
-                    )*
-                }
-            }
-
-            #[inline]
-            pub fn pixels_mut(&mut self) -> &mut [u32] {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.pixels_mut(),
-                    )*
-                }
-            }
-
-            pub fn age(&self) -> u8 {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.age(),
-                    )*
-                }
-            }
-
-            pub fn present(self) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.present(),
-                    )*
-                }
-            }
-
-            pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.present_with_damage(damage),
-                    )*
-                }
-            }
-        }
-    };
-}
-
-// XXX empty enum with generic bound is invalid?
-
-make_dispatch! {
-    <D, W> =>
-    #[cfg(x11_platform)]
-    X11(Rc<x11::X11DisplayImpl<D>>, x11::X11Impl<D, W>, x11::BufferImpl<'a, D, W>),
-    #[cfg(wayland_platform)]
-    Wayland(Rc<wayland::WaylandDisplayImpl<D>>, wayland::WaylandImpl<D, W>, wayland::BufferImpl<'a, D, W>),
-    #[cfg(kms_platform)]
-    Kms(Rc<kms::KmsDisplayImpl<D>>, kms::KmsImpl<D, W>, kms::BufferImpl<'a, D, W>),
-    #[cfg(target_os = "windows")]
-    Win32(D, win32::Win32Impl<D, W>, win32::BufferImpl<'a, D, W>),
-    #[cfg(target_os = "macos")]
-    CG(D, cg::CGImpl<D, W>, cg::BufferImpl<'a, D, W>),
-    #[cfg(target_arch = "wasm32")]
-    Web(web::WebDisplayImpl<D>, web::WebImpl<D, W>, web::BufferImpl<'a, D, W>),
-    #[cfg(target_os = "redox")]
-    Orbital(D, orbital::OrbitalImpl<D, W>, orbital::BufferImpl<'a, D, W>),
 }
 
 impl<D: HasDisplayHandle> Context<D> {

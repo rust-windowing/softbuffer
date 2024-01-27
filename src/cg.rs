@@ -1,3 +1,4 @@
+use crate::backend_interface::*;
 use crate::error::InitError;
 use crate::{Rect, SoftBufferError};
 use core_graphics::base::{
@@ -65,19 +66,22 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
             window_handle: window_src,
         })
     }
+}
 
-    /// Get the inner window handle.
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for CGImpl<D, W> {
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
     #[inline]
-    pub fn window(&self) -> &W {
+    fn window(&self) -> &W {
         &self.window_handle
     }
 
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         self.size = Some((width, height));
         Ok(())
     }
 
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `buffer_mut()`");
@@ -87,11 +91,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
             imp: self,
         })
     }
-
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-        Err(SoftBufferError::Unimplemented)
-    }
 }
 
 pub struct BufferImpl<'a, D, W> {
@@ -99,22 +98,22 @@ pub struct BufferImpl<'a, D, W> {
     buffer: Vec<u32>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
     #[inline]
-    pub fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[u32] {
         &self.buffer
     }
 
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [u32] {
         &mut self.buffer
     }
 
-    pub fn age(&self) -> u8 {
+    fn age(&self) -> u8 {
         0
     }
 
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    fn present(self) -> Result<(), SoftBufferError> {
         let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
         let (width, height) = self.imp.size.unwrap();
         let image = CGImage::new(
@@ -148,7 +147,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
         Ok(())
     }
 
-    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
         self.present()
     }
 }

@@ -2,6 +2,7 @@ use crate::error::InitError;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, RawWindowHandle};
 use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
+use crate::backend_interface::*;
 use crate::{Rect, SoftBufferError};
 
 struct OrbitalMap {
@@ -81,23 +82,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
         })
     }
 
-    /// Get the inner window handle.
-    #[inline]
-    pub fn window(&self) -> &W {
-        &self.window_handle
-    }
-
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        let width = width.get();
-        let height = height.get();
-        if width != self.width || height != self.height {
-            self.presented = false;
-            self.width = width;
-            self.height = height;
-        }
-        Ok(())
-    }
-
     fn window_fd(&self) -> usize {
         self.handle.window.as_ptr() as usize
     }
@@ -120,20 +104,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
         }
 
         (window_width, window_height)
-    }
-
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        let (window_width, window_height) = self.window_size();
-        let pixels = if self.width as usize == window_width && self.height as usize == window_height
-        {
-            Pixels::Mapping(
-                unsafe { OrbitalMap::new(self.window_fd(), window_width * window_height * 4) }
-                    .expect("failed to map orbital window"),
-            )
-        } else {
-            Pixels::Buffer(vec![0; self.width as usize * self.height as usize])
-        };
-        Ok(BufferImpl { imp: self, pixels })
     }
 
     fn set_buffer(&self, buffer: &[u32], width_u32: u32, height_u32: u32) {
@@ -167,10 +137,39 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
         // Tell orbital to show the latest window data
         syscall::fsync(self.window_fd()).expect("failed to sync orbital window");
     }
+}
 
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-        Err(SoftBufferError::Unimplemented)
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for OrbitalImpl<D, W> {
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    #[inline]
+    fn window(&self) -> &W {
+        &self.window_handle
+    }
+
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        let width = width.get();
+        let height = height.get();
+        if width != self.width || height != self.height {
+            self.presented = false;
+            self.width = width;
+            self.height = height;
+        }
+        Ok(())
+    }
+
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+        let (window_width, window_height) = self.window_size();
+        let pixels = if self.width as usize == window_width && self.height as usize == window_height
+        {
+            Pixels::Mapping(
+                unsafe { OrbitalMap::new(self.window_fd(), window_width * window_height * 4) }
+                    .expect("failed to map orbital window"),
+            )
+        } else {
+            Pixels::Buffer(vec![0; self.width as usize * self.height as usize])
+        };
+        Ok(BufferImpl { imp: self, pixels })
     }
 }
 
@@ -184,9 +183,9 @@ pub struct BufferImpl<'a, D, W> {
     pixels: Pixels,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
     #[inline]
-    pub fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[u32] {
         match &self.pixels {
             Pixels::Mapping(mapping) => unsafe { mapping.data() },
             Pixels::Buffer(buffer) => buffer,
@@ -194,21 +193,21 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
     }
 
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [u32] {
         match &mut self.pixels {
             Pixels::Mapping(mapping) => unsafe { mapping.data_mut() },
             Pixels::Buffer(buffer) => buffer,
         }
     }
 
-    pub fn age(&self) -> u8 {
+    fn age(&self) -> u8 {
         match self.pixels {
             Pixels::Mapping(_) if self.imp.presented => 1,
             _ => 0,
         }
     }
 
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    fn present(self) -> Result<(), SoftBufferError> {
         match self.pixels {
             Pixels::Mapping(mapping) => {
                 drop(mapping);
@@ -224,7 +223,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
         Ok(())
     }
 
-    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
         self.present()
     }
 }

@@ -2,6 +2,7 @@
 //!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
+use crate::backend_interface::*;
 use crate::{Rect, SoftBufferError};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
@@ -189,39 +190,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
         })
     }
 
-    /// Get the inner window handle.
-    #[inline]
-    pub fn window(&self) -> &W {
-        &self.handle
-    }
-
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        let (width, height) = (|| {
-            let width = NonZeroI32::new(i32::try_from(width.get()).ok()?)?;
-            let height = NonZeroI32::new(i32::try_from(height.get()).ok()?)?;
-            Some((width, height))
-        })()
-        .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
-
-        if let Some(buffer) = self.buffer.as_ref() {
-            if buffer.width == width && buffer.height == height {
-                return Ok(());
-            }
-        }
-
-        self.buffer = Some(Buffer::new(self.dc, width, height));
-
-        Ok(())
-    }
-
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        if self.buffer.is_none() {
-            panic!("Must set size of surface before calling `buffer_mut()`");
-        }
-
-        Ok(BufferImpl(self))
-    }
-
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let buffer = self.buffer.as_mut().unwrap();
         unsafe {
@@ -245,34 +213,70 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
 
         Ok(())
     }
+}
+
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for Win32Impl<D, W> {
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    #[inline]
+    fn window(&self) -> &W {
+        &self.handle
+    }
+
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        let (width, height) = (|| {
+            let width = NonZeroI32::new(i32::try_from(width.get()).ok()?)?;
+            let height = NonZeroI32::new(i32::try_from(height.get()).ok()?)?;
+            Some((width, height))
+        })()
+        .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
+
+        if let Some(buffer) = self.buffer.as_ref() {
+            if buffer.width == width && buffer.height == height {
+                return Ok(());
+            }
+        }
+
+        self.buffer = Some(Buffer::new(self.dc, width, height));
+
+        Ok(())
+    }
+
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+        if self.buffer.is_none() {
+            panic!("Must set size of surface before calling `buffer_mut()`");
+        }
+
+        Ok(BufferImpl(self))
+    }
 
     /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)
     }
 }
 
 pub struct BufferImpl<'a, D, W>(&'a mut Win32Impl<D, W>);
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
     #[inline]
-    pub fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[u32] {
         self.0.buffer.as_ref().unwrap().pixels()
     }
 
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [u32] {
         self.0.buffer.as_mut().unwrap().pixels_mut()
     }
 
-    pub fn age(&self) -> u8 {
+    fn age(&self) -> u8 {
         match self.0.buffer.as_ref() {
             Some(buffer) if buffer.presented => 1,
             _ => 0,
         }
     }
 
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    fn present(self) -> Result<(), SoftBufferError> {
         let imp = self.0;
         let buffer = imp.buffer.as_ref().unwrap();
         imp.present_with_damage(&[Rect {
@@ -284,7 +288,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
         }])
     }
 
-    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;
         imp.present_with_damage(damage)
     }
