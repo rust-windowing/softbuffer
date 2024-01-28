@@ -93,8 +93,8 @@ jobs:
 
     - name: Pin versions of dev-deps
       if: matrix.rust_version == '1.65.0'
-      run: bash tools/fix_msrv.sh
-
+      run: cargo update -p half --precise 2.2.1
+  
     - name: Build tests
       shell: bash
       if: >
