@@ -20,6 +20,5 @@ jobs:
           branch: master
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-      - run: |
-        cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
-        cargo publish
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CRATES_IO_API_TOKEN }}
