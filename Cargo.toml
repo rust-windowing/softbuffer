@@ -78,7 +78,6 @@ cfg_aliases = "0.2.0"
 [dev-dependencies]
 colorous = "1.0.12"
 criterion = { version = "0.4.0", default-features = false, features = ["cargo_bench_support"] }
-half = "=2.2.1"
 instant = "0.1.12"
 winit = "0.29.2"
 winit-test = "0.1.0"
