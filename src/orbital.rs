@@ -90,7 +90,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         let width = width.get();
         let height = height.get();
-        if width != self.width && height != self.height {
+        if width != self.width || height != self.height {
             self.presented = false;
             self.width = width;
             self.height = height;

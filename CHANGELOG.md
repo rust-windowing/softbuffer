@@ -6,6 +6,7 @@
 - Update `drm` to 0.11 (#178)
   * Fixes build on architectures where drm-rs did not have generated bindings.
 - Update x11rb to v0.13 (#183)
+- On Orbital, fix window resize.
 
 # 0.4.0
 
