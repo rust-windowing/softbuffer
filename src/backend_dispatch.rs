@@ -1,6 +1,6 @@
 //! Implements `buffer_interface::*` traits for enums dispatching to backends
 
-use crate::{backend_interface::*, Rect, SoftBufferError};
+use crate::{backend_interface::*, backends, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
@@ -146,17 +146,17 @@ macro_rules! make_dispatch {
 make_dispatch! {
     <D, W> =>
     #[cfg(x11_platform)]
-    X11(Rc<crate::x11::X11DisplayImpl<D>>, crate::x11::X11Impl<D, W>, crate::x11::BufferImpl<'a, D, W>),
+    X11(Rc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'a, D, W>),
     #[cfg(wayland_platform)]
-    Wayland(Rc<crate::wayland::WaylandDisplayImpl<D>>, crate::wayland::WaylandImpl<D, W>, crate::wayland::BufferImpl<'a, D, W>),
+    Wayland(Rc<backends::wayland::WaylandDisplayImpl<D>>, backends::wayland::WaylandImpl<D, W>, backends::wayland::BufferImpl<'a, D, W>),
     #[cfg(kms_platform)]
-    Kms(Rc<crate::kms::KmsDisplayImpl<D>>, crate::kms::KmsImpl<D, W>, crate::kms::BufferImpl<'a, D, W>),
+    Kms(Rc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'a, D, W>),
     #[cfg(target_os = "windows")]
-    Win32(D, crate::win32::Win32Impl<D, W>, crate::win32::BufferImpl<'a, D, W>),
+    Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'a, D, W>),
     #[cfg(target_os = "macos")]
-    CG(D, crate::cg::CGImpl<D, W>, crate::cg::BufferImpl<'a, D, W>),
+    CG(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'a, D, W>),
     #[cfg(target_arch = "wasm32")]
-    Web(crate::web::WebDisplayImpl<D>, crate::web::WebImpl<D, W>, crate::web::BufferImpl<'a, D, W>),
+    Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'a, D, W>),
     #[cfg(target_os = "redox")]
-    Orbital(D, crate::orbital::OrbitalImpl<D, W>, crate::orbital::BufferImpl<'a, D, W>),
+    Orbital(D, backends::orbital::OrbitalImpl<D, W>, backends::orbital::BufferImpl<'a, D, W>),
 }

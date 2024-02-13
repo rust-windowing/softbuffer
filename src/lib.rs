@@ -8,25 +8,11 @@
 extern crate objc;
 extern crate core;
 
-#[cfg(target_os = "macos")]
-mod cg;
-#[cfg(kms_platform)]
-mod kms;
-#[cfg(target_os = "redox")]
-mod orbital;
-#[cfg(wayland_platform)]
-mod wayland;
-#[cfg(target_arch = "wasm32")]
-mod web;
-#[cfg(target_os = "windows")]
-mod win32;
-#[cfg(x11_platform)]
-mod x11;
-
 mod backend_dispatch;
 use backend_dispatch::*;
 mod backend_interface;
 use backend_interface::*;
+mod backends;
 mod error;
 mod util;
 
@@ -42,7 +28,7 @@ pub use error::SoftBufferError;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 #[cfg(target_arch = "wasm32")]
-pub use self::web::SurfaceExtWeb;
+pub use backends::web::SurfaceExtWeb;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
@@ -73,17 +59,17 @@ impl<D: HasDisplayHandle> Context<D> {
         }
 
         #[cfg(x11_platform)]
-        try_init!(X11, display => x11::X11DisplayImpl::new(display).map(Rc::new));
+        try_init!(X11, display => backends::x11::X11DisplayImpl::new(display).map(Rc::new));
         #[cfg(wayland_platform)]
-        try_init!(Wayland, display => wayland::WaylandDisplayImpl::new(display).map(Rc::new));
+        try_init!(Wayland, display => backends::wayland::WaylandDisplayImpl::new(display).map(Rc::new));
         #[cfg(kms_platform)]
-        try_init!(Kms, display => kms::KmsDisplayImpl::new(display).map(Rc::new));
+        try_init!(Kms, display => backends::kms::KmsDisplayImpl::new(display).map(Rc::new));
         #[cfg(target_os = "windows")]
         try_init!(Win32, display => Ok(display));
         #[cfg(target_os = "macos")]
         try_init!(CG, display => Ok(display));
         #[cfg(target_arch = "wasm32")]
-        try_init!(Web, display => web::WebDisplayImpl::new(display));
+        try_init!(Web, display => backends::web::WebDisplayImpl::new(display));
         #[cfg(target_os = "redox")]
         try_init!(Orbital, display => Ok(display));
 
@@ -139,30 +125,30 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
 
         let imple = match &context.context_impl {
             #[cfg(x11_platform)]
-            ContextDispatch::X11(xcb_display_handle) => {
-                SurfaceDispatch::X11(leap!(x11::X11Impl::new(window, xcb_display_handle.clone())))
-            }
+            ContextDispatch::X11(xcb_display_handle) => SurfaceDispatch::X11(leap!(
+                backends::x11::X11Impl::new(window, xcb_display_handle.clone())
+            )),
             #[cfg(wayland_platform)]
             ContextDispatch::Wayland(wayland_display_impl) => SurfaceDispatch::Wayland(leap!(
-                wayland::WaylandImpl::new(window, wayland_display_impl.clone())
+                backends::wayland::WaylandImpl::new(window, wayland_display_impl.clone())
             )),
             #[cfg(kms_platform)]
-            ContextDispatch::Kms(kms_display_impl) => {
-                SurfaceDispatch::Kms(leap!(kms::KmsImpl::new(window, kms_display_impl.clone())))
-            }
+            ContextDispatch::Kms(kms_display_impl) => SurfaceDispatch::Kms(leap!(
+                backends::kms::KmsImpl::new(window, kms_display_impl.clone())
+            )),
             #[cfg(target_os = "windows")]
             ContextDispatch::Win32(_) => {
-                SurfaceDispatch::Win32(leap!(win32::Win32Impl::new(window)))
+                SurfaceDispatch::Win32(leap!(backends::win32::Win32Impl::new(window)))
             }
             #[cfg(target_os = "macos")]
-            ContextDispatch::CG(_) => SurfaceDispatch::CG(leap!(cg::CGImpl::new(window))),
+            ContextDispatch::CG(_) => SurfaceDispatch::CG(leap!(backends::cg::CGImpl::new(window))),
             #[cfg(target_arch = "wasm32")]
             ContextDispatch::Web(web_display_impl) => {
-                SurfaceDispatch::Web(leap!(web::WebImpl::new(web_display_impl, window)))
+                SurfaceDispatch::Web(leap!(backends::web::WebImpl::new(web_display_impl, window)))
             }
             #[cfg(target_os = "redox")]
             ContextDispatch::Orbital(_) => {
-                SurfaceDispatch::Orbital(leap!(orbital::OrbitalImpl::new(window)))
+                SurfaceDispatch::Orbital(leap!(backends::orbital::OrbitalImpl::new(window)))
             }
         };
 

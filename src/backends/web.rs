@@ -25,7 +25,7 @@ pub struct WebDisplayImpl<D> {
 }
 
 impl<D: HasDisplayHandle> WebDisplayImpl<D> {
-    pub(super) fn new(display: D) -> Result<Self, InitError<D>> {
+    pub(crate) fn new(display: D) -> Result<Self, InitError<D>> {
         let raw = display.display_handle()?.as_raw();
         match raw {
             RawDisplayHandle::Web(..) => {}
