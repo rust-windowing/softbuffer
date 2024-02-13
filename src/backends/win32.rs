@@ -159,8 +159,37 @@ struct BitmapInfo {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
+    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let buffer = self.buffer.as_mut().unwrap();
+        unsafe {
+            for rect in damage.iter().copied() {
+                let (x, y, width, height) = (|| {
+                    Some((
+                        i32::try_from(rect.x).ok()?,
+                        i32::try_from(rect.y).ok()?,
+                        i32::try_from(rect.width.get()).ok()?,
+                        i32::try_from(rect.height.get()).ok()?,
+                    ))
+                })()
+                .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
+                Gdi::BitBlt(self.dc, x, y, width, height, buffer.dc, x, y, Gdi::SRCCOPY);
+            }
+
+            // Validate the window.
+            Gdi::ValidateRect(self.window, ptr::null_mut());
+        }
+        buffer.presented = true;
+
+        Ok(())
+    }
+}
+
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Impl<D, W> {
+    type Context = D;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
-    pub(crate) fn new(window: W) -> Result<Self, crate::error::InitError<W>> {
+    fn new(window: W, _display: &D) -> Result<Self, crate::error::InitError<W>> {
         let raw = window.window_handle()?.as_raw();
         let handle = match raw {
             RawWindowHandle::Win32(handle) => handle,
@@ -189,34 +218,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
             _display: PhantomData,
         })
     }
-
-    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let buffer = self.buffer.as_mut().unwrap();
-        unsafe {
-            for rect in damage.iter().copied() {
-                let (x, y, width, height) = (|| {
-                    Some((
-                        i32::try_from(rect.x).ok()?,
-                        i32::try_from(rect.y).ok()?,
-                        i32::try_from(rect.width.get()).ok()?,
-                        i32::try_from(rect.height.get()).ok()?,
-                    ))
-                })()
-                .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
-                Gdi::BitBlt(self.dc, x, y, width, height, buffer.dc, x, y, Gdi::SRCCOPY);
-            }
-
-            // Validate the window.
-            Gdi::ValidateRect(self.window, ptr::null_mut());
-        }
-        buffer.presented = true;
-
-        Ok(())
-    }
-}
-
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for Win32Impl<D, W> {
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
 
     #[inline]
     fn window(&self) -> &W {

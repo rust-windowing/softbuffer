@@ -1,6 +1,6 @@
 //! Implements `buffer_interface::*` traits for enums dispatching to backends
 
-use crate::{backend_interface::*, backends, Rect, SoftBufferError};
+use crate::{backend_interface::*, backends, InitError, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
@@ -35,6 +35,26 @@ macro_rules! make_dispatch {
             }
         }
 
+        impl<D: HasDisplayHandle> ContextInterface<D> for ContextDispatch<D> {
+            fn new(mut display: D) -> Result<Self, InitError<D>>
+            where
+                D: Sized,
+            {
+                $(
+                    $(#[$attr])*
+                    match <$context_inner as ContextInterface<D>>::new(display) {
+                        Ok(x) => {
+                            return Ok(Self::$name(x));
+                        }
+                        Err(InitError::Unsupported(d)) => display = d,
+                        Err(InitError::Failure(f)) => return Err(InitError::Failure(f)),
+                    }
+                )*
+
+                Err(InitError::Unsupported(display))
+            }
+        }
+
         #[allow(clippy::large_enum_variant)] // it's boxed anyways
         pub(crate) enum SurfaceDispatch<$dgen, $wgen> {
             $(
@@ -43,8 +63,21 @@ macro_rules! make_dispatch {
             )*
         }
 
-        impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for SurfaceDispatch<D, W> {
+        impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for SurfaceDispatch<D, W> {
+            type Context = ContextDispatch<D>;
             type Buffer<'a> = BufferDispatch<'a, D, W> where Self: 'a;
+
+            fn new(window: W, display: &Self::Context) -> Result<Self, InitError<W>>
+            where
+                W: Sized,
+            Self: Sized {
+                match display {
+                    $(
+                        $(#[$attr])*
+                        ContextDispatch::$name(inner) => Ok(Self::$name(<$surface_inner>::new(window, inner)?)),
+                    )*
+                }
+            }
 
             fn window(&self) -> &W {
                 match self {

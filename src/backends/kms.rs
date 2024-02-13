@@ -38,8 +38,11 @@ impl<D: ?Sized> AsFd for KmsDisplayImpl<D> {
 impl<D: ?Sized> Device for KmsDisplayImpl<D> {}
 impl<D: ?Sized> CtrlDevice for KmsDisplayImpl<D> {}
 
-impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
-    pub(crate) fn new(display: D) -> Result<Self, InitError<D>> {
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<KmsDisplayImpl<D>> {
+    fn new(display: D) -> Result<Self, InitError<D>>
+    where
+        D: Sized,
+    {
         let fd = match display.display_handle()?.as_raw() {
             RawDisplayHandle::Drm(drm) => drm.fd,
             _ => return Err(InitError::Unsupported(display)),
@@ -51,10 +54,10 @@ impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
         // SAFETY: Invariants guaranteed by the user.
         let fd = unsafe { BorrowedFd::borrow_raw(fd) };
 
-        Ok(KmsDisplayImpl {
+        Ok(Rc::new(KmsDisplayImpl {
             fd,
             _display: display,
-        })
+        }))
     }
 }
 
@@ -135,9 +138,12 @@ struct SharedBuffer {
     age: u8,
 }
 
-impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for KmsImpl<D, W> {
+    type Context = Rc<KmsDisplayImpl<D>>;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
     /// Create a new KMS backend.
-    pub(crate) fn new(window: W, display: Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    fn new(window: W, display: &Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Make sure that the window handle is valid.
         let plane_handle = match window.window_handle()?.as_raw() {
             RawWindowHandle::Drm(drm) => match NonZeroU32::new(drm.plane) {
@@ -199,15 +205,11 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
         Ok(Self {
             crtc,
             connectors,
-            display,
+            display: display.clone(),
             buffer: None,
             window_handle: window,
         })
     }
-}
-
-impl<D: ?Sized, W: HasWindowHandle> SurfaceInterface<W> for KmsImpl<D, W> {
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
 
     #[inline]
     fn window(&self) -> &W {

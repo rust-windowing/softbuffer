@@ -1,15 +1,27 @@
 //! Interface implemented by backends
 
-use crate::{Rect, SoftBufferError};
+use crate::{InitError, Rect, SoftBufferError};
 
-use raw_window_handle::HasWindowHandle;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
 
-pub(crate) trait SurfaceInterface<W: HasWindowHandle + ?Sized> {
+pub(crate) trait ContextInterface<D: HasDisplayHandle + ?Sized> {
+    fn new(display: D) -> Result<Self, InitError<D>>
+    where
+        D: Sized,
+        Self: Sized;
+}
+
+pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> {
+    type Context: ContextInterface<D>;
     type Buffer<'a>: BufferInterface
     where
         Self: 'a;
 
+    fn new(window: W, context: &Self::Context) -> Result<Self, InitError<W>>
+    where
+        W: Sized,
+        Self: Sized;
     /// Get the inner window handle.
     fn window(&self) -> &W;
     /// Resize the internal buffer to the given width and height.

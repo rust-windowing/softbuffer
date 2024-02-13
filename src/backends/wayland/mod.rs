@@ -35,7 +35,13 @@ pub struct WaylandDisplayImpl<D: ?Sized> {
 }
 
 impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
-    pub(crate) fn new(display: D) -> Result<Self, InitError<D>>
+    fn conn(&self) -> &Connection {
+        self.conn.as_ref().unwrap()
+    }
+}
+
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<WaylandDisplayImpl<D>> {
+    fn new(display: D) -> Result<Self, InitError<D>>
     where
         D: Sized,
     {
@@ -53,17 +59,13 @@ impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
         let shm: wl_shm::WlShm = globals
             .bind(&qh, 1..=1, ())
             .swbuf_err("Failed to instantiate Wayland Shm")?;
-        Ok(Self {
+        Ok(Rc::new(WaylandDisplayImpl {
             conn: Some(conn),
             event_queue: RefCell::new(event_queue),
             qh,
             shm,
             _display: display,
-        })
-    }
-
-    fn conn(&self) -> &Connection {
-        self.conn.as_ref().unwrap()
+        }))
     }
 }
 
@@ -88,32 +90,6 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
-    pub(crate) fn new(window: W, display: Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
-        // Get the raw Wayland window.
-        let raw = window.window_handle()?.as_raw();
-        let wayland_handle = match raw {
-            RawWindowHandle::Wayland(w) => w.surface,
-            _ => return Err(InitError::Unsupported(window)),
-        };
-
-        let surface_id = unsafe {
-            ObjectId::from_ptr(
-                wl_surface::WlSurface::interface(),
-                wayland_handle.as_ptr().cast(),
-            )
-        }
-        .swbuf_err("Failed to create proxy for surface ID.")?;
-        let surface = wl_surface::WlSurface::from_id(display.conn(), surface_id)
-            .swbuf_err("Failed to create proxy for surface ID.")?;
-        Ok(Self {
-            display,
-            surface: Some(surface),
-            buffers: Default::default(),
-            size: None,
-            window_handle: window,
-        })
-    }
-
     fn surface(&self) -> &wl_surface::WlSurface {
         self.surface.as_ref().unwrap()
     }
@@ -166,8 +142,37 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
     }
 }
 
-impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<W> for WaylandImpl<D, W> {
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
+    for WaylandImpl<D, W>
+{
+    type Context = Rc<WaylandDisplayImpl<D>>;
     type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    fn new(window: W, display: &Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+        // Get the raw Wayland window.
+        let raw = window.window_handle()?.as_raw();
+        let wayland_handle = match raw {
+            RawWindowHandle::Wayland(w) => w.surface,
+            _ => return Err(InitError::Unsupported(window)),
+        };
+
+        let surface_id = unsafe {
+            ObjectId::from_ptr(
+                wl_surface::WlSurface::interface(),
+                wayland_handle.as_ptr().cast(),
+            )
+        }
+        .swbuf_err("Failed to create proxy for surface ID.")?;
+        let surface = wl_surface::WlSurface::from_id(display.conn(), surface_id)
+            .swbuf_err("Failed to create proxy for surface ID.")?;
+        Ok(Self {
+            display: display.clone(),
+            surface: Some(surface),
+            buffers: Default::default(),
+            size: None,
+            window_handle: window,
+        })
+    }
 
     #[inline]
     fn window(&self) -> &W {

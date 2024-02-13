@@ -65,23 +65,6 @@ pub struct OrbitalImpl<D, W> {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
-    pub(crate) fn new(window: W) -> Result<Self, InitError<W>> {
-        let raw = window.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::Orbital(handle) => handle,
-            _ => return Err(InitError::Unsupported(window)),
-        };
-
-        Ok(Self {
-            handle,
-            width: 0,
-            height: 0,
-            presented: false,
-            window_handle: window,
-            _display: PhantomData,
-        })
-    }
-
     fn window_fd(&self) -> usize {
         self.handle.window.as_ptr() as usize
     }
@@ -139,8 +122,26 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for OrbitalImpl<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for OrbitalImpl<D, W> {
+    type Context = D;
     type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    fn new(window: W, _display: &D) -> Result<Self, InitError<W>> {
+        let raw = window.window_handle()?.as_raw();
+        let handle = match raw {
+            RawWindowHandle::Orbital(handle) => handle,
+            _ => return Err(InitError::Unsupported(window)),
+        };
+
+        Ok(Self {
+            handle,
+            width: 0,
+            height: 0,
+            presented: false,
+            window_handle: window,
+            _display: PhantomData,
+        })
+    }
 
     #[inline]
     fn window(&self) -> &W {

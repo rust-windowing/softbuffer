@@ -35,8 +35,11 @@ pub struct CGImpl<D, W> {
     _display: PhantomData<D>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
-    pub(crate) fn new(window_src: W) -> Result<Self, InitError<W>> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<D, W> {
+    type Context = D;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    fn new(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
         let raw = window_src.window_handle()?.as_raw();
         let handle = match raw {
             RawWindowHandle::AppKit(handle) => handle,
@@ -66,10 +69,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> CGImpl<D, W> {
             window_handle: window_src,
         })
     }
-}
-
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for CGImpl<D, W> {
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
 
     #[inline]
     fn window(&self) -> &W {

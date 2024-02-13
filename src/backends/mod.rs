@@ -1,3 +1,6 @@
+use crate::{ContextInterface, InitError};
+use raw_window_handle::HasDisplayHandle;
+
 #[cfg(target_os = "macos")]
 pub(crate) mod cg;
 #[cfg(kms_platform)]
@@ -12,3 +15,9 @@ pub(crate) mod web;
 pub(crate) mod win32;
 #[cfg(x11_platform)]
 pub(crate) mod x11;
+
+impl<D: HasDisplayHandle> ContextInterface<D> for D {
+    fn new(display: D) -> Result<Self, InitError<D>> {
+        Ok(display)
+    }
+}

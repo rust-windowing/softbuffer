@@ -24,8 +24,8 @@ pub struct WebDisplayImpl<D> {
     _display: D,
 }
 
-impl<D: HasDisplayHandle> WebDisplayImpl<D> {
-    pub(crate) fn new(display: D) -> Result<Self, InitError<D>> {
+impl<D: HasDisplayHandle> ContextInterface<D> for WebDisplayImpl<D> {
+    fn new(display: D) -> Result<Self, InitError<D>> {
         let raw = display.display_handle()?.as_raw();
         match raw {
             RawDisplayHandle::Web(..) => {}
@@ -78,35 +78,6 @@ enum Canvas {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
-    pub(crate) fn new(display: &WebDisplayImpl<D>, window: W) -> Result<Self, InitError<W>> {
-        let raw = window.window_handle()?.as_raw();
-        let canvas: HtmlCanvasElement = match raw {
-            RawWindowHandle::Web(handle) => {
-                display
-                    .document
-                    .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
-                    // `querySelector` only throws an error if the selector is invalid.
-                    .unwrap()
-                    .swbuf_err("No canvas found with the given id")?
-                    // We already made sure this was a canvas in `querySelector`.
-                    .unchecked_into()
-            }
-            RawWindowHandle::WebCanvas(handle) => {
-                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
-                value.clone().unchecked_into()
-            }
-            RawWindowHandle::WebOffscreenCanvas(handle) => {
-                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
-                let canvas: OffscreenCanvas = value.clone().unchecked_into();
-
-                return Self::from_offscreen_canvas(canvas, window).map_err(InitError::Failure);
-            }
-            _ => return Err(InitError::Unsupported(window)),
-        };
-
-        Self::from_canvas(canvas, window).map_err(InitError::Failure)
-    }
-
     fn from_canvas(canvas: HtmlCanvasElement, window: W) -> Result<Self, SoftBufferError> {
         let ctx = Self::resolve_ctx(canvas.get_context("2d").ok(), "CanvasRenderingContext2d")?;
 
@@ -234,8 +205,38 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<W> for WebImpl<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl<D, W> {
+    type Context = WebDisplayImpl<D>;
     type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    fn new(window: W, display: &WebDisplayImpl<D>) -> Result<Self, InitError<W>> {
+        let raw = window.window_handle()?.as_raw();
+        let canvas: HtmlCanvasElement = match raw {
+            RawWindowHandle::Web(handle) => {
+                display
+                    .document
+                    .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
+                    // `querySelector` only throws an error if the selector is invalid.
+                    .unwrap()
+                    .swbuf_err("No canvas found with the given id")?
+                    // We already made sure this was a canvas in `querySelector`.
+                    .unchecked_into()
+            }
+            RawWindowHandle::WebCanvas(handle) => {
+                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
+                value.clone().unchecked_into()
+            }
+            RawWindowHandle::WebOffscreenCanvas(handle) => {
+                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
+                let canvas: OffscreenCanvas = value.clone().unchecked_into();
+
+                return Self::from_offscreen_canvas(canvas, window).map_err(InitError::Failure);
+            }
+            _ => return Err(InitError::Unsupported(window)),
+        };
+
+        Self::from_canvas(canvas, window).map_err(InitError::Failure)
+    }
 
     /// Get the inner window handle.
     #[inline]

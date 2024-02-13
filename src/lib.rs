@@ -19,8 +19,6 @@ mod util;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::ops;
-#[cfg(any(wayland_platform, x11_platform, kms_platform))]
-use std::rc::Rc;
 
 use error::InitError;
 pub use error::SoftBufferError;
@@ -41,43 +39,21 @@ pub struct Context<D> {
 
 impl<D: HasDisplayHandle> Context<D> {
     /// Creates a new instance of this struct, using the provided display.
-    pub fn new(mut dpy: D) -> Result<Self, SoftBufferError> {
-        macro_rules! try_init {
-            ($imp:ident, $x:ident => $make_it:expr) => {{
-                let $x = dpy;
-                match { $make_it } {
-                    Ok(x) => {
-                        return Ok(Self {
-                            context_impl: ContextDispatch::$imp(x),
-                            _marker: PhantomData,
-                        })
-                    }
-                    Err(InitError::Unsupported(d)) => dpy = d,
-                    Err(InitError::Failure(f)) => return Err(f),
-                }
-            }};
+    pub fn new(display: D) -> Result<Self, SoftBufferError> {
+        match ContextDispatch::new(display) {
+            Ok(context_impl) => Ok(Self {
+                context_impl,
+                _marker: PhantomData,
+            }),
+            Err(InitError::Unsupported(display)) => {
+                let raw = display.display_handle()?.as_raw();
+                Err(SoftBufferError::UnsupportedDisplayPlatform {
+                    human_readable_display_platform_name: display_handle_type_name(&raw),
+                    display_handle: raw,
+                })
+            }
+            Err(InitError::Failure(f)) => Err(f),
         }
-
-        #[cfg(x11_platform)]
-        try_init!(X11, display => backends::x11::X11DisplayImpl::new(display).map(Rc::new));
-        #[cfg(wayland_platform)]
-        try_init!(Wayland, display => backends::wayland::WaylandDisplayImpl::new(display).map(Rc::new));
-        #[cfg(kms_platform)]
-        try_init!(Kms, display => backends::kms::KmsDisplayImpl::new(display).map(Rc::new));
-        #[cfg(target_os = "windows")]
-        try_init!(Win32, display => Ok(display));
-        #[cfg(target_os = "macos")]
-        try_init!(CG, display => Ok(display));
-        #[cfg(target_arch = "wasm32")]
-        try_init!(Web, display => backends::web::WebDisplayImpl::new(display));
-        #[cfg(target_os = "redox")]
-        try_init!(Orbital, display => Ok(display));
-
-        let raw = dpy.display_handle()?.as_raw();
-        Err(SoftBufferError::UnsupportedDisplayPlatform {
-            human_readable_display_platform_name: display_handle_type_name(&raw),
-            display_handle: raw,
-        })
     }
 }
 
@@ -104,58 +80,21 @@ pub struct Surface<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// Creates a new surface for the context for the provided window.
     pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
-        macro_rules! leap {
-            ($e:expr) => {{
-                match ($e) {
-                    Ok(x) => x,
-                    Err(InitError::Unsupported(window)) => {
-                        let raw = window.window_handle()?.as_raw();
-                        return Err(SoftBufferError::UnsupportedWindowPlatform {
-                            human_readable_window_platform_name: window_handle_type_name(&raw),
-                            human_readable_display_platform_name: context
-                                .context_impl
-                                .variant_name(),
-                            window_handle: raw,
-                        });
-                    }
-                    Err(InitError::Failure(f)) => return Err(f),
-                }
-            }};
+        match SurfaceDispatch::new(window, &context.context_impl) {
+            Ok(surface_dispatch) => Ok(Self {
+                surface_impl: Box::new(surface_dispatch),
+                _marker: PhantomData,
+            }),
+            Err(InitError::Unsupported(window)) => {
+                let raw = window.window_handle()?.as_raw();
+                Err(SoftBufferError::UnsupportedWindowPlatform {
+                    human_readable_window_platform_name: window_handle_type_name(&raw),
+                    human_readable_display_platform_name: context.context_impl.variant_name(),
+                    window_handle: raw,
+                })
+            }
+            Err(InitError::Failure(f)) => Err(f),
         }
-
-        let imple = match &context.context_impl {
-            #[cfg(x11_platform)]
-            ContextDispatch::X11(xcb_display_handle) => SurfaceDispatch::X11(leap!(
-                backends::x11::X11Impl::new(window, xcb_display_handle.clone())
-            )),
-            #[cfg(wayland_platform)]
-            ContextDispatch::Wayland(wayland_display_impl) => SurfaceDispatch::Wayland(leap!(
-                backends::wayland::WaylandImpl::new(window, wayland_display_impl.clone())
-            )),
-            #[cfg(kms_platform)]
-            ContextDispatch::Kms(kms_display_impl) => SurfaceDispatch::Kms(leap!(
-                backends::kms::KmsImpl::new(window, kms_display_impl.clone())
-            )),
-            #[cfg(target_os = "windows")]
-            ContextDispatch::Win32(_) => {
-                SurfaceDispatch::Win32(leap!(backends::win32::Win32Impl::new(window)))
-            }
-            #[cfg(target_os = "macos")]
-            ContextDispatch::CG(_) => SurfaceDispatch::CG(leap!(backends::cg::CGImpl::new(window))),
-            #[cfg(target_arch = "wasm32")]
-            ContextDispatch::Web(web_display_impl) => {
-                SurfaceDispatch::Web(leap!(backends::web::WebImpl::new(web_display_impl, window)))
-            }
-            #[cfg(target_os = "redox")]
-            ContextDispatch::Orbital(_) => {
-                SurfaceDispatch::Orbital(leap!(backends::orbital::OrbitalImpl::new(window)))
-            }
-        };
-
-        Ok(Self {
-            surface_impl: Box::new(imple),
-            _marker: PhantomData,
-        })
     }
 
     /// Get a reference to the underlying window handle.

@@ -54,9 +54,9 @@ pub struct X11DisplayImpl<D: ?Sized> {
     _display: D,
 }
 
-impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<X11DisplayImpl<D>> {
     /// Create a new `X11DisplayImpl`.
-    pub(crate) fn new(display: D) -> Result<Self, InitError<D>>
+    fn new(display: D) -> Result<Self, InitError<D>>
     where
         D: Sized,
     {
@@ -107,12 +107,12 @@ impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
 
         let supported_visuals = supported_visuals(&connection);
 
-        Ok(Self {
+        Ok(Rc::new(X11DisplayImpl {
             connection: Some(connection),
             is_shm_available,
             supported_visuals,
             _display: display,
-        })
+        }))
     }
 }
 
@@ -182,9 +182,12 @@ struct ShmBuffer {
     done_processing: Option<SequenceNumber>,
 }
 
-impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for X11Impl<D, W> {
+    type Context = Rc<X11DisplayImpl<D>>;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
     /// Create a new `X11Impl` from a `HasWindowHandle`.
-    pub(crate) fn new(window_src: W, display: Rc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    fn new(window_src: W, display: &Rc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the underlying raw window handle.
         let raw = window_src.window_handle()?.as_raw();
         let window_handle = match raw {
@@ -285,7 +288,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
         };
 
         Ok(Self {
-            display,
+            display: display.clone(),
             window,
             gc,
             depth: geometry_reply.depth,
@@ -296,10 +299,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
             window_handle: window_src,
         })
     }
-}
-
-impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<W> for X11Impl<D, W> {
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
 
     #[inline]
     fn window(&self) -> &W {
