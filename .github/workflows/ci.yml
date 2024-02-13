@@ -93,7 +93,7 @@ jobs:
 
     - name: Pin versions of dev-deps
       if: matrix.rust_version == '1.65.0'
-      run: cargo update -p half --precise 2.2.1
+      run: cargo update -p exr --precise 1.71.0 && cargo update -p ahash --precise 0.8.7
   
     - name: Build tests
       shell: bash
