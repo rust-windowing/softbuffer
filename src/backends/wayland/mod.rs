@@ -1,4 +1,5 @@
 use crate::{
+    backend_interface::*,
     error::{InitError, SwResultExt},
     util, Rect, SoftBufferError,
 };
@@ -34,7 +35,13 @@ pub struct WaylandDisplayImpl<D: ?Sized> {
 }
 
 impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
-    pub(crate) fn new(display: D) -> Result<Self, InitError<D>>
+    fn conn(&self) -> &Connection {
+        self.conn.as_ref().unwrap()
+    }
+}
+
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<WaylandDisplayImpl<D>> {
+    fn new(display: D) -> Result<Self, InitError<D>>
     where
         D: Sized,
     {
@@ -52,17 +59,13 @@ impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
         let shm: wl_shm::WlShm = globals
             .bind(&qh, 1..=1, ())
             .swbuf_err("Failed to instantiate Wayland Shm")?;
-        Ok(Self {
+        Ok(Rc::new(WaylandDisplayImpl {
             conn: Some(conn),
             event_queue: RefCell::new(event_queue),
             qh,
             shm,
             _display: display,
-        })
-    }
-
-    fn conn(&self) -> &Connection {
-        self.conn.as_ref().unwrap()
+        }))
     }
 }
 
@@ -87,101 +90,8 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
-    pub(crate) fn new(window: W, display: Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
-        // Get the raw Wayland window.
-        let raw = window.window_handle()?.as_raw();
-        let wayland_handle = match raw {
-            RawWindowHandle::Wayland(w) => w.surface,
-            _ => return Err(InitError::Unsupported(window)),
-        };
-
-        let surface_id = unsafe {
-            ObjectId::from_ptr(
-                wl_surface::WlSurface::interface(),
-                wayland_handle.as_ptr().cast(),
-            )
-        }
-        .swbuf_err("Failed to create proxy for surface ID.")?;
-        let surface = wl_surface::WlSurface::from_id(display.conn(), surface_id)
-            .swbuf_err("Failed to create proxy for surface ID.")?;
-        Ok(Self {
-            display,
-            surface: Some(surface),
-            buffers: Default::default(),
-            size: None,
-            window_handle: window,
-        })
-    }
-
-    /// Get the inner window handle.
-    #[inline]
-    pub fn window(&self) -> &W {
-        &self.window_handle
-    }
-
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.size = Some(
-            (|| {
-                let width = NonZeroI32::try_from(width).ok()?;
-                let height = NonZeroI32::try_from(height).ok()?;
-                Some((width, height))
-            })()
-            .ok_or(SoftBufferError::SizeOutOfRange { width, height })?,
-        );
-        Ok(())
-    }
-
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        let (width, height) = self
-            .size
-            .expect("Must set size of surface before calling `buffer_mut()`");
-
-        if let Some((_front, back)) = &mut self.buffers {
-            // Block if back buffer not released yet
-            if !back.released() {
-                let mut event_queue = self.display.event_queue.borrow_mut();
-                while !back.released() {
-                    event_queue.blocking_dispatch(&mut State).map_err(|err| {
-                        SoftBufferError::PlatformError(
-                            Some("Wayland dispatch failure".to_string()),
-                            Some(Box::new(err)),
-                        )
-                    })?;
-                }
-            }
-
-            // Resize, if buffer isn't large enough
-            back.resize(width.get(), height.get());
-        } else {
-            // Allocate front and back buffer
-            self.buffers = Some((
-                WaylandBuffer::new(
-                    &self.display.shm,
-                    width.get(),
-                    height.get(),
-                    &self.display.qh,
-                ),
-                WaylandBuffer::new(
-                    &self.display.shm,
-                    width.get(),
-                    height.get(),
-                    &self.display.qh,
-                ),
-            ));
-        };
-
-        let age = self.buffers.as_mut().unwrap().1.age;
-        Ok(BufferImpl {
-            stack: util::BorrowStack::new(self, |buffer| {
-                Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
-            })?,
-            age,
-        })
-    }
-
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-        Err(SoftBufferError::Unimplemented)
+    fn surface(&self) -> &wl_surface::WlSurface {
+        self.surface.as_ref().unwrap()
     }
 
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
@@ -230,9 +140,103 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
 
         Ok(())
     }
+}
 
-    fn surface(&self) -> &wl_surface::WlSurface {
-        self.surface.as_ref().unwrap()
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
+    for WaylandImpl<D, W>
+{
+    type Context = Rc<WaylandDisplayImpl<D>>;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    fn new(window: W, display: &Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+        // Get the raw Wayland window.
+        let raw = window.window_handle()?.as_raw();
+        let wayland_handle = match raw {
+            RawWindowHandle::Wayland(w) => w.surface,
+            _ => return Err(InitError::Unsupported(window)),
+        };
+
+        let surface_id = unsafe {
+            ObjectId::from_ptr(
+                wl_surface::WlSurface::interface(),
+                wayland_handle.as_ptr().cast(),
+            )
+        }
+        .swbuf_err("Failed to create proxy for surface ID.")?;
+        let surface = wl_surface::WlSurface::from_id(display.conn(), surface_id)
+            .swbuf_err("Failed to create proxy for surface ID.")?;
+        Ok(Self {
+            display: display.clone(),
+            surface: Some(surface),
+            buffers: Default::default(),
+            size: None,
+            window_handle: window,
+        })
+    }
+
+    #[inline]
+    fn window(&self) -> &W {
+        &self.window_handle
+    }
+
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        self.size = Some(
+            (|| {
+                let width = NonZeroI32::try_from(width).ok()?;
+                let height = NonZeroI32::try_from(height).ok()?;
+                Some((width, height))
+            })()
+            .ok_or(SoftBufferError::SizeOutOfRange { width, height })?,
+        );
+        Ok(())
+    }
+
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+        let (width, height) = self
+            .size
+            .expect("Must set size of surface before calling `buffer_mut()`");
+
+        if let Some((_front, back)) = &mut self.buffers {
+            // Block if back buffer not released yet
+            if !back.released() {
+                let mut event_queue = self.display.event_queue.borrow_mut();
+                while !back.released() {
+                    event_queue.blocking_dispatch(&mut State).map_err(|err| {
+                        SoftBufferError::PlatformError(
+                            Some("Wayland dispatch failure".to_string()),
+                            Some(Box::new(err)),
+                        )
+                    })?;
+                }
+            }
+
+            // Resize, if buffer isn't large enough
+            back.resize(width.get(), height.get());
+        } else {
+            // Allocate front and back buffer
+            self.buffers = Some((
+                WaylandBuffer::new(
+                    &self.display.shm,
+                    width.get(),
+                    height.get(),
+                    &self.display.qh,
+                ),
+                WaylandBuffer::new(
+                    &self.display.shm,
+                    width.get(),
+                    height.get(),
+                    &self.display.qh,
+                ),
+            ));
+        };
+
+        let age = self.buffers.as_mut().unwrap().1.age;
+        Ok(BufferImpl {
+            stack: util::BorrowStack::new(self, |buffer| {
+                Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
+            })?,
+            age,
+        })
     }
 }
 
@@ -248,26 +252,28 @@ pub struct BufferImpl<'a, D: ?Sized, W> {
     age: u8,
 }
 
-impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferImpl<'a, D, W> {
+impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface
+    for BufferImpl<'a, D, W>
+{
     #[inline]
-    pub fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[u32] {
         self.stack.member()
     }
 
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [u32] {
         self.stack.member_mut()
     }
 
-    pub fn age(&self) -> u8 {
+    fn age(&self) -> u8 {
         self.age
     }
 
-    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         self.stack.into_container().present_with_damage(damage)
     }
 
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    fn present(self) -> Result<(), SoftBufferError> {
         let imp = self.stack.into_container();
         let (width, height) = imp
             .size

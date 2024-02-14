@@ -17,6 +17,7 @@ use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
 use std::rc::Rc;
 
+use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
 
 #[derive(Debug)]
@@ -37,8 +38,11 @@ impl<D: ?Sized> AsFd for KmsDisplayImpl<D> {
 impl<D: ?Sized> Device for KmsDisplayImpl<D> {}
 impl<D: ?Sized> CtrlDevice for KmsDisplayImpl<D> {}
 
-impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
-    pub(crate) fn new(display: D) -> Result<Self, InitError<D>> {
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<KmsDisplayImpl<D>> {
+    fn new(display: D) -> Result<Self, InitError<D>>
+    where
+        D: Sized,
+    {
         let fd = match display.display_handle()?.as_raw() {
             RawDisplayHandle::Drm(drm) => drm.fd,
             _ => return Err(InitError::Unsupported(display)),
@@ -50,10 +54,10 @@ impl<D: HasDisplayHandle> KmsDisplayImpl<D> {
         // SAFETY: Invariants guaranteed by the user.
         let fd = unsafe { BorrowedFd::borrow_raw(fd) };
 
-        Ok(KmsDisplayImpl {
+        Ok(Rc::new(KmsDisplayImpl {
             fd,
             _display: display,
-        })
+        }))
     }
 }
 
@@ -134,9 +138,12 @@ struct SharedBuffer {
     age: u8,
 }
 
-impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for KmsImpl<D, W> {
+    type Context = Rc<KmsDisplayImpl<D>>;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
     /// Create a new KMS backend.
-    pub(crate) fn new(window: W, display: Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    fn new(window: W, display: &Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Make sure that the window handle is valid.
         let plane_handle = match window.window_handle()?.as_raw() {
             RawWindowHandle::Drm(drm) => match NonZeroU32::new(drm.plane) {
@@ -198,24 +205,18 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
         Ok(Self {
             crtc,
             connectors,
-            display,
+            display: display.clone(),
             buffer: None,
             window_handle: window,
         })
     }
 
-    /// Get the inner window handle.
     #[inline]
-    pub fn window(&self) -> &W {
+    fn window(&self) -> &W {
         &self.window_handle
     }
 
-    /// Resize the internal buffer to the given size.
-    pub(crate) fn resize(
-        &mut self,
-        width: NonZeroU32,
-        height: NonZeroU32,
-    ) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         // Don't resize if we don't have to.
         if let Some(buffer) = &self.buffer {
             let (buffer_width, buffer_height) = buffer.size();
@@ -237,14 +238,13 @@ impl<D: ?Sized, W: HasWindowHandle> KmsImpl<D, W> {
         Ok(())
     }
 
-    /// Fetch the buffer from the window.
-    pub(crate) fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    /*
+    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         // TODO: Implement this!
-        Err(SoftBufferError::Unimplemented)
     }
+    */
 
-    /// Get a mutable reference to the buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         // Map the dumb buffer.
         let set = self
             .buffer
@@ -299,26 +299,26 @@ impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
     }
 }
 
-impl<D: ?Sized, W: ?Sized> BufferImpl<'_, D, W> {
+impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
     #[inline]
-    pub fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[u32] {
         // drm-rs doesn't let us have the immutable reference... so just use a bunch of zeroes.
         // TODO: There has to be a better way of doing this!
         self.zeroes
     }
 
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [u32] {
         bytemuck::cast_slice_mut(self.mapping.as_mut())
     }
 
     #[inline]
-    pub fn age(&self) -> u8 {
+    fn age(&self) -> u8 {
         *self.front_age
     }
 
     #[inline]
-    pub fn present_with_damage(self, damage: &[crate::Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[crate::Rect]) -> Result<(), SoftBufferError> {
         let rectangles = damage
             .iter()
             .map(|&rect| {
@@ -374,7 +374,7 @@ impl<D: ?Sized, W: ?Sized> BufferImpl<'_, D, W> {
     }
 
     #[inline]
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    fn present(self) -> Result<(), SoftBufferError> {
         let (width, height) = self.size;
         self.present_with_damage(&[crate::Rect {
             x: 0,

@@ -5,6 +5,7 @@
 
 #![allow(clippy::uninlined_format_args)]
 
+use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
 use crate::{Rect, SoftBufferError};
 use raw_window_handle::{
@@ -53,9 +54,9 @@ pub struct X11DisplayImpl<D: ?Sized> {
     _display: D,
 }
 
-impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<X11DisplayImpl<D>> {
     /// Create a new `X11DisplayImpl`.
-    pub(crate) fn new(display: D) -> Result<Self, InitError<D>>
+    fn new(display: D) -> Result<Self, InitError<D>>
     where
         D: Sized,
     {
@@ -106,12 +107,12 @@ impl<D: HasDisplayHandle + ?Sized> X11DisplayImpl<D> {
 
         let supported_visuals = supported_visuals(&connection);
 
-        Ok(Self {
+        Ok(Rc::new(X11DisplayImpl {
             connection: Some(connection),
             is_shm_available,
             supported_visuals,
             _display: display,
-        })
+        }))
     }
 }
 
@@ -181,9 +182,12 @@ struct ShmBuffer {
     done_processing: Option<SequenceNumber>,
 }
 
-impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for X11Impl<D, W> {
+    type Context = Rc<X11DisplayImpl<D>>;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
     /// Create a new `X11Impl` from a `HasWindowHandle`.
-    pub(crate) fn new(window_src: W, display: Rc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    fn new(window_src: W, display: &Rc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the underlying raw window handle.
         let raw = window_src.window_handle()?.as_raw();
         let window_handle = match raw {
@@ -284,7 +288,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
         };
 
         Ok(Self {
-            display,
+            display: display.clone(),
             window,
             gc,
             depth: geometry_reply.depth,
@@ -296,18 +300,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
         })
     }
 
-    /// Get the inner window handle.
     #[inline]
-    pub fn window(&self) -> &W {
+    fn window(&self) -> &W {
         &self.window_handle
     }
 
-    /// Resize the internal buffer to the given width and height.
-    pub(crate) fn resize(
-        &mut self,
-        width: NonZeroU32,
-        height: NonZeroU32,
-    ) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         log::trace!(
             "resize: window={:X}, size={}x{}",
             self.window,
@@ -337,8 +335,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
         Ok(())
     }
 
-    /// Get a mutable reference to the buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         log::trace!("buffer_mut: window={:X}", self.window);
 
         // Finish waiting on the previous `shm::PutImage` request, if any.
@@ -348,8 +345,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
         Ok(BufferImpl(self))
     }
 
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         log::trace!("fetch: window={:X}", self.window);
 
         let (width, height) = self
@@ -388,20 +384,22 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> X11Impl<D, W> {
 
 pub struct BufferImpl<'a, D: ?Sized, W: ?Sized>(&'a mut X11Impl<D, W>);
 
-impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferImpl<'a, D, W> {
+impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
+    for BufferImpl<'a, D, W>
+{
     #[inline]
-    pub fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[u32] {
         // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer()`.
         unsafe { self.0.buffer.buffer() }
     }
 
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [u32] {
         // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer_mut`.
         unsafe { self.0.buffer.buffer_mut() }
     }
 
-    pub fn age(&self) -> u8 {
+    fn age(&self) -> u8 {
         if self.0.buffer_presented {
             1
         } else {
@@ -410,7 +408,7 @@ impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferImpl<'
     }
 
     /// Push the buffer to the window.
-    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;
 
         let (surface_width, surface_height) = imp
@@ -500,7 +498,7 @@ impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferImpl<'
         Ok(())
     }
 
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    fn present(self) -> Result<(), SoftBufferError> {
         let (width, height) = self
             .0
             .size

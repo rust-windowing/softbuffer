@@ -9,6 +9,7 @@ use web_sys::ImageData;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
+use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
 use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
 use std::convert::TryInto;
@@ -23,8 +24,8 @@ pub struct WebDisplayImpl<D> {
     _display: D,
 }
 
-impl<D: HasDisplayHandle> WebDisplayImpl<D> {
-    pub(super) fn new(display: D) -> Result<Self, InitError<D>> {
+impl<D: HasDisplayHandle> ContextInterface<D> for WebDisplayImpl<D> {
+    fn new(display: D) -> Result<Self, InitError<D>> {
         let raw = display.display_handle()?.as_raw();
         match raw {
             RawDisplayHandle::Web(..) => {}
@@ -77,35 +78,6 @@ enum Canvas {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
-    pub(crate) fn new(display: &WebDisplayImpl<D>, window: W) -> Result<Self, InitError<W>> {
-        let raw = window.window_handle()?.as_raw();
-        let canvas: HtmlCanvasElement = match raw {
-            RawWindowHandle::Web(handle) => {
-                display
-                    .document
-                    .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
-                    // `querySelector` only throws an error if the selector is invalid.
-                    .unwrap()
-                    .swbuf_err("No canvas found with the given id")?
-                    // We already made sure this was a canvas in `querySelector`.
-                    .unchecked_into()
-            }
-            RawWindowHandle::WebCanvas(handle) => {
-                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
-                value.clone().unchecked_into()
-            }
-            RawWindowHandle::WebOffscreenCanvas(handle) => {
-                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
-                let canvas: OffscreenCanvas = value.clone().unchecked_into();
-
-                return Self::from_offscreen_canvas(canvas, window).map_err(InitError::Failure);
-            }
-            _ => return Err(InitError::Unsupported(window)),
-        };
-
-        Self::from_canvas(canvas, window).map_err(InitError::Failure)
-    }
-
     fn from_canvas(canvas: HtmlCanvasElement, window: W) -> Result<Self, SoftBufferError> {
         let ctx = Self::resolve_ctx(canvas.get_context("2d").ok(), "CanvasRenderingContext2d")?;
 
@@ -135,13 +107,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
         })
     }
 
-    /// Get the inner window handle.
-    #[inline]
-    pub fn window(&self) -> &W {
-        &self.window_handle
-    }
-
-    /// De-duplicates the error handling between `HtmlCanvasElement` and `OffscreenCanvas`.
     fn resolve_ctx<T: JsCast>(
         result: Option<Option<Object>>,
         name: &str,
@@ -155,28 +120,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
             .unwrap_or_else(|_| panic!("`getContext(\"2d\") didn't return a `{name}`"));
 
         Ok(ctx)
-    }
-
-    /// Resize the canvas to the given dimensions.
-    pub(crate) fn resize(
-        &mut self,
-        width: NonZeroU32,
-        height: NonZeroU32,
-    ) -> Result<(), SoftBufferError> {
-        if self.size != Some((width, height)) {
-            self.buffer_presented = false;
-            self.buffer.resize(total_len(width.get(), height.get()), 0);
-            self.canvas.set_width(width.get());
-            self.canvas.set_height(height.get());
-            self.size = Some((width, height));
-        }
-
-        Ok(())
-    }
-
-    /// Get a pointer to the mutable buffer.
-    pub(crate) fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        Ok(BufferImpl { imp: self })
     }
 
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
@@ -260,9 +203,66 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
         Ok(())
     }
+}
 
-    /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl<D, W> {
+    type Context = WebDisplayImpl<D>;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
+    fn new(window: W, display: &WebDisplayImpl<D>) -> Result<Self, InitError<W>> {
+        let raw = window.window_handle()?.as_raw();
+        let canvas: HtmlCanvasElement = match raw {
+            RawWindowHandle::Web(handle) => {
+                display
+                    .document
+                    .query_selector(&format!("canvas[data-raw-handle=\"{}\"]", handle.id))
+                    // `querySelector` only throws an error if the selector is invalid.
+                    .unwrap()
+                    .swbuf_err("No canvas found with the given id")?
+                    // We already made sure this was a canvas in `querySelector`.
+                    .unchecked_into()
+            }
+            RawWindowHandle::WebCanvas(handle) => {
+                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
+                value.clone().unchecked_into()
+            }
+            RawWindowHandle::WebOffscreenCanvas(handle) => {
+                let value: &JsValue = unsafe { handle.obj.cast().as_ref() };
+                let canvas: OffscreenCanvas = value.clone().unchecked_into();
+
+                return Self::from_offscreen_canvas(canvas, window).map_err(InitError::Failure);
+            }
+            _ => return Err(InitError::Unsupported(window)),
+        };
+
+        Self::from_canvas(canvas, window).map_err(InitError::Failure)
+    }
+
+    /// Get the inner window handle.
+    #[inline]
+    fn window(&self) -> &W {
+        &self.window_handle
+    }
+
+    /// De-duplicates the error handling between `HtmlCanvasElement` and `OffscreenCanvas`.
+    /// Resize the canvas to the given dimensions.
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        if self.size != Some((width, height)) {
+            self.buffer_presented = false;
+            self.buffer.resize(total_len(width.get(), height.get()), 0);
+            self.canvas.set_width(width.get());
+            self.canvas.set_height(height.get());
+            self.size = Some((width, height));
+        }
+
+        Ok(())
+    }
+
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+        Ok(BufferImpl { imp: self })
+    }
+
+    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `fetch()`");
@@ -374,16 +374,16 @@ pub struct BufferImpl<'a, D, W> {
     imp: &'a mut WebImpl<D, W>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
-    pub fn pixels(&self) -> &[u32] {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+    fn pixels(&self) -> &[u32] {
         &self.imp.buffer
     }
 
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [u32] {
         &mut self.imp.buffer
     }
 
-    pub fn age(&self) -> u8 {
+    fn age(&self) -> u8 {
         if self.imp.buffer_presented {
             1
         } else {
@@ -392,7 +392,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
     }
 
     /// Push the buffer to the canvas.
-    pub fn present(self) -> Result<(), SoftBufferError> {
+    fn present(self) -> Result<(), SoftBufferError> {
         let (width, height) = self
             .imp
             .size
@@ -405,7 +405,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferImpl<'a, D, W> {
         }])
     }
 
-    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         self.imp.present_with_damage(damage)
     }
 }

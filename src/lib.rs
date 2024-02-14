@@ -8,29 +8,17 @@
 extern crate objc;
 extern crate core;
 
-#[cfg(target_os = "macos")]
-mod cg;
-#[cfg(kms_platform)]
-mod kms;
-#[cfg(target_os = "redox")]
-mod orbital;
-#[cfg(wayland_platform)]
-mod wayland;
-#[cfg(target_arch = "wasm32")]
-mod web;
-#[cfg(target_os = "windows")]
-mod win32;
-#[cfg(x11_platform)]
-mod x11;
-
+mod backend_dispatch;
+use backend_dispatch::*;
+mod backend_interface;
+use backend_interface::*;
+mod backends;
 mod error;
 mod util;
 
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::ops;
-#[cfg(any(wayland_platform, x11_platform, kms_platform))]
-use std::rc::Rc;
 
 use error::InitError;
 pub use error::SoftBufferError;
@@ -38,7 +26,7 @@ pub use error::SoftBufferError;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 #[cfg(target_arch = "wasm32")]
-pub use self::web::SurfaceExtWeb;
+pub use backends::web::SurfaceExtWeb;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
@@ -49,197 +37,23 @@ pub struct Context<D> {
     context_impl: ContextDispatch<D>,
 }
 
-/// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
-macro_rules! make_dispatch {
-    (
-        <$dgen: ident, $wgen: ident> =>
-        $(
-            $(#[$attr:meta])*
-            $name: ident
-            ($context_inner: ty, $surface_inner: ty, $buffer_inner: ty),
-        )*
-    ) => {
-        enum ContextDispatch<$dgen> {
-            $(
-                $(#[$attr])*
-                $name($context_inner),
-            )*
-        }
-
-        impl<D: HasDisplayHandle> ContextDispatch<D> {
-            fn variant_name(&self) -> &'static str {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(_) => stringify!($name),
-                    )*
-                }
-            }
-        }
-
-        #[allow(clippy::large_enum_variant)] // it's boxed anyways
-        enum SurfaceDispatch<$dgen, $wgen> {
-            $(
-                $(#[$attr])*
-                $name($surface_inner),
-            )*
-        }
-
-        impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceDispatch<D, W> {
-            fn window(&self) -> &W {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.window(),
-                    )*
-                }
-            }
-
-            pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.resize(width, height),
-                    )*
-                }
-            }
-
-            pub fn buffer_mut(&mut self) -> Result<BufferDispatch<'_, D, W>, SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.buffer_mut()?)),
-                    )*
-                }
-            }
-
-            pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.fetch(),
-                    )*
-                }
-            }
-        }
-
-        enum BufferDispatch<'a, $dgen, $wgen> {
-            $(
-                $(#[$attr])*
-                $name($buffer_inner),
-            )*
-        }
-
-        impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferDispatch<'a, D, W> {
-            #[inline]
-            pub fn pixels(&self) -> &[u32] {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.pixels(),
-                    )*
-                }
-            }
-
-            #[inline]
-            pub fn pixels_mut(&mut self) -> &mut [u32] {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.pixels_mut(),
-                    )*
-                }
-            }
-
-            pub fn age(&self) -> u8 {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.age(),
-                    )*
-                }
-            }
-
-            pub fn present(self) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.present(),
-                    )*
-                }
-            }
-
-            pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.present_with_damage(damage),
-                    )*
-                }
-            }
-        }
-    };
-}
-
-// XXX empty enum with generic bound is invalid?
-
-make_dispatch! {
-    <D, W> =>
-    #[cfg(x11_platform)]
-    X11(Rc<x11::X11DisplayImpl<D>>, x11::X11Impl<D, W>, x11::BufferImpl<'a, D, W>),
-    #[cfg(wayland_platform)]
-    Wayland(Rc<wayland::WaylandDisplayImpl<D>>, wayland::WaylandImpl<D, W>, wayland::BufferImpl<'a, D, W>),
-    #[cfg(kms_platform)]
-    Kms(Rc<kms::KmsDisplayImpl<D>>, kms::KmsImpl<D, W>, kms::BufferImpl<'a, D, W>),
-    #[cfg(target_os = "windows")]
-    Win32(D, win32::Win32Impl<D, W>, win32::BufferImpl<'a, D, W>),
-    #[cfg(target_os = "macos")]
-    CG(D, cg::CGImpl<D, W>, cg::BufferImpl<'a, D, W>),
-    #[cfg(target_arch = "wasm32")]
-    Web(web::WebDisplayImpl<D>, web::WebImpl<D, W>, web::BufferImpl<'a, D, W>),
-    #[cfg(target_os = "redox")]
-    Orbital(D, orbital::OrbitalImpl<D, W>, orbital::BufferImpl<'a, D, W>),
-}
-
 impl<D: HasDisplayHandle> Context<D> {
     /// Creates a new instance of this struct, using the provided display.
-    pub fn new(mut dpy: D) -> Result<Self, SoftBufferError> {
-        macro_rules! try_init {
-            ($imp:ident, $x:ident => $make_it:expr) => {{
-                let $x = dpy;
-                match { $make_it } {
-                    Ok(x) => {
-                        return Ok(Self {
-                            context_impl: ContextDispatch::$imp(x),
-                            _marker: PhantomData,
-                        })
-                    }
-                    Err(InitError::Unsupported(d)) => dpy = d,
-                    Err(InitError::Failure(f)) => return Err(f),
-                }
-            }};
+    pub fn new(display: D) -> Result<Self, SoftBufferError> {
+        match ContextDispatch::new(display) {
+            Ok(context_impl) => Ok(Self {
+                context_impl,
+                _marker: PhantomData,
+            }),
+            Err(InitError::Unsupported(display)) => {
+                let raw = display.display_handle()?.as_raw();
+                Err(SoftBufferError::UnsupportedDisplayPlatform {
+                    human_readable_display_platform_name: display_handle_type_name(&raw),
+                    display_handle: raw,
+                })
+            }
+            Err(InitError::Failure(f)) => Err(f),
         }
-
-        #[cfg(x11_platform)]
-        try_init!(X11, display => x11::X11DisplayImpl::new(display).map(Rc::new));
-        #[cfg(wayland_platform)]
-        try_init!(Wayland, display => wayland::WaylandDisplayImpl::new(display).map(Rc::new));
-        #[cfg(kms_platform)]
-        try_init!(Kms, display => kms::KmsDisplayImpl::new(display).map(Rc::new));
-        #[cfg(target_os = "windows")]
-        try_init!(Win32, display => Ok(display));
-        #[cfg(target_os = "macos")]
-        try_init!(CG, display => Ok(display));
-        #[cfg(target_arch = "wasm32")]
-        try_init!(Web, display => web::WebDisplayImpl::new(display));
-        #[cfg(target_os = "redox")]
-        try_init!(Orbital, display => Ok(display));
-
-        let raw = dpy.display_handle()?.as_raw();
-        Err(SoftBufferError::UnsupportedDisplayPlatform {
-            human_readable_display_platform_name: display_handle_type_name(&raw),
-            display_handle: raw,
-        })
     }
 }
 
@@ -266,58 +80,21 @@ pub struct Surface<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// Creates a new surface for the context for the provided window.
     pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
-        macro_rules! leap {
-            ($e:expr) => {{
-                match ($e) {
-                    Ok(x) => x,
-                    Err(InitError::Unsupported(window)) => {
-                        let raw = window.window_handle()?.as_raw();
-                        return Err(SoftBufferError::UnsupportedWindowPlatform {
-                            human_readable_window_platform_name: window_handle_type_name(&raw),
-                            human_readable_display_platform_name: context
-                                .context_impl
-                                .variant_name(),
-                            window_handle: raw,
-                        });
-                    }
-                    Err(InitError::Failure(f)) => return Err(f),
-                }
-            }};
+        match SurfaceDispatch::new(window, &context.context_impl) {
+            Ok(surface_dispatch) => Ok(Self {
+                surface_impl: Box::new(surface_dispatch),
+                _marker: PhantomData,
+            }),
+            Err(InitError::Unsupported(window)) => {
+                let raw = window.window_handle()?.as_raw();
+                Err(SoftBufferError::UnsupportedWindowPlatform {
+                    human_readable_window_platform_name: window_handle_type_name(&raw),
+                    human_readable_display_platform_name: context.context_impl.variant_name(),
+                    window_handle: raw,
+                })
+            }
+            Err(InitError::Failure(f)) => Err(f),
         }
-
-        let imple = match &context.context_impl {
-            #[cfg(x11_platform)]
-            ContextDispatch::X11(xcb_display_handle) => {
-                SurfaceDispatch::X11(leap!(x11::X11Impl::new(window, xcb_display_handle.clone())))
-            }
-            #[cfg(wayland_platform)]
-            ContextDispatch::Wayland(wayland_display_impl) => SurfaceDispatch::Wayland(leap!(
-                wayland::WaylandImpl::new(window, wayland_display_impl.clone())
-            )),
-            #[cfg(kms_platform)]
-            ContextDispatch::Kms(kms_display_impl) => {
-                SurfaceDispatch::Kms(leap!(kms::KmsImpl::new(window, kms_display_impl.clone())))
-            }
-            #[cfg(target_os = "windows")]
-            ContextDispatch::Win32(_) => {
-                SurfaceDispatch::Win32(leap!(win32::Win32Impl::new(window)))
-            }
-            #[cfg(target_os = "macos")]
-            ContextDispatch::CG(_) => SurfaceDispatch::CG(leap!(cg::CGImpl::new(window))),
-            #[cfg(target_arch = "wasm32")]
-            ContextDispatch::Web(web_display_impl) => {
-                SurfaceDispatch::Web(leap!(web::WebImpl::new(web_display_impl, window)))
-            }
-            #[cfg(target_os = "redox")]
-            ContextDispatch::Orbital(_) => {
-                SurfaceDispatch::Orbital(leap!(orbital::OrbitalImpl::new(window)))
-            }
-        };
-
-        Ok(Self {
-            surface_impl: Box::new(imple),
-            _marker: PhantomData,
-        })
     }
 
     /// Get a reference to the underlying window handle.

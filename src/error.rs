@@ -181,6 +181,7 @@ impl<T> From<HandleError> for InitError<T> {
 }
 
 /// Convenient wrapper to cast errors into SoftBufferError.
+#[allow(dead_code)]
 pub(crate) trait SwResultExt<T> {
     fn swbuf_err(self, msg: impl Into<String>) -> Result<T, SoftBufferError>;
 }
