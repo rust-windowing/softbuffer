@@ -6,7 +6,8 @@ on:
     branches: [master]
 
 jobs:
-  Check_Formatting:
+  fmt:
+    name: Tidy Code
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -16,9 +17,12 @@ jobs:
         components: rustfmt
     - name: Check Formatting
       run: cargo +stable fmt --all -- --check
+    - name: Check Spelling
+      run: npx -y cspell --no-progress --no-summary '**/*.rs' '**/*.md'
 
   miri-tests:
     runs-on: ubuntu-latest
+    needs: fmt
     steps:
     - uses: actions/checkout@v4
     - uses: hecrj/setup-rust-action@v2
@@ -30,6 +34,7 @@ jobs:
 
   tests:
     name: Tests
+    needs: fmt
     strategy:
       fail-fast: false
       matrix:
