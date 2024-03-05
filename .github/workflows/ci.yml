@@ -87,14 +87,17 @@ jobs:
       if: (matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')
       run: sudo apt-get install gcc-multilib
 
+    - name: Pin deps that break MSRV
+      if: matrix.rust_version == '1.65.0'
+      run: |
+        cargo update -p exr --precise 1.71.0
+        cargo update -p ahash --precise 0.8.7
+        cargo update -p bumpalo --precise 3.14.0
+  
     - name: Build crate
       shell: bash
       run: cargo $CMD build --verbose --target ${{ matrix.platform.target }} $OPTIONS --features $FEATURES
 
-    - name: Pin versions of dev-deps
-      if: matrix.rust_version == '1.65.0'
-      run: cargo update -p exr --precise 1.71.0 && cargo update -p ahash --precise 0.8.7
-  
     - name: Build tests
       shell: bash
       if: >

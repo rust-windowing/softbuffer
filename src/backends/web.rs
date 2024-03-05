@@ -12,7 +12,6 @@ use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
 use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
-use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
@@ -154,6 +153,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
         );
 
         #[cfg(target_feature = "atomics")]
+        #[allow(non_local_definitions)]
         let result = {
             // When using atomics, the underlying memory becomes `SharedArrayBuffer`,
             // which can't be shared with `ImageData`.
