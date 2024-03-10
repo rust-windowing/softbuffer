@@ -87,9 +87,6 @@ struct Buffers {
 
     /// Whether to use the first buffer or the second buffer as the front buffer.
     first_is_front: bool,
-
-    /// A buffer full of zeroes.
-    zeroes: Box<[u32]>,
 }
 
 /// The buffer implementation.
@@ -105,9 +102,6 @@ pub(crate) struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
 
     /// This is used to change the front buffer.
     first_is_front: &'a mut bool,
-
-    /// Buffer full of zeroes.
-    zeroes: &'a [u32],
 
     /// The current size.
     size: (NonZeroU32, NonZeroU32),
@@ -232,7 +226,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         self.buffer = Some(Buffers {
             first_is_front: true,
             buffers: [front_buffer, back_buffer],
-            zeroes: vec![0; width.get() as usize * height.get() as usize].into_boxed_slice(),
         });
 
         Ok(())
@@ -276,7 +269,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             front_fb,
             crtc_handle: self.crtc.handle(),
             display: &self.display,
-            zeroes: &set.zeroes,
             front_age,
             back_age,
             _window: PhantomData,
@@ -302,9 +294,7 @@ impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
 impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
     #[inline]
     fn pixels(&self) -> &[u32] {
-        // drm-rs doesn't let us have the immutable reference... so just use a bunch of zeroes.
-        // TODO: There has to be a better way of doing this!
-        self.zeroes
+        bytemuck::cast_slice(self.mapping.as_ref())
     }
 
     #[inline]
