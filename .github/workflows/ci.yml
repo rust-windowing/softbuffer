@@ -17,8 +17,13 @@ jobs:
         components: rustfmt
     - name: Check Formatting
       run: cargo +stable fmt --all -- --check
-    - name: Check Spelling
-      run: npx -y cspell --no-progress --no-summary '**/*.rs' '**/*.md'
+    - uses: taiki-e/install-action@v2 
+      with:
+        tool: typos-cli
+    - name: Check Formatting
+      run: cargo fmt --all -- --check
+    - name: Run Typos
+      run: typos
 
   miri-tests:
     runs-on: ubuntu-latest
