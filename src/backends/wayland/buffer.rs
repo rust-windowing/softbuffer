@@ -55,10 +55,10 @@ fn create_memfile() -> File {
         }
     }
 
-    panic!("Failed to generate non-existant shm name")
+    panic!("Failed to generate non-existent shm name")
 }
 
-// Round size to use for pool for given dimentions, rounding up to power of 2
+// Round size to use for pool for given dimensions, rounding up to power of 2
 fn get_pool_size(width: i32, height: i32) -> i32 {
     ((width * height * 4) as u32).next_power_of_two() as i32
 }
