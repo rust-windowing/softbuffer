@@ -1,12 +1,20 @@
 # Unreleased
 
+# 0.4.2
+
+- Add the ability to get the underlying window handle. (#193)
+- Rework the backend to use a trait-based interface. (#196)
+- On Orbital, fix window resize. (#200)
+- Fix `bytes()` for KMS/DRM implementation. (#203)
+
+# 0.4.1
+
 - On MacOS, Fix double-free of `NSWindow`. (#180)
-- On Web, add support for more `RawWindowHandle` variants. (#188)
-- On Wayland, fix buffer age. (#191)
 - Update `drm` to 0.11 (#178)
   * Fixes build on architectures where drm-rs did not have generated bindings.
 - Update x11rb to v0.13 (#183)
-- On Orbital, fix window resize.
+- On Web, add support for more `RawWindowHandle` variants. (#188)
+- On Wayland, fix buffer age. (#191)
 
 # 0.4.0
 
