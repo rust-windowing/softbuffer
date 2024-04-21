@@ -3,9 +3,6 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(target_os = "macos")]
-#[macro_use]
-extern crate objc;
 extern crate core;
 
 mod backend_dispatch;
