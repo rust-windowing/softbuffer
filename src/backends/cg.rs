@@ -54,8 +54,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             _ => return Err(InitError::Unsupported(window_src)),
         };
 
-        let mtm =
-            MainThreadMarker::new().expect("can only access AppKit handles on the main thread");
+        // `NSView` can only be accessed from the main thread.
+        let mtm = MainThreadMarker::new().ok_or(SoftBufferError::PlatformError(
+            Some("can only access AppKit / macOS handles from the main thread".to_string()),
+            None,
+        ))?;
         let view = handle.ns_view.as_ptr();
         // SAFETY: The pointer came from `WindowHandle`, which ensures that
         // the `AppKitWindowHandle` contains a valid pointer to an `NSView`.
@@ -73,11 +76,16 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             ))
         };
 
+        let window = view.window().ok_or(SoftBufferError::PlatformError(
+            Some("view must be inside a window".to_string()),
+            None,
+        ))?;
+
         unsafe { view.addSubview(&subview) };
         let color_space = CGColorSpace::create_device_rgb();
         Ok(Self {
             layer,
-            window: view.window().expect("view to be inside a window"),
+            window,
             color_space,
             size: None,
             _display: PhantomData,
