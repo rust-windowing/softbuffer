@@ -38,17 +38,22 @@ For now, the priority for new platforms is:
 
 (PRs will be accepted for any platform, even if it does not follow the above priority.)
 
-✅: Present | ❌: Absent
- - AndroidNdk ❌
- - AppKit ✅ (Thanks to [Seo Sanghyeon](https://github.com/sanxiyn) and [lunixbochs](https://github.com/lunixbochs)!)
- - Orbital ✅
- - UiKit ❌
- - Wayland ✅ (Wayland support in winit is immature at the moment, so it might be wise to force X11 if you're using winit)
- - Web ✅ (Thanks to [Liamolucko](https://github.com/Liamolucko)!)
- - Win32 ✅
- - WinRt ❌
- - Xcb ✅ 
- - Xlib ✅
+|  Platform ||
+|-----------|--|
+|Android NDK|❌|
+|   AppKit  |✅|
+|  Orbital  |✅|
+|    UIKit  |❌|
+|  Wayland  |❔|
+|    Web    |✅|
+|   Win32   |✅|
+|   WinRT   |❌|
+|    XCB    |✅|
+|   Xlib    |✅|
+
+✅: Present\
+❔: Immature\
+❌: Absent
 
 WebAssembly
 -----------
