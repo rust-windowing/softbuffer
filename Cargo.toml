@@ -103,11 +103,6 @@ members = [
     "run-wasm",
 ]
 
-[[test]]
-name = "present_and_fetch"
-path = "tests/present_and_fetch.rs"
-harness = false
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
