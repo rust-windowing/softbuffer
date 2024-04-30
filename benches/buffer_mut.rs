@@ -1,3 +1,5 @@
+#![allow(deprecated)] // TODO
+
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn buffer_mut(c: &mut Criterion) {
@@ -16,9 +18,8 @@ fn buffer_mut(c: &mut Criterion) {
         use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
 
         let mut evl = winit::event_loop::EventLoop::new().unwrap();
-        let window = winit::window::WindowBuilder::new()
-            .with_visible(false)
-            .build(&evl)
+        let window = evl
+            .create_window(winit::window::Window::default_attributes().with_visible(false))
             .unwrap();
 
         evl.run_on_demand(move |ev, elwt| {
