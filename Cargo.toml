@@ -10,7 +10,7 @@ repository = "https://github.com/rust-windowing/softbuffer"
 keywords = ["framebuffer", "windowing"]
 categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
-rust-version = "1.65.0"
+rust-version = "1.70.0"
 
 [[bench]]
 name = "buffer_mut"

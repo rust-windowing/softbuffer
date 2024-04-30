@@ -8,6 +8,7 @@ mod winit_app {
     use winit::window::WindowId;
 
     /// Run a Winit application.
+    #[allow(unused_mut)]
     pub(crate) fn run_app(event_loop: EventLoop<()>, mut app: impl ApplicationHandler<()> + 'static) {
         #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
         event_loop.run_app(&mut app).unwrap();

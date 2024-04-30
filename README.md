@@ -57,7 +57,7 @@ To run an example with the web backend: `cargo run-wasm --example winit`
 
 Example
 ==
-```rust,no_run
+```rust,no_compile
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
