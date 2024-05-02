@@ -44,7 +44,7 @@ For now, the priority for new platforms is:
 |   AppKit  |✅|
 |  Orbital  |✅|
 |    UIKit  |❌|
-|  Wayland  |❔|
+|  Wayland  |✅|
 |    Web    |✅|
 |   Win32   |✅|
 |   WinRT   |❌|
