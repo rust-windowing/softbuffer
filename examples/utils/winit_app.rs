@@ -1,11 +1,12 @@
 /// Common boilerplate for setting up a winit application.
 mod winit_app {
     use std::marker::PhantomData;
+    use std::rc::Rc;
 
     use winit::application::ApplicationHandler;
     use winit::event::{Event, WindowEvent};
     use winit::event_loop::{EventLoop, ActiveEventLoop};
-    use winit::window::WindowId;
+    use winit::window::{WindowAttributes, WindowId, Window};
 
     /// Run a Winit application.
     #[allow(unused_mut)]
@@ -15,6 +16,18 @@ mod winit_app {
         
         #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
         winit::platform::web::EventLoopExtWebSys::spawn_app(event_loop, app);
+    }
+
+    /// Create a window from a set of window attributes.
+    pub(crate) fn make_window(elwt: &ActiveEventLoop, f: impl FnOnce(WindowAttributes) -> WindowAttributes) -> Rc<Window> {
+        let attributes = f(WindowAttributes::default());
+        #[cfg(target_arch = "wasm32")]
+        let attributes = winit::platform::web::WindowAttributesExtWebSys::with_append(
+            attributes,
+            true
+        );
+        let window = elwt.create_window(attributes);
+        Rc::new(window.unwrap())
     }
     
     /// Easily constructable winit application.

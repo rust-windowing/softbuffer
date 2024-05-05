@@ -78,7 +78,7 @@ cfg_aliases = "0.2.0"
 [dev-dependencies]
 colorous = "1.0.12"
 criterion = { version = "0.4.0", default-features = false, features = ["cargo_bench_support"] }
-instant = "0.1.12"
+web-time = "1.0.0"
 winit = "0.30.0"
 
 [dev-dependencies.image]

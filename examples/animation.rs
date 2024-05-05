@@ -1,13 +1,11 @@
-use instant::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use std::f64::consts::PI;
 use std::num::NonZeroU32;
-use std::rc::Rc;
+use web_time::Instant;
 use winit::event::{Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
-use winit::window::Window;
 
 include!("./utils/winit_app.rs");
 
@@ -16,24 +14,7 @@ fn main() {
     let start = Instant::now();
 
     let app = winit_app::WinitAppBuilder::with_init(|event_loop| {
-        let window = {
-            let window = event_loop.create_window(Window::default_attributes());
-            Rc::new(window.unwrap())
-        };
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            use winit::platform::web::WindowExtWebSys;
-
-            web_sys::window()
-                .unwrap()
-                .document()
-                .unwrap()
-                .body()
-                .unwrap()
-                .append_child(&window.canvas().unwrap())
-                .unwrap();
-        }
+        let window = winit_app::make_window(event_loop, |w| w);
 
         let context = softbuffer::Context::new(window.clone()).unwrap();
         let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();

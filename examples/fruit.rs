@@ -1,10 +1,8 @@
 use image::GenericImageView;
 use std::num::NonZeroU32;
-use std::rc::Rc;
 use winit::event::{Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
-use winit::window::Window;
 
 include!("utils/winit_app.rs");
 
@@ -16,27 +14,9 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(move |elwt| {
-        let window = {
-            let window = elwt.create_window(
-                Window::default_attributes()
-                    .with_inner_size(winit::dpi::PhysicalSize::new(width, height)),
-            );
-            Rc::new(window.unwrap())
-        };
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            use winit::platform::web::WindowExtWebSys;
-
-            web_sys::window()
-                .unwrap()
-                .document()
-                .unwrap()
-                .body()
-                .unwrap()
-                .append_child(&window.canvas().unwrap())
-                .unwrap();
-        }
+        let window = winit_app::make_window(elwt, |w| {
+            w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
+        });
 
         let context = softbuffer::Context::new(window.clone()).unwrap();
         let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
