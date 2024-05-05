@@ -7,12 +7,15 @@ use core_graphics::base::{
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::data_provider::CGDataProvider;
 use core_graphics::image::CGImage;
+use objc2::runtime::AnyObject;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
-use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable, NSWindow};
-use cocoa::base::{id, nil};
-use cocoa::quartzcore::{transaction, CALayer, ContentsGravity};
 use foreign_types::ForeignType;
+use objc2::msg_send;
+use objc2::rc::Id;
+use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindow};
+use objc2_foundation::MainThreadMarker;
+use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
 
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -27,12 +30,17 @@ impl AsRef<[u8]> for Buffer {
 }
 
 pub struct CGImpl<D, W> {
-    layer: CALayer,
-    window: id,
+    layer: Id<CALayer>,
+    window: Id<NSWindow>,
     color_space: CGColorSpace,
     size: Option<(NonZeroU32, NonZeroU32)>,
     window_handle: W,
     _display: PhantomData<D>,
+}
+
+// TODO(madsmtm): Expose this in `objc2_app_kit`.
+fn set_layer(view: &NSView, layer: &CALayer) {
+    unsafe { msg_send![view, setLayer: layer] }
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<D, W> {
@@ -45,20 +53,35 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             RawWindowHandle::AppKit(handle) => handle,
             _ => return Err(InitError::Unsupported(window_src)),
         };
-        let view = handle.ns_view.as_ptr() as id;
-        let window: id = unsafe { msg_send![view, window] };
-        let window: id = unsafe { msg_send![window, retain] };
-        let layer = CALayer::new();
-        unsafe {
-            let subview: id = NSView::alloc(nil).initWithFrame_(NSView::frame(view));
-            layer.set_contents_gravity(ContentsGravity::TopLeft);
-            layer.set_needs_display_on_bounds_change(false);
-            subview.setLayer(layer.id());
-            subview.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
 
-            view.addSubview_(subview); // retains subview (+1) = 2
-            let _: () = msg_send![subview, release]; // releases subview (-1) = 1
-        }
+        // `NSView` can only be accessed from the main thread.
+        let mtm = MainThreadMarker::new().ok_or(SoftBufferError::PlatformError(
+            Some("can only access AppKit / macOS handles from the main thread".to_string()),
+            None,
+        ))?;
+        let view = handle.ns_view.as_ptr();
+        // SAFETY: The pointer came from `WindowHandle`, which ensures that
+        // the `AppKitWindowHandle` contains a valid pointer to an `NSView`.
+        // Unwrap is fine, since the pointer came from `NonNull`.
+        let view: Id<NSView> = unsafe { Id::retain(view.cast()) }.unwrap();
+        let layer = CALayer::new();
+        let subview = unsafe { NSView::initWithFrame(mtm.alloc(), view.frame()) };
+        layer.setContentsGravity(unsafe { kCAGravityTopLeft });
+        layer.setNeedsDisplayOnBoundsChange(false);
+        set_layer(&subview, &layer);
+        unsafe {
+            subview.setAutoresizingMask(NSAutoresizingMaskOptions(
+                NSAutoresizingMaskOptions::NSViewWidthSizable.0
+                    | NSAutoresizingMaskOptions::NSViewHeightSizable.0,
+            ))
+        };
+
+        let window = view.window().ok_or(SoftBufferError::PlatformError(
+            Some("view must be inside a window".to_string()),
+            None,
+        ))?;
+
+        unsafe { view.addSubview(&subview) };
         let color_space = CGColorSpace::create_device_rgb();
         Ok(Self {
             layer,
@@ -131,30 +154,25 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
         // be mitigated by wrapping the operation in a transaction and disabling all actions.
-        transaction::begin();
-        transaction::set_disable_actions(true);
+        CATransaction::begin();
+        CATransaction::setDisableActions(true);
+
+        self.imp
+            .layer
+            .setContentsScale(self.imp.window.backingScaleFactor());
 
         unsafe {
             self.imp
                 .layer
-                .set_contents_scale(self.imp.window.backingScaleFactor());
-            self.imp.layer.set_contents(image.as_ptr() as id);
+                .setContents((image.as_ptr() as *mut AnyObject).as_ref());
         };
 
-        transaction::commit();
+        CATransaction::commit();
 
         Ok(())
     }
 
     fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
         self.present()
-    }
-}
-
-impl<D, W> Drop for CGImpl<D, W> {
-    fn drop(&mut self) {
-        unsafe {
-            let _: () = msg_send![self.window, release];
-        }
     }
 }
