@@ -10,7 +10,7 @@ repository = "https://github.com/rust-windowing/softbuffer"
 keywords = ["framebuffer", "windowing"]
 categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
-rust-version = "1.65.0"
+rust-version = "1.70.0"
 
 [[bench]]
 name = "buffer_mut"
@@ -80,9 +80,8 @@ cfg_aliases = "0.2.0"
 [dev-dependencies]
 colorous = "1.0.12"
 criterion = { version = "0.4.0", default-features = false, features = ["cargo_bench_support"] }
-instant = "0.1.12"
-winit = "0.29.2"
-winit-test = "0.1.0"
+web-time = "1.0.0"
+winit = "0.30.0"
 
 [dev-dependencies.image]
 version = "0.24.6"
@@ -105,11 +104,6 @@ rustix = { version = "0.38.8", features = ["event"] }
 members = [
     "run-wasm",
 ]
-
-[[test]]
-name = "present_and_fetch"
-path = "tests/present_and_fetch.rs"
-harness = false
 
 [package.metadata.docs.rs]
 all-features = true

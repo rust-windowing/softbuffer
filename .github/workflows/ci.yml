@@ -25,25 +25,13 @@ jobs:
     - name: Run Typos
       run: typos
 
-  miri-tests:
-    runs-on: ubuntu-latest
-    needs: fmt
-    steps:
-    - uses: actions/checkout@v4
-    - uses: hecrj/setup-rust-action@v2
-      with:
-        rust-version: nightly
-        components: miri
-    - name: Run tests with miri
-      run: cargo +nightly miri test
-
   tests:
     name: Tests
     needs: fmt
     strategy:
       fail-fast: false
       matrix:
-        rust_version: ['1.65.0', stable, nightly]
+        rust_version: ['1.70.0', stable, nightly]
         platform:
           - { target: x86_64-pc-windows-msvc,   os: windows-latest,  }
           - { target: i686-pc-windows-msvc,     os: windows-latest,  }
@@ -98,7 +86,7 @@ jobs:
       run: sudo apt-get install gcc-multilib
 
     - name: Pin deps that break MSRV
-      if: matrix.rust_version == '1.65.0'
+      if: matrix.rust_version == '1.70.0'
       run: |
         cargo update -p exr --precise 1.71.0
         cargo update -p ahash --precise 0.8.7
