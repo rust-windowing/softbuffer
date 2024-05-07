@@ -84,14 +84,14 @@ web-time = "1.0.0"
 winit = "0.30.0"
 
 [dev-dependencies.image]
-version = "0.24.6"
+version = "0.25.0"
 # Disable rayon on web
 default-features = false
 features = ["jpeg"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # Turn rayon back on everywhere else; creating the separate entry resets the features to default.
-image = "0.24.6"
+image = "0.25.0"
 rayon = "1.5.1"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
