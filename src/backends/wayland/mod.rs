@@ -5,9 +5,8 @@ use crate::{
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
-    cell::RefCell,
     num::{NonZeroI32, NonZeroU32},
-    rc::Rc,
+    sync::{Arc, Mutex},
 };
 use wayland_client::{
     backend::{Backend, ObjectId},
@@ -23,7 +22,7 @@ struct State;
 
 pub struct WaylandDisplayImpl<D: ?Sized> {
     conn: Option<Connection>,
-    event_queue: RefCell<EventQueue<State>>,
+    event_queue: Mutex<EventQueue<State>>,
     qh: QueueHandle<State>,
     shm: wl_shm::WlShm,
 
@@ -40,7 +39,7 @@ impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
     }
 }
 
-impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<WaylandDisplayImpl<D>> {
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<WaylandDisplayImpl<D>> {
     fn new(display: D) -> Result<Self, InitError<D>>
     where
         D: Sized,
@@ -59,9 +58,9 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<WaylandDisplayImpl
         let shm: wl_shm::WlShm = globals
             .bind(&qh, 1..=1, ())
             .swbuf_err("Failed to instantiate Wayland Shm")?;
-        Ok(Rc::new(WaylandDisplayImpl {
+        Ok(Arc::new(WaylandDisplayImpl {
             conn: Some(conn),
-            event_queue: RefCell::new(event_queue),
+            event_queue: Mutex::new(event_queue),
             qh,
             shm,
             _display: display,
@@ -77,7 +76,7 @@ impl<D: ?Sized> Drop for WaylandDisplayImpl<D> {
 }
 
 pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
-    display: Rc<WaylandDisplayImpl<D>>,
+    display: Arc<WaylandDisplayImpl<D>>,
     surface: Option<wl_surface::WlSurface>,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
     size: Option<(NonZeroI32, NonZeroI32)>,
@@ -98,7 +97,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
         let _ = self
             .display
             .event_queue
-            .borrow_mut()
+            .lock()
+            .unwrap_or_else(|x| x.into_inner())
             .dispatch_pending(&mut State);
 
         if let Some((front, back)) = &mut self.buffers {
@@ -136,7 +136,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
             self.surface().commit();
         }
 
-        let _ = self.display.event_queue.borrow_mut().flush();
+        let _ = self
+            .display
+            .event_queue
+            .lock()
+            .unwrap_or_else(|x| x.into_inner())
+            .flush();
 
         Ok(())
     }
@@ -145,10 +150,10 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
     for WaylandImpl<D, W>
 {
-    type Context = Rc<WaylandDisplayImpl<D>>;
+    type Context = Arc<WaylandDisplayImpl<D>>;
     type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
 
-    fn new(window: W, display: &Rc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    fn new(window: W, display: &Arc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the raw Wayland window.
         let raw = window.window_handle()?.as_raw();
         let wayland_handle = match raw {
@@ -199,7 +204,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         if let Some((_front, back)) = &mut self.buffers {
             // Block if back buffer not released yet
             if !back.released() {
-                let mut event_queue = self.display.event_queue.borrow_mut();
+                let mut event_queue = self
+                    .display
+                    .event_queue
+                    .lock()
+                    .unwrap_or_else(|x| x.into_inner());
                 while !back.released() {
                     event_queue.blocking_dispatch(&mut State).map_err(|err| {
                         SoftBufferError::PlatformError(

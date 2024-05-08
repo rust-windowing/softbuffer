@@ -13,9 +13,11 @@ mod backends;
 mod error;
 mod util;
 
+use std::cell::Cell;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::ops;
+use std::sync::Arc;
 
 use error::InitError;
 pub use error::SoftBufferError;
@@ -28,20 +30,18 @@ pub use backends::web::SurfaceExtWeb;
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
 pub struct Context<D> {
-    _marker: PhantomData<*mut ()>,
-
     /// The inner static dispatch object.
     context_impl: ContextDispatch<D>,
+
+    /// This is Send+Sync IFF D is Send+Sync.
+    _marker: PhantomData<Arc<D>>
 }
 
 impl<D: HasDisplayHandle> Context<D> {
     /// Creates a new instance of this struct, using the provided display.
     pub fn new(display: D) -> Result<Self, SoftBufferError> {
         match ContextDispatch::new(display) {
-            Ok(context_impl) => Ok(Self {
-                context_impl,
-                _marker: PhantomData,
-            }),
+            Ok(context_impl) => Ok(Self { context_impl, _marker: PhantomData }),
             Err(InitError::Unsupported(display)) => {
                 let raw = display.display_handle()?.as_raw();
                 Err(SoftBufferError::UnsupportedDisplayPlatform {
@@ -71,7 +71,7 @@ pub struct Rect {
 pub struct Surface<D, W> {
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch<D, W>>,
-    _marker: PhantomData<*mut ()>,
+    _marker: PhantomData<Cell<()>>,
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
@@ -193,7 +193,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// - macOS
 pub struct Buffer<'a, D, W> {
     buffer_impl: BufferDispatch<'a, D, W>,
-    _marker: PhantomData<*mut ()>,
+    _marker: PhantomData<(Arc<D>, Cell<()>)>,
 }
 
 impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
@@ -314,4 +314,30 @@ fn display_handle_type_name(handle: &RawDisplayHandle) -> &'static str {
         RawDisplayHandle::Android(_) => "Android",
         _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
     }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), not(target_arch = "wasm64")))]
+fn __assert_send() {
+    fn is_send<T: Send>() {}
+    fn is_sync<T: Sync>() {}
+
+    is_send::<Context<()>>();
+    is_sync::<Context<()>>();
+    is_send::<Surface<(), ()>>();
+    is_send::<Buffer<'static, (), ()>>();
+
+    /// ```compile_fail
+    /// use softbuffer::Surface;
+    ///
+    /// fn __is_sync<T: Sync>() {}
+    /// __is_sync::<Surface<(), ()>>();
+    /// ```
+    fn __surface_not_sync() {}
+    /// ```compile_fail
+    /// use softbuffer::Buffer;
+    ///
+    /// fn __is_sync<T: Sync>() {}
+    /// __is_sync::<Buffer<'static, (), ()>>();
+    /// ```
+    fn __buffer_not_sync() {}
 }
