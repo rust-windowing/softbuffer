@@ -34,14 +34,17 @@ pub struct Context<D> {
     context_impl: ContextDispatch<D>,
 
     /// This is Send+Sync IFF D is Send+Sync.
-    _marker: PhantomData<Arc<D>>
+    _marker: PhantomData<Arc<D>>,
 }
 
 impl<D: HasDisplayHandle> Context<D> {
     /// Creates a new instance of this struct, using the provided display.
     pub fn new(display: D) -> Result<Self, SoftBufferError> {
         match ContextDispatch::new(display) {
-            Ok(context_impl) => Ok(Self { context_impl, _marker: PhantomData }),
+            Ok(context_impl) => Ok(Self {
+                context_impl,
+                _marker: PhantomData,
+            }),
             Err(InitError::Unsupported(display)) => {
                 let raw = display.display_handle()?.as_raw();
                 Err(SoftBufferError::UnsupportedDisplayPlatform {
