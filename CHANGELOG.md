@@ -1,6 +1,10 @@
 # Unreleased
 
-- Bump MSRV to 1.70.0.
+# 0.4.3
+
+- Use objc2 as the backend for the CoreGraphics implementation. (#210)
+- Update drm-rs to version v0.12.0. (#209)
+- Bump MSRV to 1.70.0 to be in line with Winit.
 
 # 0.4.2
 
