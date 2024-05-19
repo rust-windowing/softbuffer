@@ -1,5 +1,7 @@
 # Unreleased
 
+- Bump MSRV to 1.70.0.
+
 # 0.4.2
 
 - Add the ability to get the underlying window handle. (#193)

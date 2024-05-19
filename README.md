@@ -67,15 +67,24 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::WindowBuilder;
+use winit::window::Window;
+
+include!("../examples/utils/winit_app.rs");
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
-    let window = Rc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let context = softbuffer::Context::new(window.clone()).unwrap();
-    let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
-    event_loop.run(move |event, elwt| {
+    let mut app = winit_app::WinitAppBuilder::with_init(|elwt| {
+        let window = {
+            let window = elwt.create_window(Window::default_attributes());
+            Rc::new(window.unwrap())
+        };
+        let context = softbuffer::Context::new(window.clone()).unwrap();
+        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+
+        (window, surface)
+    }).with_event_handler(|state, event, elwt| {
+        let (window, surface) = state;
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
@@ -112,7 +121,9 @@ fn main() {
             }
             _ => {}
         }
-    }).unwrap();
+    });
+
+    event_loop.run_app(&mut app).unwrap();
 }
 ```
 
