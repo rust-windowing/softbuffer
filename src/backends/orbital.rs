@@ -56,7 +56,7 @@ impl Drop for OrbitalMap {
 }
 
 pub struct OrbitalImpl<D, W> {
-    handle: OrbitalWindowHandle,
+    handle: ThreadSafeWindowHandle,
     width: u32,
     height: u32,
     presented: bool,
@@ -64,9 +64,13 @@ pub struct OrbitalImpl<D, W> {
     _display: PhantomData<D>,
 }
 
+struct ThreadSafeWindowHandle(OrbitalWindowHandle);
+unsafe impl Send for ThreadSafeWindowHandle {}
+unsafe impl Sync for ThreadSafeWindowHandle {}
+
 impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
     fn window_fd(&self) -> usize {
-        self.handle.window.as_ptr() as usize
+        self.handle.0.window.as_ptr() as usize
     }
 
     // Read the current width and size
@@ -134,7 +138,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         };
 
         Ok(Self {
-            handle,
+            handle: ThreadSafeWindowHandle(handle),
             width: 0,
             height: 0,
             presented: false,
