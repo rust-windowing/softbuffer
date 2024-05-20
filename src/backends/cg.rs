@@ -181,5 +181,6 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
 }
 
 struct SendCGColorSpace(CGColorSpace);
-// SAFETY: I'm 99% sure this is thread safe.
+// SAFETY: `CGColorSpace` is immutable, and can freely be shared between threads.
 unsafe impl Send for SendCGColorSpace {}
+unsafe impl Sync for SendCGColorSpace {}
