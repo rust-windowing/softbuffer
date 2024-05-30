@@ -319,7 +319,7 @@ fn display_handle_type_name(handle: &RawDisplayHandle) -> &'static str {
     }
 }
 
-#[cfg(all(not(target_arch = "wasm32"), not(target_arch = "wasm64")))]
+#[cfg(not(target_family = "wasm"))]
 fn __assert_send() {
     fn is_send<T: Send>() {}
     fn is_sync<T: Sync>() {}
