@@ -19,6 +19,8 @@ pub struct BorrowStack<'a, T: 'a + ?Sized, U: 'a + ?Sized> {
     _phantom: std::marker::PhantomData<&'a mut T>,
 }
 
+unsafe impl<'a, T: 'a + Send + ?Sized, U: 'a + Send + ?Sized> Send for BorrowStack<'a, T, U> {}
+
 impl<'a, T: 'a + ?Sized, U: 'a + ?Sized> BorrowStack<'a, T, U> {
     pub fn new<F>(container: &'a mut T, f: F) -> Result<Self, SoftBufferError>
     where

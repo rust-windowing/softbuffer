@@ -12,6 +12,8 @@ use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
 use std::ptr::{self, NonNull};
 use std::slice;
+use std::sync::{mpsc, Mutex, OnceLock};
+use std::thread;
 
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::Graphics::Gdi;
@@ -32,18 +34,21 @@ struct Buffer {
     presented: bool,
 }
 
+unsafe impl Send for Buffer {}
+
 impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
-            Gdi::DeleteDC(self.dc);
             Gdi::DeleteObject(self.bitmap);
         }
+
+        Allocator::get().deallocate(self.dc);
     }
 }
 
 impl Buffer {
     fn new(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
-        let dc = unsafe { Gdi::CreateCompatibleDC(window_dc) };
+        let dc = Allocator::get().allocate(window_dc);
         assert!(dc != 0);
 
         // Create a new bitmap info struct.
@@ -151,6 +156,13 @@ pub struct Win32Impl<D: ?Sized, W> {
     _display: PhantomData<D>,
 }
 
+impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
+    fn drop(&mut self) {
+        // Release our resources.
+        Allocator::get().release(self.window, self.dc);
+    }
+}
+
 /// The Win32-compatible bitmap information.
 #[repr(C)]
 struct BitmapInfo {
@@ -199,7 +211,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         // Get the handle to the device context.
         // SAFETY: We have confirmed that the window handle is valid.
         let hwnd = handle.hwnd.get() as HWND;
-        let dc = unsafe { Gdi::GetDC(hwnd) };
+        let dc = Allocator::get().get_dc(hwnd);
 
         // GetDC returns null if there is a platform error.
         if dc == 0 {
@@ -292,5 +304,144 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;
         imp.present_with_damage(damage)
+    }
+}
+
+/// Allocator for device contexts.
+///
+/// Device contexts can only be allocated or freed on the thread that originated them.
+/// So we spawn a thread specifically for allocating and freeing device contexts.
+/// This is the interface to that thread.
+struct Allocator {
+    /// The channel for sending commands.
+    sender: Mutex<mpsc::Sender<Command>>,
+}
+
+impl Allocator {
+    /// Get the global instance of the allocator.
+    fn get() -> &'static Allocator {
+        static ALLOCATOR: OnceLock<Allocator> = OnceLock::new();
+        ALLOCATOR.get_or_init(|| {
+            let (sender, receiver) = mpsc::channel::<Command>();
+
+            // Create a thread responsible for DC handling.
+            thread::Builder::new()
+                .name(concat!("softbuffer_", env!("CARGO_PKG_VERSION"), "_dc_allocator").into())
+                .spawn(move || {
+                    while let Ok(command) = receiver.recv() {
+                        command.handle();
+                    }
+                })
+                .expect("failed to spawn the DC allocator thread");
+
+            Allocator {
+                sender: Mutex::new(sender),
+            }
+        })
+    }
+
+    /// Send a command to the allocator thread.
+    fn send_command(&self, cmd: Command) {
+        self.sender.lock().unwrap().send(cmd).unwrap();
+    }
+
+    /// Get the device context for a window.
+    fn get_dc(&self, window: HWND) -> Gdi::HDC {
+        let (callback, waiter) = mpsc::sync_channel(1);
+
+        // Send command to the allocator.
+        self.send_command(Command::GetDc { window, callback });
+
+        // Wait for the response back.
+        waiter.recv().unwrap()
+    }
+
+    /// Allocate a new device context.
+    fn allocate(&self, dc: Gdi::HDC) -> Gdi::HDC {
+        let (callback, waiter) = mpsc::sync_channel(1);
+
+        // Send command to the allocator.
+        self.send_command(Command::Allocate { dc, callback });
+
+        // Wait for the response back.
+        waiter.recv().unwrap()
+    }
+
+    /// Deallocate a device context.
+    fn deallocate(&self, dc: Gdi::HDC) {
+        self.send_command(Command::Deallocate(dc));
+    }
+
+    /// Release a device context.
+    fn release(&self, owner: HWND, dc: Gdi::HDC) {
+        self.send_command(Command::Release { dc, owner });
+    }
+}
+
+/// Commands to be sent to the allocator.
+enum Command {
+    /// Call `GetDc` to get the device context for the provided window.
+    GetDc {
+        /// The window to provide a device context for.
+        window: HWND,
+
+        /// Send back the device context.
+        callback: mpsc::SyncSender<Gdi::HDC>,
+    },
+
+    /// Allocate a new device context using `GetCompatibleDc`.
+    Allocate {
+        /// The DC to be compatible with.
+        dc: Gdi::HDC,
+
+        /// Send back the device context.
+        callback: mpsc::SyncSender<Gdi::HDC>,
+    },
+
+    /// Deallocate a device context.
+    Deallocate(Gdi::HDC),
+
+    /// Release a window-associated device context.
+    Release {
+        /// The device context to release.
+        dc: Gdi::HDC,
+
+        /// The window that owns this device context.
+        owner: HWND,
+    },
+}
+
+impl Command {
+    /// Handle this command.
+    ///
+    /// This should be called on the allocator thread.
+    fn handle(self) {
+        match self {
+            Self::GetDc { window, callback } => {
+                // Get the DC and send it back.
+                let dc = unsafe { Gdi::GetDC(window) };
+                callback.send(dc).ok();
+            }
+
+            Self::Allocate { dc, callback } => {
+                // Allocate a DC and send it back.
+                let dc = unsafe { Gdi::CreateCompatibleDC(dc) };
+                callback.send(dc).ok();
+            }
+
+            Self::Deallocate(dc) => {
+                // Deallocate this DC.
+                unsafe {
+                    Gdi::DeleteDC(dc);
+                }
+            }
+
+            Self::Release { dc, owner } => {
+                // Release this DC.
+                unsafe {
+                    Gdi::ReleaseDC(owner, dc);
+                }
+            }
+        }
     }
 }

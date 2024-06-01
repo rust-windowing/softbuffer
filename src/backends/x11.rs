@@ -24,8 +24,8 @@ use std::{
     io, mem,
     num::{NonZeroU16, NonZeroU32},
     ptr::{null_mut, NonNull},
-    rc::Rc,
     slice,
+    sync::Arc,
 };
 
 use as_raw_xcb_connection::AsRawXcbConnection;
@@ -54,7 +54,7 @@ pub struct X11DisplayImpl<D: ?Sized> {
     _display: D,
 }
 
-impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<X11DisplayImpl<D>> {
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<X11DisplayImpl<D>> {
     /// Create a new `X11DisplayImpl`.
     fn new(display: D) -> Result<Self, InitError<D>>
     where
@@ -107,7 +107,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<X11DisplayImpl<D>>
 
         let supported_visuals = supported_visuals(&connection);
 
-        Ok(Rc::new(X11DisplayImpl {
+        Ok(Arc::new(X11DisplayImpl {
             connection: Some(connection),
             is_shm_available,
             supported_visuals,
@@ -127,7 +127,7 @@ impl<D: ?Sized> X11DisplayImpl<D> {
 /// The handle to an X11 drawing context.
 pub struct X11Impl<D: ?Sized, W: ?Sized> {
     /// X display this window belongs to.
-    display: Rc<X11DisplayImpl<D>>,
+    display: Arc<X11DisplayImpl<D>>,
 
     /// The window to draw to.
     window: xproto::Window,
@@ -183,11 +183,11 @@ struct ShmBuffer {
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for X11Impl<D, W> {
-    type Context = Rc<X11DisplayImpl<D>>;
+    type Context = Arc<X11DisplayImpl<D>>;
     type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
 
     /// Create a new `X11Impl` from a `HasWindowHandle`.
-    fn new(window_src: W, display: &Rc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    fn new(window_src: W, display: &Arc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the underlying raw window handle.
         let raw = window_src.window_handle()?.as_raw();
         let window_handle = match raw {
@@ -686,6 +686,9 @@ struct ShmSegment {
     size: usize,
     buffer_size: usize,
 }
+
+// SAFETY: We respect Rust's mutability rules for the inner allocation.
+unsafe impl Send for ShmSegment {}
 
 impl ShmSegment {
     /// Create a new `ShmSegment` with the given size.

@@ -14,7 +14,7 @@ use foreign_types::ForeignType;
 use objc2::msg_send;
 use objc2::rc::Id;
 use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindow};
-use objc2_foundation::MainThreadMarker;
+use objc2_foundation::{MainThreadBound, MainThreadMarker};
 use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
 
 use std::marker::PhantomData;
@@ -30,9 +30,9 @@ impl AsRef<[u8]> for Buffer {
 }
 
 pub struct CGImpl<D, W> {
-    layer: Id<CALayer>,
-    window: Id<NSWindow>,
-    color_space: CGColorSpace,
+    layer: MainThreadBound<Id<CALayer>>,
+    window: MainThreadBound<Id<NSWindow>>,
+    color_space: SendCGColorSpace,
     size: Option<(NonZeroU32, NonZeroU32)>,
     window_handle: W,
     _display: PhantomData<D>,
@@ -84,9 +84,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         unsafe { view.addSubview(&subview) };
         let color_space = CGColorSpace::create_device_rgb();
         Ok(Self {
-            layer,
-            window,
-            color_space,
+            layer: MainThreadBound::new(layer, mtm),
+            window: MainThreadBound::new(window, mtm),
+            color_space: SendCGColorSpace(color_space),
             size: None,
             _display: PhantomData,
             window_handle: window_src,
@@ -144,12 +144,18 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
             8,
             32,
             (width.get() * 4) as usize,
-            &self.imp.color_space,
+            &self.imp.color_space.0,
             kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
             &data_provider,
             false,
             kCGRenderingIntentDefault,
         );
+
+        // TODO: Use run_on_main() instead.
+        let mtm = MainThreadMarker::new().ok_or(SoftBufferError::PlatformError(
+            Some("can only access AppKit / macOS handles from the main thread".to_string()),
+            None,
+        ))?;
 
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
@@ -157,14 +163,11 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
         CATransaction::begin();
         CATransaction::setDisableActions(true);
 
-        self.imp
-            .layer
-            .setContentsScale(self.imp.window.backingScaleFactor());
+        let layer = self.imp.layer.get(mtm);
+        layer.setContentsScale(self.imp.window.get(mtm).backingScaleFactor());
 
         unsafe {
-            self.imp
-                .layer
-                .setContents((image.as_ptr() as *mut AnyObject).as_ref());
+            layer.setContents((image.as_ptr() as *mut AnyObject).as_ref());
         };
 
         CATransaction::commit();
@@ -176,3 +179,8 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
         self.present()
     }
 }
+
+struct SendCGColorSpace(CGColorSpace);
+// SAFETY: `CGColorSpace` is immutable, and can freely be shared between threads.
+unsafe impl Send for SendCGColorSpace {}
+unsafe impl Sync for SendCGColorSpace {}

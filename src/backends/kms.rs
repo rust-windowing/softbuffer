@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
@@ -38,7 +38,7 @@ impl<D: ?Sized> AsFd for KmsDisplayImpl<D> {
 impl<D: ?Sized> Device for KmsDisplayImpl<D> {}
 impl<D: ?Sized> CtrlDevice for KmsDisplayImpl<D> {}
 
-impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<KmsDisplayImpl<D>> {
+impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<KmsDisplayImpl<D>> {
     fn new(display: D) -> Result<Self, InitError<D>>
     where
         D: Sized,
@@ -54,7 +54,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<KmsDisplayImpl<D>>
         // SAFETY: Invariants guaranteed by the user.
         let fd = unsafe { BorrowedFd::borrow_raw(fd) };
 
-        Ok(Rc::new(KmsDisplayImpl {
+        Ok(Arc::new(KmsDisplayImpl {
             fd,
             _display: display,
         }))
@@ -65,7 +65,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Rc<KmsDisplayImpl<D>>
 #[derive(Debug)]
 pub(crate) struct KmsImpl<D: ?Sized, W: ?Sized> {
     /// The display implementation.
-    display: Rc<KmsDisplayImpl<D>>,
+    display: Arc<KmsDisplayImpl<D>>,
 
     /// The connectors to use.
     connectors: Vec<connector::Handle>,
@@ -133,11 +133,11 @@ struct SharedBuffer {
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for KmsImpl<D, W> {
-    type Context = Rc<KmsDisplayImpl<D>>;
+    type Context = Arc<KmsDisplayImpl<D>>;
     type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
 
     /// Create a new KMS backend.
-    fn new(window: W, display: &Rc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
+    fn new(window: W, display: &Arc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Make sure that the window handle is valid.
         let plane_handle = match window.window_handle()?.as_raw() {
             RawWindowHandle::Drm(drm) => match NonZeroU32::new(drm.plane) {

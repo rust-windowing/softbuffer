@@ -13,12 +13,13 @@ mod winit_app {
     pub(crate) fn run_app(event_loop: EventLoop<()>, mut app: impl ApplicationHandler<()> + 'static) {
         #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
         event_loop.run_app(&mut app).unwrap();
-        
+
         #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
         winit::platform::web::EventLoopExtWebSys::spawn_app(event_loop, app);
     }
 
     /// Create a window from a set of window attributes.
+    #[allow(dead_code)]
     pub(crate) fn make_window(elwt: &ActiveEventLoop, f: impl FnOnce(WindowAttributes) -> WindowAttributes) -> Rc<Window> {
         let attributes = f(WindowAttributes::default());
         #[cfg(target_arch = "wasm32")]
@@ -29,7 +30,7 @@ mod winit_app {
         let window = elwt.create_window(attributes);
         Rc::new(window.unwrap())
     }
-    
+
     /// Easily constructable winit application.
     pub(crate) struct WinitApp<T, Init, Handler> {
         /// Closure to initialize state.
@@ -51,7 +52,7 @@ mod winit_app {
         _marker: PhantomData<Option<T>>,
     }
 
-    impl<T, Init> WinitAppBuilder<T, Init> 
+    impl<T, Init> WinitAppBuilder<T, Init>
     where Init: FnMut(&ActiveEventLoop) -> T,
     {
         /// Create with an "init" closure.
@@ -70,7 +71,7 @@ mod winit_app {
         }
     }
 
-    impl<T, Init, Handler> WinitApp<T, Init, Handler> 
+    impl<T, Init, Handler> WinitApp<T, Init, Handler>
     where Init: FnMut(&ActiveEventLoop) -> T,
           Handler: FnMut(&mut T, Event<()>, &ActiveEventLoop)
     {
@@ -84,7 +85,7 @@ mod winit_app {
         }
     }
 
-    impl<T, Init, Handler> ApplicationHandler for WinitApp<T, Init, Handler> 
+    impl<T, Init, Handler> ApplicationHandler for WinitApp<T, Init, Handler>
     where Init: FnMut(&ActiveEventLoop) -> T,
           Handler: FnMut(&mut T, Event<()>, &ActiveEventLoop) {
 
@@ -97,7 +98,7 @@ mod winit_app {
             let state = self.state.take();
             debug_assert!(state.is_some());
             drop(state);
-        }        
+        }
 
         fn window_event(
             &mut self,
