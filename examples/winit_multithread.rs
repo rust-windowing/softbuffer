@@ -9,9 +9,6 @@ use winit::window::Window;
 
 include!("utils/winit_app.rs");
 
-const BUFFER_WIDTH: usize = 256;
-const BUFFER_HEIGHT: usize = 128;
-
 type Surface = softbuffer::Surface<Arc<Window>, Arc<Window>>;
 
 fn render_thread(
@@ -87,7 +84,7 @@ fn main() {
         (window, surface, start_render, finish_render)
     })
     .with_event_handler(|state, event, elwt| {
-        let (window, surface, start_render, finish_render) = state;
+        let (window, _surface, start_render, finish_render) = state;
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {

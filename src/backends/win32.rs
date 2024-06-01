@@ -12,11 +12,11 @@ use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
 use std::ptr::{self, NonNull};
 use std::slice;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{mpsc, OnceLock};
+use std::thread;
 
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::Graphics::Gdi;
-use windows_sys::Win32::UI::{Shell, WindowsAndMessaging as Win};
 
 const ZERO_QUAD: Gdi::RGBQUAD = Gdi::RGBQUAD {
     rgbBlue: 0,
@@ -24,11 +24,8 @@ const ZERO_QUAD: Gdi::RGBQUAD = Gdi::RGBQUAD {
     rgbRed: 0,
     rgbReserved: 0,
 };
-const SUBCLASS_ID: usize = 0xDEADBEEF;
 
 struct Buffer {
-    // Invariant: This window has our custom softbuffer subclass.
-    owner_window: HWND,
     dc: Gdi::HDC,
     bitmap: Gdi::HBITMAP,
     pixels: NonNull<u32>,
@@ -37,26 +34,21 @@ struct Buffer {
     presented: bool,
 }
 
-// SAFETY: We allow no interior mutability here and we drop the HDC on its origin thread.
 unsafe impl Send for Buffer {}
 
 impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
-            // Delete the DC by posting a message that calls DeleteDC on the origin thread.
-            Win::PostMessageW(
-                self.owner_window,
-                destroy_dc_and_bitmap(),
-                self.dc as usize,
-                self.bitmap,
-            );
+            Gdi::DeleteObject(self.bitmap);
         }
+
+        Allocator::get().deallocate(self.dc);
     }
 }
 
 impl Buffer {
-    fn new(owner: HWND, window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
-        let dc = unsafe { Win::SendMessageW(owner, get_compatible_dc(), 0, window_dc) };
+    fn new(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
+        let dc = Allocator::get().allocate(window_dc);
         assert!(dc != 0);
 
         // Create a new bitmap info struct.
@@ -93,8 +85,6 @@ impl Buffer {
         // XXX alignment?
         // XXX better to use CreateFileMapping, and pass hSection?
         // XXX test return value?
-        // Note: Bitmaps are apparently threadsafe.
-        // https://devblogs.microsoft.com/oldnewthing/20051013-11/?p=33783
         let mut pixels: *mut u32 = ptr::null_mut();
         let bitmap = unsafe {
             Gdi::CreateDIBSection(
@@ -114,7 +104,6 @@ impl Buffer {
         }
 
         Self {
-            owner_window: owner,
             dc,
             bitmap,
             width,
@@ -147,7 +136,7 @@ impl Buffer {
 
 /// The handle to a window for software buffering.
 pub struct Win32Impl<D: ?Sized, W> {
-    /// The window handle. We do not own this.
+    /// The window handle.
     window: HWND,
 
     /// The device context for the window.
@@ -165,6 +154,13 @@ pub struct Win32Impl<D: ?Sized, W> {
     ///
     /// We don't use this, but other code might.
     _display: PhantomData<D>,
+}
+
+impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
+    fn drop(&mut self) {
+        // Release our resources.
+        Allocator::get().release(self.window, self.dc);
+    }
 }
 
 /// The Win32-compatible bitmap information.
@@ -214,23 +210,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 
         // Get the handle to the device context.
         // SAFETY: We have confirmed that the window handle is valid.
-        // SAFETY: By the safety conditions for window_handle, this window is valid for
-        // this thread.
         let hwnd = handle.hwnd.get() as HWND;
-
-        // Add a subclass to this window that lets us perform some Windows operations
-        // on its original thread.
-        let result =
-            unsafe { Shell::SetWindowSubclass(hwnd, Some(handle_dc_subclass), SUBCLASS_ID, 0) };
-        if result == 0 {
-            return Err(SoftBufferError::PlatformError(
-                Some("Unable to set window subclass".into()),
-                Some(Box::new(io::Error::last_os_error())),
-            )
-            .into());
-        }
-
-        let dc = unsafe { Gdi::GetDC(hwnd) };
+        let dc = Allocator::get().get_dc(hwnd);
 
         // GetDC returns null if there is a platform error.
         if dc == 0 {
@@ -269,7 +250,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             }
         }
 
-        self.buffer = Some(Buffer::new(self.window, self.dc, width, height));
+        self.buffer = Some(Buffer::new(self.dc, width, height));
 
         Ok(())
     }
@@ -285,15 +266,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
     /// Fetch the buffer from the window.
     fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)
-    }
-}
-
-impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
-    fn drop(&mut self) {
-        // Remove the subclass from the window on its origin thread.
-        unsafe {
-            Win::PostMessageW(self.window, remove_subclass(), 0, self.dc);
-        }
     }
 }
 
@@ -335,103 +307,138 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
     }
 }
 
-/// Window procedure for our custom subclass.
-unsafe extern "system" fn handle_dc_subclass(
-    hwnd: HWND,
-    umsg: u32,
-    wparam: usize,
-    lparam: isize,
-    _subclass_id: usize,
-    _subclass_data: usize,
-) -> isize {
-    abort_on_panic(move || {
-        if umsg == get_compatible_dc() {
-            // Get a DC.
-            unsafe { Gdi::CreateCompatibleDC(lparam) }
-        } else if umsg == destroy_dc_and_bitmap() {
-            // Destroy the DC and bitmap for this window.
-            unsafe {
-                Gdi::DeleteDC(wparam as isize);
-                Gdi::DeleteObject(lparam);
-            }
-
-            0
-        } else if umsg == remove_subclass() {
-            // Release the existing DC.
-            unsafe {
-                Gdi::ReleaseDC(hwnd, lparam);
-            }
-
-            // Remove the subclass from the window.
-            unsafe {
-                Shell::RemoveWindowSubclass(hwnd, Some(handle_dc_subclass), SUBCLASS_ID);
-            }
-
-            0
-        } else {
-            // This isn't one of our custom messages. Forward to the underlying class.
-            unsafe { Shell::DefSubclassProc(hwnd, umsg, wparam, lparam) }
-        }
-    })
+/// Allocator for device contexts.
+///
+/// Device contexts can only be allocated or freed on the thread that originated them.
+/// So we spawn a thread specifically for allocating and freeing device contexts.
+/// This is the interface to that thread.
+struct Allocator {
+    /// The channel for sending commands.
+    sender: mpsc::Sender<Command>,
 }
 
-macro_rules! static_message {
-    ($(#[$attr:meta])* $name:ident) => {
-        $(#[$attr])*
-        fn $name() -> u32 {
-            static MESSAGE: AtomicU32 = AtomicU32::new(0);
-            const MESSAGE_NAME: &str = concat!(
-                "softbuffer_", env!("CARGO_PKG_VERSION"), "_", stringify!($name)
-            );
+impl Allocator {
+    /// Get the global instance of the allocator.
+    fn get() -> &'static Allocator {
+        static ALLOCATOR: OnceLock<Allocator> = OnceLock::new();
+        ALLOCATOR.get_or_init(|| {
+            let (sender, receiver) = mpsc::channel::<Command>();
 
-            let mut result = MESSAGE.load(Ordering::Relaxed);
+            // Create a thread responsible for DC handling.
+            thread::Builder::new()
+                .name(concat!("softbuffer_", env!("CARGO_PKG_VERSION"), "_dc_allocator").into())
+                .spawn(move || {
+                    while let Ok(command) = receiver.recv() {
+                        command.handle();
+                    }
+                })
+                .expect("failed to spawn the DC allocator thread");
 
-            if result == 0 {
-                // Register the window message, then store it.
-                let message = MESSAGE_NAME.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-                result = unsafe {
-                    Win::RegisterWindowMessageW(message.as_ptr())
-                };
-                MESSAGE.store(result, Ordering::SeqCst);
-            }
+            Allocator { sender }
+        })
+    }
 
-            result
-        }
+    /// Get the device context for a window.
+    fn get_dc(&self, window: HWND) -> Gdi::HDC {
+        let (callback, waiter) = mpsc::sync_channel(1);
+
+        // Send command to the allocator.
+        self.sender
+            .send(Command::GetDc { window, callback })
+            .unwrap();
+
+        // Wait for the response back.
+        waiter.recv().unwrap()
+    }
+
+    /// Allocate a new device context.
+    fn allocate(&self, dc: Gdi::HDC) -> Gdi::HDC {
+        let (callback, waiter) = mpsc::sync_channel(1);
+
+        // Send command to the allocator.
+        self.sender
+            .send(Command::Allocate { dc, callback })
+            .unwrap();
+
+        // Wait for the response back.
+        waiter.recv().unwrap()
+    }
+
+    /// Deallocate a device context.
+    fn deallocate(&self, dc: Gdi::HDC) {
+        self.sender.send(Command::Deallocate(dc)).ok();
+    }
+
+    /// Release a device context.
+    fn release(&self, owner: HWND, dc: Gdi::HDC) {
+        self.sender.send(Command::Release { dc, owner }).ok();
     }
 }
 
-static_message! {
-    /// Get the compatible DC for an existing DC.
-    ///
-    /// lparam is the DC. The returned value is the DC.
-    get_compatible_dc
+/// Commands to be sent to the allocator.
+enum Command {
+    /// Call `GetDc` to get the device context for the provided window.
+    GetDc {
+        /// The window to provide a device context for.
+        window: HWND,
+
+        /// Send back the device context.
+        callback: mpsc::SyncSender<Gdi::HDC>,
+    },
+
+    /// Allocate a new device context using `GetCompatibleDc`.
+    Allocate {
+        /// The DC to be compatible with.
+        dc: Gdi::HDC,
+
+        /// Send back the device context.
+        callback: mpsc::SyncSender<Gdi::HDC>,
+    },
+
+    /// Deallocate a device context.
+    Deallocate(Gdi::HDC),
+
+    /// Release a window-associated device context.
+    Release {
+        /// The device context to release.
+        dc: Gdi::HDC,
+
+        /// The window that owns this device context.
+        owner: HWND,
+    },
 }
 
-static_message! {
-    /// Destroy a DC and a bitmap for this window.
+impl Command {
+    /// Handle this command.
     ///
-    /// wparam is the DC, lparam is the bitmap.
-    destroy_dc_and_bitmap
-}
+    /// This should be called on the allocator thread.
+    fn handle(self) {
+        match self {
+            Self::GetDc { window, callback } => {
+                // Get the DC and send it back.
+                let dc = unsafe { Gdi::GetDC(window) };
+                callback.send(dc).ok();
+            }
 
-static_message! {
-    /// Remove our subclass and release our DC.
-    ///
-    /// lparam is the DC.
-    remove_subclass
-}
+            Self::Allocate { dc, callback } => {
+                // Allocate a DC and send it back.
+                let dc = unsafe { Gdi::CreateCompatibleDC(dc) };
+                callback.send(dc).ok();
+            }
 
-fn abort_on_panic<R>(f: impl FnOnce() -> R) -> R {
-    struct AbortOnDrop;
+            Self::Deallocate(dc) => {
+                // Deallocate this DC.
+                unsafe {
+                    Gdi::DeleteDC(dc);
+                }
+            }
 
-    impl Drop for AbortOnDrop {
-        fn drop(&mut self) {
-            std::process::abort();
+            Self::Release { dc, owner } => {
+                // Release thie DC.
+                unsafe {
+                    Gdi::ReleaseDC(owner, dc);
+                }
+            }
         }
     }
-
-    let bomb = AbortOnDrop;
-    let data = f();
-    core::mem::forget(bomb);
-    data
 }
