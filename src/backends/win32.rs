@@ -12,7 +12,7 @@ use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
 use std::ptr::{self, NonNull};
 use std::slice;
-use std::sync::{mpsc, OnceLock};
+use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
 
 use windows_sys::Win32::Foundation::HWND;
@@ -314,7 +314,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
 /// This is the interface to that thread.
 struct Allocator {
     /// The channel for sending commands.
-    sender: mpsc::Sender<Command>,
+    sender: Mutex<mpsc::Sender<Command>>,
 }
 
 impl Allocator {
@@ -334,8 +334,15 @@ impl Allocator {
                 })
                 .expect("failed to spawn the DC allocator thread");
 
-            Allocator { sender }
+            Allocator {
+                sender: Mutex::new(sender),
+            }
         })
+    }
+
+    /// Send a command to the allocator thread.
+    fn send_command(&self, cmd: Command) {
+        self.sender.lock().unwrap().send(cmd).unwrap();
     }
 
     /// Get the device context for a window.
@@ -343,9 +350,7 @@ impl Allocator {
         let (callback, waiter) = mpsc::sync_channel(1);
 
         // Send command to the allocator.
-        self.sender
-            .send(Command::GetDc { window, callback })
-            .unwrap();
+        self.send_command(Command::GetDc { window, callback });
 
         // Wait for the response back.
         waiter.recv().unwrap()
@@ -356,9 +361,7 @@ impl Allocator {
         let (callback, waiter) = mpsc::sync_channel(1);
 
         // Send command to the allocator.
-        self.sender
-            .send(Command::Allocate { dc, callback })
-            .unwrap();
+        self.send_command(Command::Allocate { dc, callback });
 
         // Wait for the response back.
         waiter.recv().unwrap()
@@ -366,12 +369,12 @@ impl Allocator {
 
     /// Deallocate a device context.
     fn deallocate(&self, dc: Gdi::HDC) {
-        self.sender.send(Command::Deallocate(dc)).ok();
+        self.send_command(Command::Deallocate(dc));
     }
 
     /// Release a device context.
     fn release(&self, owner: HWND, dc: Gdi::HDC) {
-        self.sender.send(Command::Release { dc, owner }).ok();
+        self.send_command(Command::Release { dc, owner });
     }
 }
 
