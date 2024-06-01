@@ -434,7 +434,7 @@ impl Command {
             }
 
             Self::Release { dc, owner } => {
-                // Release thie DC.
+                // Release this DC.
                 unsafe {
                     Gdi::ReleaseDC(owner, dc);
                 }
