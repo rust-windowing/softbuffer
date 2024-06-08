@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.4.4
+
+- Make `Context` `Send`+`Sync` and `Surface` `Send`. (#217)
+
 # 0.4.3
 
 - Use objc2 as the backend for the CoreGraphics implementation. (#210)
