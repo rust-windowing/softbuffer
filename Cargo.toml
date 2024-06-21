@@ -19,7 +19,7 @@ harness = false
 [features]
 default = ["kms", "x11", "x11-dlopen", "wayland", "wayland-dlopen"]
 kms = ["bytemuck", "drm", "rustix"]
-wayland = ["wayland-backend", "wayland-client", "memmap2", "rustix", "fastrand"]
+wayland = ["wayland-backend", "wayland-client", "wayland-sys", "memmap2", "rustix", "fastrand"]
 wayland-dlopen = ["wayland-sys/dlopen"]
 x11 = ["as-raw-xcb-connection", "bytemuck", "fastrand", "rustix", "tiny-xlib", "x11rb"]
 x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
@@ -38,7 +38,7 @@ rustix = { version = "0.38.19", features = ["fs", "mm", "shm", "std"], default-f
 tiny-xlib = { version = "0.2.1", optional = true }
 wayland-backend = { version = "0.3.0", features = ["client_system"], optional = true }
 wayland-client = { version = "0.31.0", optional = true }
-wayland-sys = "0.31.0"
+wayland-sys = { version = "0.31.0", optional = true }
 x11rb = { version = "0.13.0", features = ["allow-unsafe-code", "shm"], optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-sys]
