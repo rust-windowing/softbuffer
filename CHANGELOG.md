@@ -1,5 +1,11 @@
 # Unreleased
 
+# 0.4.5
+
+- Make the `wayland-sys` dependency optional. (#223)
+- Allow for transparent visuals on X11. This technically doesn't work, but
+  otherwise `winit` users might get crashes. (#226)
+
 # 0.4.4
 
 - Make `Context` `Send`+`Sync` and `Surface` `Send`. (#217)
