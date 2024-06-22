@@ -91,7 +91,6 @@ features = ["jpeg"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # Turn rayon back on everywhere else; creating the separate entry resets the features to default.
-image = "0.25.0"
 rayon = "1.5.1"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
