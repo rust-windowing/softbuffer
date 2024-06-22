@@ -882,13 +882,15 @@ fn is_shm_available(c: &impl Connection) -> bool {
 /// Collect all visuals that use softbuffer's pixel format
 fn supported_visuals(c: &impl Connection) -> HashSet<Visualid> {
     // Check that depth 24 uses 32 bits per pixels
+    // HACK(notgull): Also support depth 32 for transparent visuals.
+    // Otherwise winit users get weird errors.
     if !c
         .setup()
         .pixmap_formats
         .iter()
-        .any(|f| f.depth == 24 && f.bits_per_pixel == 32)
+        .any(|f| (f.depth == 24 || f.depth == 32) && f.bits_per_pixel == 32)
     {
-        log::warn!("X11 server does not have a depth 24 format with 32 bits per pixel");
+        log::warn!("X11 server does not have a depth 24/32 format with 32 bits per pixel");
         return HashSet::new();
     }
 
@@ -911,7 +913,7 @@ fn supported_visuals(c: &impl Connection) -> HashSet<Visualid> {
             screen
                 .allowed_depths
                 .iter()
-                .filter(|depth| depth.depth == 24)
+                .filter(|depth| depth.depth == 24 || depth.depth == 32)
                 .flat_map(|depth| {
                     depth
                         .visuals
