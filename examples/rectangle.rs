@@ -3,7 +3,8 @@ use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
-include!("utils/winit_app.rs");
+#[path = "utils/winit_app.rs"]
+mod winit_app;
 
 fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
     for y in 0..height {

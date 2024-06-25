@@ -3,7 +3,8 @@ use winit::event::{Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
-include!("utils/winit_app.rs");
+#[path = "utils/winit_app.rs"]
+mod winit_app;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();

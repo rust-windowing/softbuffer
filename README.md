@@ -69,7 +69,8 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
 
-include!("../examples/utils/winit_app.rs");
+#[path = "../examples/utils/winit_app.rs"]
+mod winit_app;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
