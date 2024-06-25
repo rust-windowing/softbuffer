@@ -1,5 +1,5 @@
-Overview
-==
+# Overview
+
 As the popularity of the library [minifb](https://crates.io/crates/minifb) shows, it is useful to put a 2D buffer/image
 on a window in a platform-independent way. Minifb's approach to doing window management itself, however, is problematic
 code duplication. We already have very high quality libraries for this in the Rust ecosystem
@@ -19,28 +19,27 @@ hardware accelerated graphics stack in any way, and is thus more portable to ins
 hardware acceleration (e.g. VMs, older computers, computers with misconfigured drivers). Softbuffer should be used over
 pixels when its GPU-accelerated post-processing effects are not needed.
 
-
-License & Credits
-==
+## License & Credits
 
 This library is dual-licensed under MIT or Apache-2.0, just like minifb and rust. Significant portions of code were taken
 from the minifb library to do platform-specific work.
 
-Platform support:
-==
+## Platform support:
+
 Some, but not all, platforms supported in [raw-window-handle](https://crates.io/crates/raw-window-handle) are supported
 by Softbuffer. Pull requests are welcome to add new platforms! **Nonetheless, all major desktop platforms that winit uses
 on desktop are supported.**
 
 For now, the priority for new platforms is:
-1) to have at least one platform on each OS working (e.g. one of Win32 or WinRT, or one of Xlib, Xcb, and Wayland) and
-2) for that one platform on each OS to be the one that winit uses.
+
+1. to have at least one platform on each OS working (e.g. one of Win32 or WinRT, or one of Xlib, Xcb, and Wayland) and
+2. for that one platform on each OS to be the one that winit uses.
 
 (PRs will be accepted for any platform, even if it does not follow the above priority.)
 
 |  Platform ||
 |-----------|--|
-|Android NDK|❌|
+|Android NDK|✅|
 |   AppKit  |✅|
 |  Orbital  |✅|
 |    UIKit  |❌|
@@ -55,13 +54,16 @@ For now, the priority for new platforms is:
 ❔: Immature\
 ❌: Absent
 
-WebAssembly
------------
+## WebAssembly
 
 To run an example with the web backend: `cargo run-wasm --example winit`
 
-Example
-==
+## Android
+
+To run the Android-specific example on an Android phone: `cargo apk r --example winit_android`
+
+## Example
+
 ```rust,no_run
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -127,7 +129,6 @@ fn main() {
 }
 ```
 
-Changelog
----------
+## Changelog
 
 See the [changelog](CHANGELOG.md) for a list of this package's versions and the changes made in each version.

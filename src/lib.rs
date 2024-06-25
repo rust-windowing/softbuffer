@@ -211,6 +211,11 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
         self.buffer_impl.age()
     }
 
+    /// The number of _pixels_ that a line in the buffer takes in memory.
+    pub fn stride(&self) -> u32 {
+        self.buffer_impl.stride()
+    }
+
     /// Presents buffer to the window.
     ///
     /// # Platform dependent behavior

@@ -1,6 +1,10 @@
 //! `Surface` implements `Send`. This makes sure that multithreading can work here.
 
 #[cfg(not(target_family = "wasm"))]
+#[path = "utils/winit_app.rs"]
+mod winit_app;
+
+#[cfg(not(target_family = "wasm"))]
 mod ex {
     use std::num::NonZeroU32;
     use std::sync::{mpsc, Arc, Mutex};
@@ -9,7 +13,7 @@ mod ex {
     use winit::keyboard::{Key, NamedKey};
     use winit::window::Window;
 
-    include!("utils/winit_app.rs");
+    use super::winit_app;
 
     type Surface = softbuffer::Surface<Arc<Window>, Arc<Window>>;
 
