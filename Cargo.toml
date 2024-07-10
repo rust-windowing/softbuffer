@@ -28,6 +28,9 @@ x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
 log = "0.4.17"
 raw_window_handle = { package = "raw-window-handle", version = "0.6", features = ["std"] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = "0.9.0"
+
 [target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox"))))'.dependencies]
 as-raw-xcb-connection = { version = "1.0.0", optional = true }
 bytemuck = { version = "1.12.3", optional = true }
@@ -89,6 +92,10 @@ criterion = { version = "0.4.0", default-features = false, features = ["cargo_be
 web-time = "1.0.0"
 winit = "0.30.0"
 
+[target.'cfg(target_os = "android")'.dev-dependencies]
+winit = { version = "0.30.0", features = ["android-native-activity"] }
+android-activity = "0.6"
+
 [dev-dependencies.image]
 version = "0.25.0"
 # Disable rayon on web
@@ -109,6 +116,16 @@ rustix = { version = "0.38.8", features = ["event"] }
 members = [
     "run-wasm",
 ]
+
+[[example]]
+# Run with `cargo apk r --example winit_android`
+name = "winit_android"
+crate-type = ["cdylib"]
+
+[[example]]
+# Run with `cargo apk r --example winit_multithread_android`
+name = "winit_multithread_android"
+crate-type = ["cdylib"]
 
 [package.metadata.docs.rs]
 all-features = true
