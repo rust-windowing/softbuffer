@@ -250,8 +250,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
-            let width = NonZeroI32::new(i32::try_from(width.get()).ok()?)?;
-            let height = NonZeroI32::new(i32::try_from(height.get()).ok()?)?;
+            let width = NonZeroI32::try_from(width).ok()?;
+            let height = NonZeroI32::try_from(height).ok()?;
             Some((width, height))
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;

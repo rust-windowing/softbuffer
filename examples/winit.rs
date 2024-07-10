@@ -6,9 +6,12 @@ use winit::keyboard::{Key, NamedKey};
 #[path = "utils/winit_app.rs"]
 mod winit_app;
 
+#[cfg(not(target_os = "android"))]
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
+    entry(EventLoop::new().unwrap())
+}
 
+pub(crate) fn entry(event_loop: EventLoop<()>) {
     let app = winit_app::WinitAppBuilder::with_init(
         |elwt| {
             let window = winit_app::make_window(elwt, |w| w);
