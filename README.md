@@ -42,7 +42,7 @@ For now, the priority for new platforms is:
 
 |  Platform ||
 |-----------|--|
-|Android NDK|❌|
+|Android NDK|✅|
 |   AppKit  |✅|
 |  Orbital  |✅|
 |    UIKit  |✅|
@@ -60,6 +60,10 @@ For now, the priority for new platforms is:
 ## WebAssembly
 
 To run an example with the web backend: `cargo run-wasm --example winit`
+
+## Android
+
+To run the Android-specific example on an Android phone: `cargo apk r --example winit_android` or `cargo apk r --example winit_multithread_android`.
 
 ## Example
 
