@@ -90,6 +90,7 @@ jobs:
       run: |
         cargo update -p ahash --precise 0.8.7
         cargo update -p bumpalo --precise 3.14.0
+        cargo update -p redox_syscall@0.5.3 --precise 0.5.2
 
     - name: Build crate
       shell: bash
