@@ -261,6 +261,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'a, D
 
 /// There is no display handle.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct NoDisplayHandle(core::convert::Infallible);
 
 impl HasDisplayHandle for NoDisplayHandle {
