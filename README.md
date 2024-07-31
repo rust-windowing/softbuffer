@@ -128,6 +128,31 @@ fn main() {
 }
 ```
 
+MSRV Policy
+==
+This crate's Minimum Supported Rust Version (MSRV) is **1.70**. Changes to
+the MSRV will be accompanied by a minor version bump.
+
+As a **tentative** policy, the upper bound of the MSRV is given by the following
+formula:
+
+```text
+min(sid, stable - 3)
+```
+
+Where `sid` is the current version of `rustc` provided by [Debian Sid], and
+`stable` is the latest stable version of Rust. This bound may be broken in case of a major ecosystem shift or a security vulnerability.
+
+[Debian Sid]: https://packages.debian.org/sid/rustc
+
+Orbital is not covered by this MSRV policy, as it requires a Rust nightly
+toolchain to compile.
+
+All crates in the [`rust-windowing`] organizations have the
+same MSRV policy.
+
+[`rust-windowing`]: https://github.com/rust-windowing
+
 Changelog
 ---------
 

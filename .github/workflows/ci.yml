@@ -49,6 +49,10 @@ jobs:
           - { target: x86_64-unknown-netbsd,    os: ubuntu-latest, options: --no-default-features, features: "x11,x11-dlopen,wayland,wayland-dlopen"  }
           - { target: x86_64-apple-darwin,      os: macos-latest,    }
           - { target: wasm32-unknown-unknown,   os: ubuntu-latest,   }
+        exclude:
+          # Orbital doesn't follow MSRV
+          - rust_version: '1.70.0'
+            platform: { target: x86_64-unknown-redox, os: ubuntu-latest }
         include:
           - rust_version: nightly
             platform: { target: wasm32-unknown-unknown, os: ubuntu-latest, options: "-Zbuild-std=panic_abort,std", rustflags: "-Ctarget-feature=+atomics,+bulk-memory" }
@@ -90,7 +94,6 @@ jobs:
       run: |
         cargo update -p ahash --precise 0.8.7
         cargo update -p bumpalo --precise 3.14.0
-        cargo update -p redox_syscall@0.5.3 --precise 0.5.2
 
     - name: Build crate
       shell: bash
