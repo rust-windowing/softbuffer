@@ -29,6 +29,7 @@ log = "0.4.17"
 raw_window_handle = { package = "raw-window-handle", version = "0.6", features = ["std"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
+bytemuck = "1.12.3"
 ndk = "0.9.0"
 
 [target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox"))))'.dependencies]
