@@ -7,59 +7,49 @@ use ndk::{
     hardware_buffer_format::HardwareBufferFormat,
     native_window::{NativeWindow, NativeWindowBufferLockGuard},
 };
+#[cfg(doc)]
+use raw_window_handle::AndroidNdkWindowHandle;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use crate::error::InitError;
-use crate::{Rect, SoftBufferError};
+use crate::{BufferInterface, Rect, SoftBufferError, SurfaceInterface};
 
 /// The handle to a window for software buffering.
-pub struct AndroidImpl<D: ?Sized, W: ?Sized> {
+pub struct AndroidImpl<D, W> {
     native_window: NativeWindow,
-
-    _display: PhantomData<D>,
-
-    /// The pointer to the window object.
-    ///
-    /// This is pretty useless because it gives us a pointer to [`NativeWindow`] that we have to increase the refcount on.
-    /// Alternatively we can use [`NativeWindow::from_ptr()`] wrapped in [`std::mem::ManuallyDrop`]
     window: W,
+    _display: PhantomData<D>,
 }
 
-// TODO: Current system doesn't require a trait to be implemented here, even though it exists.
-impl<D: HasDisplayHandle, W: HasWindowHandle> AndroidImpl<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for AndroidImpl<D, W> {
+    type Context = D;
+    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+
     /// Create a new [`AndroidImpl`] from an [`AndroidNdkWindowHandle`].
-    ///
-    /// # Safety
-    ///
-    /// The [`AndroidNdkWindowHandle`] must be a valid window handle.
-    // TODO: That's lame, why can't we get an AndroidNdkWindowHandle directly here
-    pub(crate) fn new(window: W, _display: &D) -> Result<Self, InitError<W>> {
-        // Get the raw Android window (surface).
+    fn new(window: W, _display: &Self::Context) -> Result<Self, InitError<W>> {
         let raw = window.window_handle()?.as_raw();
         let RawWindowHandle::AndroidNdk(a) = raw else {
             return Err(InitError::Unsupported(window));
         };
 
         // Acquire a new owned reference to the window, that will be freed on drop.
+        // SAFETY: We have confirmed that the window handle is valid.
         let native_window = unsafe { NativeWindow::clone_from_ptr(a.a_native_window.cast()) };
 
         Ok(Self {
             native_window,
-            // _display: DisplayHandle::borrow_raw(raw_window_handle::RawDisplayHandle::Android(
-            //     AndroidDisplayHandle,
-            // )),
             _display: PhantomData,
             window,
         })
     }
 
     #[inline]
-    pub fn window(&self) -> &W {
+    fn window(&self) -> &W {
         &self.window
     }
 
     /// Also changes the pixel format to [`HardwareBufferFormat::R8G8B8A8_UNORM`].
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
             let width = NonZeroI32::try_from(width).ok()?;
             let height = NonZeroI32::try_from(height).ok()?;
@@ -67,13 +57,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> AndroidImpl<D, W> {
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
 
-        // Do not change the format.
         self.native_window
             .set_buffers_geometry(
                 width.into(),
                 height.into(),
                 // Default is typically R5G6B5 16bpp, switch to 32bpp
-                Some(HardwareBufferFormat::R8G8B8A8_UNORM),
+                Some(HardwareBufferFormat::R8G8B8X8_UNORM),
             )
             .map_err(|err| {
                 SoftBufferError::PlatformError(
@@ -83,72 +72,98 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> AndroidImpl<D, W> {
             })
     }
 
-    pub fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        let lock_guard = self.native_window.lock(None).map_err(|err| {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+        let native_window_buffer = self.native_window.lock(None).map_err(|err| {
             SoftBufferError::PlatformError(
                 Some("Failed to lock ANativeWindow".to_owned()),
                 Some(Box::new(err)),
             )
         })?;
 
-        assert_eq!(
-            lock_guard.format().bytes_per_pixel(),
-            Some(4),
-            "Unexpected buffer format {:?}, please call .resize() first to change it to RGBA8888",
-            lock_guard.format()
-        );
+        if !matches!(
+            native_window_buffer.format(),
+            // These are the only formats we support
+            HardwareBufferFormat::R8G8B8A8_UNORM | HardwareBufferFormat::R8G8B8X8_UNORM
+        ) {
+            return Err(SoftBufferError::PlatformError(
+                Some(format!(
+                    "Unexpected buffer format {:?}, please call \
+                    .resize() first to change it to RGBx8888",
+                    native_window_buffer.format()
+                )),
+                None,
+            ));
+        }
 
-        Ok(BufferImpl(lock_guard, PhantomData, PhantomData))
+        let buffer = vec![0; native_window_buffer.width() * native_window_buffer.height()];
+
+        Ok(BufferImpl {
+            native_window_buffer,
+            buffer,
+            marker: PhantomData,
+        })
     }
 
     /// Fetch the buffer from the window.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)
     }
 }
 
-pub struct BufferImpl<'a, D: ?Sized, W>(
-    NativeWindowBufferLockGuard<'a>,
-    PhantomData<&'a D>,
-    PhantomData<&'a W>,
-);
+pub struct BufferImpl<'a, D: ?Sized, W> {
+    native_window_buffer: NativeWindowBufferLockGuard<'a>,
+    buffer: Vec<u32>,
+    marker: PhantomData<(&'a D, &'a W)>,
+}
 
 // TODO: Move to NativeWindowBufferLockGuard?
 unsafe impl<'a, D, W> Send for BufferImpl<'a, D, W> {}
 
-impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferImpl<'a, D, W> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
     #[inline]
-    pub fn pixels(&self) -> &[u32] {
-        todo!()
-        // unsafe {
-        //     std::slice::from_raw_parts(
-        //         self.0.bits().cast_const().cast(),
-        //         (self.0.stride() * self.0.height()) as usize,
-        //     )
-        // }
+    fn pixels(&self) -> &[u32] {
+        &self.buffer
     }
 
     #[inline]
-    pub fn pixels_mut(&mut self) -> &mut [u32] {
-        let bytes = self.0.bytes().expect("Nonplanar format");
-        unsafe {
-            std::slice::from_raw_parts_mut(
-                bytes.as_mut_ptr().cast(),
-                bytes.len() / std::mem::size_of::<u32>(),
-            )
-        }
+    fn pixels_mut(&mut self) -> &mut [u32] {
+        &mut self.buffer
     }
 
-    pub fn age(&self) -> u8 {
+    #[inline]
+    fn age(&self) -> u8 {
         0
     }
 
-    pub fn present(self) -> Result<(), SoftBufferError> {
-        // Dropping the guard automatically unlocks and posts it
+    // TODO: This function is pretty slow this way
+    fn present(mut self) -> Result<(), SoftBufferError> {
+        let input_lines = self.buffer.chunks(self.native_window_buffer.width());
+        for (output, input) in self
+            .native_window_buffer
+            .lines()
+            // Unreachable as we checked before that this is a valid, mappable format
+            .unwrap()
+            .zip(input_lines)
+        {
+            // .lines() removed the stride
+            assert_eq!(output.len(), input.len() * 4);
+
+            for (i, pixel) in input.iter().enumerate() {
+                // Swizzle colors from RGBX to BGR
+                let [b, g, r, _] = pixel.to_le_bytes();
+                output[i * 4].write(b);
+                output[i * 4 + 1].write(g);
+                output[i * 4 + 2].write(r);
+                // TODO alpha?
+            }
+        }
         Ok(())
     }
 
-    pub fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        Err(SoftBufferError::Unimplemented)
+    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+        // TODO: Android requires the damage rect _at lock time_
+        // Since we're faking the backing buffer _anyway_, we could even fake the surface lock
+        // and lock it here (if it doesn't influence timings).
+        self.present()
     }
 }
