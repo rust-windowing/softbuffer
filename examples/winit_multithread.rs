@@ -19,16 +19,15 @@ mod ex {
 
     fn render_thread(
         window: Arc<Window>,
-        surface: Arc<Mutex<Surface>>,
-        do_render: mpsc::Receiver<()>,
+        do_render: mpsc::Receiver<Arc<Mutex<Surface>>>,
         done: mpsc::Sender<()>,
     ) {
         loop {
             println!("waiting for render...");
-            if do_render.recv().is_err() {
-                println!("surface state destroyed");
+            let Ok(surface) = do_render.recv() else {
+                println!("main thread destroyed");
                 break;
-            }
+            };
 
             // Perform the rendering.
             let mut surface = surface.lock().unwrap();
@@ -73,15 +72,6 @@ mod ex {
 
                 let context = softbuffer::Context::new(window.clone()).unwrap();
 
-                (window, context)
-            },
-            |_elwt, (window, context)| {
-                let surface = {
-                    println!("making surface...");
-                    let surface = softbuffer::Surface::new(context, window.clone()).unwrap();
-                    Arc::new(Mutex::new(surface))
-                };
-
                 // Spawn a thread to handle rendering for this specific surface. The channels will
                 // be closed and the thread will be stopped whenever this surface (the returned
                 // context below) is dropped, so that it can all be recreated again (on Android)
@@ -91,15 +81,20 @@ mod ex {
                 println!("starting thread...");
                 std::thread::spawn({
                     let window = window.clone();
-                    let surface = surface.clone();
-                    move || render_thread(window, surface, do_render, render_done)
+                    move || render_thread(window, do_render, render_done)
                 });
 
-                (surface, start_render, finish_render)
+                (window, context, start_render, finish_render)
+            },
+            |_elwt, (window, context, _start_render, _finish_render)| {
+                println!("making surface...");
+                Arc::new(Mutex::new(
+                    softbuffer::Surface::new(context, window.clone()).unwrap(),
+                ))
             },
         )
         .with_event_handler(|state, surface, event, elwt| {
-            let (window, _context) = state;
+            let (window, _context, start_render, finish_render) = state;
             elwt.set_control_flow(ControlFlow::Wait);
 
             match event {
@@ -107,12 +102,12 @@ mod ex {
                     window_id,
                     event: WindowEvent::RedrawRequested,
                 } if window_id == window.id() => {
-                    let Some((_surface, start_render, finish_render)) = surface else {
+                    let Some(surface) = surface else {
                         eprintln!("RedrawRequested fired before Resumed or after Suspended");
                         return;
                     };
                     // Start the render and then finish it.
-                    start_render.send(()).unwrap();
+                    start_render.send(surface.clone()).unwrap();
                     finish_render.recv().unwrap();
                 }
                 Event::WindowEvent {
