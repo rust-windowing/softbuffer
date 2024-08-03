@@ -6,19 +6,23 @@ use winit::keyboard::{Key, NamedKey};
 #[path = "utils/winit_app.rs"]
 mod winit_app;
 
+#[cfg(not(target_os = "android"))]
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
+    entry(EventLoop::new().unwrap())
+}
 
-    let app = winit_app::WinitAppBuilder::with_init(|elwt| {
-        let window = winit_app::make_window(elwt, |w| w);
+pub(crate) fn entry(event_loop: EventLoop<()>) {
+    let app = winit_app::WinitAppBuilder::with_init(
+        |elwt| {
+            let window = winit_app::make_window(elwt, |w| w);
 
-        let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+            let context = softbuffer::Context::new(window.clone()).unwrap();
 
-        (window, surface)
-    })
-    .with_event_handler(|state, event, elwt| {
-        let (window, surface) = state;
+            (window, context)
+        },
+        |_elwt, (window, context)| softbuffer::Surface::new(context, window.clone()).unwrap(),
+    )
+    .with_event_handler(|(window, _context), surface, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
@@ -26,6 +30,10 @@ fn main() {
                 window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
+                let Some(surface) = surface else {
+                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    return;
+                };
                 if let (Some(width), Some(height)) = {
                     let size = window.inner_size();
                     (NonZeroU32::new(size.width), NonZeroU32::new(size.height))

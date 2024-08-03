@@ -14,18 +14,20 @@ fn main() {
 
     let event_loop = EventLoop::new().unwrap();
 
-    let app = winit_app::WinitAppBuilder::with_init(move |elwt| {
-        let window = winit_app::make_window(elwt, |w| {
-            w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
-        });
+    let app = winit_app::WinitAppBuilder::with_init(
+        move |elwt| {
+            let window = winit_app::make_window(elwt, |w| {
+                w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
+            });
 
-        let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+            let context = softbuffer::Context::new(window.clone()).unwrap();
 
-        (window, surface)
-    })
-    .with_event_handler(move |state, event, elwt| {
-        let (window, surface) = state;
+            (window, context)
+        },
+        |_elwt, (window, context)| softbuffer::Surface::new(context, window.clone()).unwrap(),
+    )
+    .with_event_handler(move |state, surface, event, elwt| {
+        let (window, _context) = state;
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
@@ -33,6 +35,10 @@ fn main() {
                 window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
+                let Some(surface) = surface else {
+                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    return;
+                };
                 surface
                     .resize(
                         NonZeroU32::new(fruit.width()).unwrap(),
