@@ -47,7 +47,7 @@ features = ["Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessagin
 
 [target.'cfg(target_os = "macos")'.dependencies]
 bytemuck = { version = "1.12.3", features = ["extern_crate_alloc"] }
-core-graphics = "0.23.1"
+core-graphics = "0.24.0"
 foreign-types = "0.5.0"
 objc2 = "0.5.1"
 objc2-foundation = { version = "0.2.0", features = ["dispatch", "NSThread"] }
