@@ -49,7 +49,7 @@ impl Drop for Buffer {
 impl Buffer {
     fn new(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
         let dc = Allocator::get().allocate(window_dc);
-        assert!(dc != 0);
+        assert!(!dc.is_null());
 
         // Create a new bitmap info struct.
         let bitmap_info = BitmapInfo {
@@ -92,11 +92,11 @@ impl Buffer {
                 &bitmap_info as *const BitmapInfo as *const _,
                 Gdi::DIB_RGB_COLORS,
                 &mut pixels as *mut *mut u32 as _,
-                0,
+                ptr::null_mut(),
                 0,
             )
         };
-        assert!(bitmap != 0);
+        assert!(!bitmap.is_null());
         let pixels = NonNull::new(pixels).unwrap();
 
         unsafe {
@@ -137,10 +137,10 @@ impl Buffer {
 /// The handle to a window for software buffering.
 pub struct Win32Impl<D: ?Sized, W> {
     /// The window handle.
-    window: HWND,
+    window: OnlyUsedFromOrigin<HWND>,
 
     /// The device context for the window.
-    dc: Gdi::HDC,
+    dc: OnlyUsedFromOrigin<Gdi::HDC>,
 
     /// The buffer used to hold the image.
     buffer: Option<Buffer>,
@@ -159,7 +159,7 @@ pub struct Win32Impl<D: ?Sized, W> {
 impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
     fn drop(&mut self) {
         // Release our resources.
-        Allocator::get().release(self.window, self.dc);
+        Allocator::get().release(self.window.0, self.dc.0);
     }
 }
 
@@ -184,11 +184,21 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
                     ))
                 })()
                 .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
-                Gdi::BitBlt(self.dc, x, y, width, height, buffer.dc, x, y, Gdi::SRCCOPY);
+                Gdi::BitBlt(
+                    self.dc.0,
+                    x,
+                    y,
+                    width,
+                    height,
+                    buffer.dc,
+                    x,
+                    y,
+                    Gdi::SRCCOPY,
+                );
             }
 
             // Validate the window.
-            Gdi::ValidateRect(self.window, ptr::null_mut());
+            Gdi::ValidateRect(self.window.0, ptr::null_mut());
         }
         buffer.presented = true;
 
@@ -214,7 +224,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         let dc = Allocator::get().get_dc(hwnd);
 
         // GetDC returns null if there is a platform error.
-        if dc == 0 {
+        if dc.is_null() {
             return Err(SoftBufferError::PlatformError(
                 Some("Device Context is null".into()),
                 Some(Box::new(io::Error::last_os_error())),
@@ -223,8 +233,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         }
 
         Ok(Self {
-            dc,
-            window: hwnd,
+            dc: dc.into(),
+            window: hwnd.into(),
             buffer: None,
             handle: window,
             _display: PhantomData,
@@ -250,7 +260,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             }
         }
 
-        self.buffer = Some(Buffer::new(self.dc, width, height));
+        self.buffer = Some(Buffer::new(self.dc.0, width, height));
 
         Ok(())
     }
@@ -411,6 +421,8 @@ enum Command {
     },
 }
 
+unsafe impl Send for Command {}
+
 impl Command {
     /// Handle this command.
     ///
@@ -443,5 +455,14 @@ impl Command {
                 }
             }
         }
+    }
+}
+
+struct OnlyUsedFromOrigin<T>(T);
+unsafe impl<T> Send for OnlyUsedFromOrigin<T> {}
+
+impl<T> From<T> for OnlyUsedFromOrigin<T> {
+    fn from(t: T) -> Self {
+        Self(t)
     }
 }
