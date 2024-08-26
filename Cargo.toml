@@ -45,14 +45,20 @@ x11rb = { version = "0.13.0", features = ["allow-unsafe-code", "shm"], optional 
 version = "0.59.0"
 features = ["Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"]
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(target_vendor = "apple")'.dependencies]
 bytemuck = { version = "1.12.3", features = ["extern_crate_alloc"] }
 core-graphics = "0.24.0"
 foreign-types = "0.5.0"
-objc2 = "0.5.1"
-objc2-foundation = { version = "0.2.0", features = ["dispatch", "NSThread"] }
-objc2-app-kit = { version = "0.2.0", features = ["NSResponder", "NSView", "NSWindow"] }
-objc2-quartz-core = { version = "0.2.0", features = ["CALayer", "CATransaction"] }
+objc2 = "0.5.2"
+objc2-foundation = { version = "0.2.2", features = [
+    "NSDictionary",
+    "NSGeometry",
+    "NSKeyValueObserving",
+    "NSString",
+    "NSThread",
+    "NSValue",
+] }
+objc2-quartz-core = { version = "0.2.2", features = ["CALayer", "CATransaction"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3.63"

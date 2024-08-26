@@ -1,7 +1,7 @@
 use crate::{ContextInterface, InitError};
 use raw_window_handle::HasDisplayHandle;
 
-#[cfg(target_os = "macos")]
+#[cfg(target_vendor = "apple")]
 pub(crate) mod cg;
 #[cfg(kms_platform)]
 pub(crate) mod kms;
