@@ -45,16 +45,24 @@ fn main() {
         match event {
             Event::WindowEvent {
                 window_id,
+                event: WindowEvent::Resized(size),
+            } if window_id == window.id() => {
+                if let (Some(width), Some(height)) =
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                {
+                    // Resize surface
+                    surface.resize(width, height).unwrap();
+                }
+            }
+            Event::WindowEvent {
+                window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
-                // Grab the window's client area dimensions
-                if let (Some(width), Some(height)) = {
-                    let size = window.inner_size();
+                // Grab the window's client area dimensions, and ensure they're valid
+                let size = window.inner_size();
+                if let (Some(width), Some(height)) =
                     (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                } {
-                    // Resize surface if needed
-                    surface.resize(width, height).unwrap();
-
+                {
                     // Draw something in the window
                     let mut buffer = surface.buffer_mut().unwrap();
                     redraw(

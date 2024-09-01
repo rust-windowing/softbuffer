@@ -33,12 +33,22 @@ fn main() {
         match event {
             Event::WindowEvent {
                 window_id,
+                event: WindowEvent::Resized(size),
+            } if window_id == window.id() => {
+                if let (Some(width), Some(height)) =
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                {
+                    surface.resize(width, height).unwrap();
+                }
+            }
+            Event::WindowEvent {
+                window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
-                if let (Some(width), Some(height)) = {
-                    let size = window.inner_size();
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                } {
+                let size = window.inner_size();
+                if let (Some(width), Some(height)) =
+                    { (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) }
+                {
                     let elapsed = start.elapsed().as_secs_f64() % 1.0;
 
                     if (width.get(), height.get()) != *old_size {
@@ -48,7 +58,6 @@ fn main() {
 
                     let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
 
-                    surface.resize(width, height).unwrap();
                     let mut buffer = surface.buffer_mut().unwrap();
                     buffer.copy_from_slice(frame);
                     buffer.present().unwrap();
