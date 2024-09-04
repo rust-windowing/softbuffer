@@ -16,7 +16,15 @@ fn main() {
         let window = winit_app::make_window(elwt, |w| w);
 
         let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+        let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+
+        // Intentionally set the size of the surface to something different than the size of the window.
+        surface
+            .resize(
+                NonZeroU32::new(BUFFER_WIDTH as u32).unwrap(),
+                NonZeroU32::new(BUFFER_HEIGHT as u32).unwrap(),
+            )
+            .unwrap();
 
         (window, surface)
     })
@@ -29,13 +37,6 @@ fn main() {
                 window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
-                surface
-                    .resize(
-                        NonZeroU32::new(BUFFER_WIDTH as u32).unwrap(),
-                        NonZeroU32::new(BUFFER_HEIGHT as u32).unwrap(),
-                    )
-                    .unwrap();
-
                 let mut buffer = surface.buffer_mut().unwrap();
                 for y in 0..BUFFER_HEIGHT {
                     for x in 0..BUFFER_WIDTH {

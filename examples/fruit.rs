@@ -20,7 +20,17 @@ fn main() {
         });
 
         let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+        let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+
+        // Intentionally only set the size of the surface once, at creation.
+        // This is needed if the window chooses to ignore the size we passed in above, and for the
+        // platforms softbuffer supports that don't yet extract the size from the window.
+        surface
+            .resize(
+                NonZeroU32::new(width).unwrap(),
+                NonZeroU32::new(height).unwrap(),
+            )
+            .unwrap();
 
         (window, surface)
     })
@@ -33,13 +43,6 @@ fn main() {
                 window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
-                surface
-                    .resize(
-                        NonZeroU32::new(fruit.width()).unwrap(),
-                        NonZeroU32::new(fruit.height()).unwrap(),
-                    )
-                    .unwrap();
-
                 let mut buffer = surface.buffer_mut().unwrap();
                 let width = fruit.width() as usize;
                 for (x, y, pixel) in fruit.pixels() {

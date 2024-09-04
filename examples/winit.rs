@@ -24,14 +24,22 @@ fn main() {
         match event {
             Event::WindowEvent {
                 window_id,
+                event: WindowEvent::Resized(size),
+            } if window_id == window.id() => {
+                if let (Some(width), Some(height)) =
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                {
+                    surface.resize(width, height).unwrap();
+                }
+            }
+            Event::WindowEvent {
+                window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
-                if let (Some(width), Some(height)) = {
-                    let size = window.inner_size();
+                let size = window.inner_size();
+                if let (Some(width), Some(height)) =
                     (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                } {
-                    surface.resize(width, height).unwrap();
-
+                {
                     let mut buffer = surface.buffer_mut().unwrap();
                     for y in 0..height.get() {
                         for x in 0..width.get() {
