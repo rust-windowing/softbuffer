@@ -47,7 +47,7 @@ fn main() {
             } if window_id == window.id() => {
                 let size = window.inner_size();
                 if let (Some(width), Some(height)) =
-                    { (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) }
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
                 {
                     let elapsed = start.elapsed().as_secs_f64() % 1.0;
 
