@@ -118,7 +118,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// ## Platform Dependent Behavior
     ///
     /// - On X11, the window must be visible.
-    /// - On Apple platforms, Redox and Wayland, this function is unimplemented.
+    /// - On AppKit, UIKit, Redox and Wayland, this function is unimplemented.
     /// - On Web, this will fail if the content was supplied by
     ///   a different origin depending on the sites CORS rules.
     pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
@@ -194,7 +194,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 ///
 /// Currently [`Buffer::present`] must block copying image data on:
 /// - Web
-/// - Apple platforms
+/// - AppKit
+/// - UIKit
 pub struct Buffer<'a, D, W> {
     buffer_impl: BufferDispatch<'a, D, W>,
     _marker: PhantomData<(Arc<D>, Cell<()>)>,
