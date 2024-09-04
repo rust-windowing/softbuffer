@@ -47,7 +47,7 @@ jobs:
           - { target: x86_64-unknown-redox,     os: ubuntu-latest,   }
           - { target: x86_64-unknown-freebsd,   os: ubuntu-latest,   }
           - { target: x86_64-unknown-netbsd,    os: ubuntu-latest, options: --no-default-features, features: "x11,x11-dlopen,wayland,wayland-dlopen"  }
-          - { target: x86_64-apple-darwin,      os: macos-latest,    }
+          - { target: aarch64-apple-darwin,     os: macos-latest,    }
           - { target: wasm32-unknown-unknown,   os: ubuntu-latest,   }
         exclude:
           # Orbital doesn't follow MSRV
@@ -56,6 +56,9 @@ jobs:
         include:
           - rust_version: nightly
             platform: { target: wasm32-unknown-unknown, os: ubuntu-latest, options: "-Zbuild-std=panic_abort,std", rustflags: "-Ctarget-feature=+atomics,+bulk-memory" }
+          # Mac Catalyst is only Tier 2 since Rust 1.81
+          - rust_version: 'nightly'
+            platform: { target: aarch64-apple-ios-macabi, os: macos-latest }
 
     env:
       RUST_BACKTRACE: 1

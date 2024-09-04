@@ -186,8 +186,8 @@ make_dispatch! {
     Kms(Arc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'a, D, W>),
     #[cfg(target_os = "windows")]
     Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'a, D, W>),
-    #[cfg(target_os = "macos")]
-    CG(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'a, D, W>),
+    #[cfg(target_vendor = "apple")]
+    CoreGraphics(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'a, D, W>),
     #[cfg(target_arch = "wasm32")]
     Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'a, D, W>),
     #[cfg(target_os = "redox")]

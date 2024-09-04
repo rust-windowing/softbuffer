@@ -43,7 +43,7 @@ For now, the priority for new platforms is:
 |Android NDK|❌|
 |   AppKit  |✅|
 |  Orbital  |✅|
-|    UIKit  |❌|
+|    UIKit  |✅|
 |  Wayland  |✅|
 |    Web    |✅|
 |   Win32   |✅|

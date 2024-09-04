@@ -1,5 +1,8 @@
 # Unreleased
 
+- Added support for iOS, tvOS, watchOS and visionOS (UIKit).
+- Redo the way surfaces work on macOS to work directly with layers, which will allow initializing directly from a `CALayer` in the future.
+
 # 0.4.5
 
 - Make the `wayland-sys` dependency optional. (#223)
