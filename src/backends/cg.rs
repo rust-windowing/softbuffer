@@ -123,9 +123,9 @@ pub struct CGImpl<D, W> {
     observer: Retained<Observer>,
     color_space: SendCGColorSpace,
     /// The width of the underlying buffer.
-    width: u32,
+    width: usize,
     /// The height of the underlying buffer.
-    height: u32,
+    height: usize,
     window_handle: W,
     _display: PhantomData<D>,
 }
@@ -249,8 +249,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         // by the observer using `NSKeyValueObservingOptionInitial`).
         let size = layer.bounds().size;
         let scale_factor = layer.contentsScale();
-        let width = (size.width * scale_factor) as u32;
-        let height = (size.height * scale_factor) as u32;
+        let width = (size.width * scale_factor) as usize;
+        let height = (size.height * scale_factor) as usize;
 
         Ok(Self {
             layer: SendCALayer(layer),
@@ -270,14 +270,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.width = width.get();
-        self.height = height.get();
+        self.width = width.get() as usize;
+        self.height = height.get() as usize;
         Ok(())
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         Ok(BufferImpl {
-            buffer: vec![0; (self.width * self.height) as usize],
+            buffer: vec![0; self.width * self.height],
             imp: self,
         })
     }
@@ -306,15 +306,12 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
     fn present(self) -> Result<(), SoftBufferError> {
         let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
 
-        let width = self.imp.width as usize;
-        let height = self.imp.height as usize;
-
         let image = CGImage::new(
-            width,
-            height,
+            self.imp.width,
+            self.imp.height,
             8,
             32,
-            width * 4,
+            self.imp.width * 4,
             &self.imp.color_space.0,
             kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
             &data_provider,
