@@ -23,7 +23,8 @@ fn main() {
         let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
 
         // Intentionally only set the size of the surface once, at creation.
-        // This is needed if the window chooses to ignore the size we passed in above.
+        // This is needed if the window chooses to ignore the size we passed in above, and for the
+        // platforms softbuffer supports that don't yet extract the size from the window.
         surface
             .resize(
                 NonZeroU32::new(width).unwrap(),
