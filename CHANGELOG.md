@@ -1,7 +1,12 @@
 # Unreleased
 
+# 0.4.6
+
 - Added support for iOS, tvOS, watchOS and visionOS (UIKit).
-- Redo the way surfaces work on macOS to work directly with layers, which will allow initializing directly from a `CALayer` in the future.
+- Redo the way surfaces work on macOS to work directly with layers, which will
+  allow initializing directly from a `CALayer` in the future.
+- Update to `windows-sys` 0.59.0 and `core-graphics` v0.24.0.
+- Add an MSRV policy.
 
 # 0.4.5
 
