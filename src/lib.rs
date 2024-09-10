@@ -22,8 +22,10 @@ use std::sync::Arc;
 
 use error::InitError;
 pub use error::SoftBufferError;
+pub use backend_interface::{RGBX,RGBA};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
+use duplicate::duplicate_item;
 
 #[cfg(target_arch = "wasm32")]
 pub use backends::web::SurfaceExtWeb;
@@ -71,20 +73,35 @@ pub struct Rect {
     pub height: NonZeroU32,
 }
 
+pub trait BufferReturn {
+    type Output: Sized;
+}
+pub enum WithoutAlpha{}
+
+impl BufferReturn for WithoutAlpha{
+    type Output = RGBX;
+}
+pub enum WithAlpha{}
+
+
+impl BufferReturn for WithAlpha{
+    type Output = RGBA;
+}
+
 /// A surface for drawing to a window with software buffers.
-pub struct Surface<D, W> {
+pub struct Surface<D, W, A = WithoutAlpha> {
     /// This is boxed so that `Surface` is the same size on every platform.
-    surface_impl: Box<SurfaceDispatch<D, W>>,
+    surface_impl: Box<SurfaceDispatch<D, W, A>>,
     _marker: PhantomData<Cell<()>>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W, WithoutAlpha> {
     /// Creates a new surface for the context for the provided window.
-    pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
+    pub fn new(context: &Context<D>, window: W) -> Result<Surface<D,W,WithoutAlpha>, SoftBufferError> {
         match SurfaceDispatch::new(window, &context.context_impl) {
             Ok(surface_dispatch) => Ok(Self {
                 surface_impl: Box::new(surface_dispatch),
-                _marker: PhantomData,
+                _marker: PhantomData
             }),
             Err(InitError::Unsupported(window)) => {
                 let raw = window.window_handle()?.as_raw();
@@ -97,6 +114,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
             Err(InitError::Failure(f)) => Err(f),
         }
     }
+}
+
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W, TY> {
 
     /// Get a reference to the underlying window handle.
     pub fn window(&self) -> &W {
@@ -134,7 +159,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// - On DRM/KMS, there is no reliable and sound way to wait for the page flip to happen from within
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
-    pub fn buffer_mut(&mut self) -> Result<Buffer<'_, D, W>, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<Buffer<'_, D, W, TY>, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
             _marker: PhantomData,
@@ -142,14 +167,45 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> AsRef<W> for Surface<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W, WithAlpha> {
+    /// Creates a new surface for the context for the provided window.
+    pub fn new_with_alpha(context: &Context<D>, window: W) -> Result<Surface<D,W,WithAlpha>, SoftBufferError> {
+        match SurfaceDispatch::new_with_alpha(window, &context.context_impl) {
+            Ok(surface_dispatch) => Ok(Self {
+                surface_impl: Box::new(surface_dispatch),
+                _marker: PhantomData
+            }),
+            Err(InitError::Unsupported(window)) => {
+                let raw = window.window_handle()?.as_raw();
+                Err(SoftBufferError::UnsupportedWindowPlatform {
+                    human_readable_window_platform_name: window_handle_type_name(&raw),
+                    human_readable_display_platform_name: context.context_impl.variant_name(),
+                    window_handle: raw,
+                })
+            }
+            Err(InitError::Failure(f)) => Err(f),
+        }
+    }
+}
+
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+impl<D: HasDisplayHandle, W: HasWindowHandle> AsRef<W> for Surface<D, W, TY> {
     #[inline]
     fn as_ref(&self) -> &W {
         self.window()
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> {
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W, TY> {
     #[inline]
     fn window_handle(
         &self,
@@ -196,12 +252,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// - Web
 /// - AppKit
 /// - UIKit
-pub struct Buffer<'a, D, W> {
-    buffer_impl: BufferDispatch<'a, D, W>,
+pub struct Buffer<'a, D, W, A> {
+    buffer_impl: BufferDispatch<'a, D, W, A>,
     _marker: PhantomData<(Arc<D>, Cell<()>)>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W, TY> {
     /// Is age is the number of frames ago this buffer was last presented. So if the value is
     /// `1`, it is the same as the last frame, and if it is `2`, it is the same as the frame
     /// before that (for backends using double buffering). If the value is `0`, it is a new
@@ -244,7 +305,29 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
     }
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W> {
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W, TY>{
+    #[deprecated = "Left for backwards compatibility. Will panic in the future. Switch to using the pixels_rgb or pixels_rgba methods for better cross platform portability"]
+    pub fn pixels(&self)-> &[u32] {
+        self.buffer_impl.pixels()
+    }
+    #[deprecated = "Left for backwards compatibility. Will panic in the future. Switch to using the pixels_rgb_mut or pixels_rgba_mut methods for better cross platform portability"]
+    pub fn pixels_mut(&mut self)-> &mut [u32] {
+        self.buffer_impl.pixels_mut()
+    }
+}
+
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+#[cfg(feature = "compatibility")]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W, TY> {
     type Target = [u32];
 
     #[inline]
@@ -253,12 +336,50 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W
     }
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'a, D, W> {
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+#[cfg(feature = "compatibility")]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'a, D, W, TY> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [u32] {
         self.buffer_impl.pixels_mut()
     }
 }
+
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+#[cfg(not(feature = "compatibility"))]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W, TY> {
+    type Target = [<TY as BufferReturn>::Output];
+
+    #[inline]
+    fn deref(&self) -> &[<TY as BufferReturn>::Output]  {
+        // self.buffer_impl.pixels()
+        todo!()
+    }
+}
+
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+#[cfg(not(feature = "compatibility"))]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'a, D, W,TY> {
+    // type Target = [crate::RGBX];
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [<TY as BufferReturn>::Output] {
+        // self.buffer_impl.pixels_mut()
+        self.buffer_impl.pixels_rgb_mut()
+    }
+}
+
 
 /// There is no display handle.
 #[derive(Debug)]
@@ -330,7 +451,7 @@ fn __assert_send() {
     is_send::<Context<()>>();
     is_sync::<Context<()>>();
     is_send::<Surface<(), ()>>();
-    is_send::<Buffer<'static, (), ()>>();
+    is_send::<Buffer<'static, (), (),()>>();
 
     /// ```compile_fail
     /// use softbuffer::Surface;

@@ -2,8 +2,9 @@
 //!
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
-use crate::backend_interface::*;
+use crate::{backend_interface::*, BufferReturn, WithAlpha, WithoutAlpha};
 use crate::{Rect, SoftBufferError};
+use duplicate::duplicate_item;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
@@ -16,7 +17,8 @@ use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
 
 use windows_sys::Win32::Foundation::HWND;
-use windows_sys::Win32::Graphics::Gdi;
+use windows_sys::Win32::Graphics::Gdi::{self, BITMAPINFO, CIEXYZTRIPLE, CIEXYZ};
+use windows_sys::Win32::UI::ColorSystem::LCS_WINDOWS_COLOR_SPACE;
 
 const ZERO_QUAD: Gdi::RGBQUAD = Gdi::RGBQUAD {
     rgbBlue: 0,
@@ -113,6 +115,97 @@ impl Buffer {
         }
     }
 
+    fn new_with_alpha(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
+        let dc = Allocator::get().allocate(window_dc);
+        assert!(!dc.is_null());
+
+        // Create a new bitmap info struct.
+        let bitmap_info = BitmapInfoV4 {
+            bmi_header: Gdi::BITMAPV4HEADER {
+                bV4Size: mem::size_of::<Gdi::BITMAPV4HEADER>() as u32,
+                bV4Width: width.get(),
+                bV4Height: -height.get(),
+                bV4Planes: 1,
+                bV4BitCount: 32,
+                bV4V4Compression: Gdi::BI_BITFIELDS,
+                bV4SizeImage: 0,
+                bV4XPelsPerMeter: 0,
+                bV4YPelsPerMeter: 0,
+                bV4ClrUsed: 0,
+                bV4ClrImportant: 0,
+                bV4RedMask: 0x00ff0000,
+                bV4GreenMask: 0x0000ff00,
+                bV4BlueMask: 0xff0000ff,
+                bV4AlphaMask: 0xff000000,
+                bV4CSType: LCS_WINDOWS_COLOR_SPACE as u32,
+                bV4Endpoints: CIEXYZTRIPLE{
+                    ciexyzRed: CIEXYZ{
+                        ciexyzX: 0,
+                        ciexyzY: 0,
+                        ciexyzZ: 0,
+                    },
+                    ciexyzGreen: CIEXYZ{
+                        ciexyzX: 0,
+                        ciexyzY: 0,
+                        ciexyzZ: 0,
+                    },
+                    ciexyzBlue: CIEXYZ{
+                        ciexyzX: 0,
+                        ciexyzY: 0,
+                        ciexyzZ: 0,
+                    },
+                },
+                bV4GammaRed: 0,
+                bV4GammaGreen: 0,
+                bV4GammaBlue: 0,
+            },
+            bmi_colors: [
+                Gdi::RGBQUAD {
+                    rgbRed: 0xff,
+                    ..ZERO_QUAD
+                },
+                Gdi::RGBQUAD {
+                    rgbGreen: 0xff,
+                    ..ZERO_QUAD
+                },
+                Gdi::RGBQUAD {
+                    rgbBlue: 0xff,
+                    ..ZERO_QUAD
+                },
+            ],
+        };
+
+        // XXX alignment?
+        // XXX better to use CreateFileMapping, and pass hSection?
+        // XXX test return value?
+        let mut pixels: *mut u32 = ptr::null_mut();
+        let bitmap = unsafe {
+            Gdi::CreateDIBSection(
+                dc,
+                &bitmap_info as *const BitmapInfoV4 as *const _,
+                Gdi::DIB_RGB_COLORS,
+                &mut pixels as *mut *mut u32 as _,
+                ptr::null_mut(),
+                0,
+            )
+        };
+        assert!(!bitmap.is_null());
+        let pixels = NonNull::new(pixels).unwrap();
+
+        unsafe {
+            Gdi::SelectObject(dc, bitmap);
+        }
+
+        Self {
+            dc,
+            bitmap,
+            width,
+            height,
+            pixels,
+            presented: false,
+        }
+    }
+
     #[inline]
     fn pixels(&self) -> &[u32] {
         unsafe {
@@ -135,7 +228,7 @@ impl Buffer {
 }
 
 /// The handle to a window for software buffering.
-pub struct Win32Impl<D: ?Sized, W> {
+pub struct Win32Impl<D: ?Sized, W, A> {
     /// The window handle.
     window: OnlyUsedFromOrigin<HWND>,
 
@@ -154,9 +247,10 @@ pub struct Win32Impl<D: ?Sized, W> {
     ///
     /// We don't use this, but other code might.
     _display: PhantomData<D>,
+    _marker: PhantomData<A>,
 }
 
-impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
+impl<D: ?Sized, W, A> Drop for Win32Impl<D, W, A> {
     fn drop(&mut self) {
         // Release our resources.
         Allocator::get().release(self.window.0, self.dc.0);
@@ -170,7 +264,14 @@ struct BitmapInfo {
     bmi_colors: [Gdi::RGBQUAD; 3],
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
+/// The Win32-compatible bitmap information.
+#[repr(C)]
+struct BitmapInfoV4 {
+    bmi_header: Gdi::BITMAPV4HEADER,
+    bmi_colors: [Gdi::RGBQUAD; 3],
+}
+
+impl<D: HasDisplayHandle, W: HasWindowHandle, A> Win32Impl<D, W, A> {
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let buffer = self.buffer.as_mut().unwrap();
         unsafe {
@@ -206,9 +307,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Impl<D, W> {
+#[duplicate_item(
+    TY                internal_buffer_function;
+    [ WithAlpha ]     [new_with_alpha];
+    [ WithoutAlpha ]  [new];
+  )]
+impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for Win32Impl<D, W, TY> {
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a> = BufferImpl<'a, D, W, TY> where Self: 'a;
 
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
     fn new(window: W, _display: &D) -> Result<Self, crate::error::InitError<W>> {
@@ -238,6 +344,45 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             buffer: None,
             handle: window,
             _display: PhantomData,
+            _marker: PhantomData,
+        })
+    }
+
+    fn new_with_alpha(
+        window: W,
+        context: &Self::Context,
+    ) -> Result<Self, crate::error::InitError<W>>
+    where
+        W: Sized,
+        Self: Sized,
+    {
+        let raw = window.window_handle()?.as_raw();
+        let handle = match raw {
+            RawWindowHandle::Win32(handle) => handle,
+            _ => return Err(crate::InitError::Unsupported(window)),
+        };
+
+        // Get the handle to the device context.
+        // SAFETY: We have confirmed that the window handle is valid.
+        let hwnd = handle.hwnd.get() as HWND;
+        let dc = Allocator::get().get_dc(hwnd);
+
+        // GetDC returns null if there is a platform error.
+        if dc.is_null() {
+            return Err(SoftBufferError::PlatformError(
+                Some("Device Context is null".into()),
+                Some(Box::new(io::Error::last_os_error())),
+            )
+            .into());
+        }
+
+        Ok(Self {
+            dc: dc.into(),
+            window: hwnd.into(),
+            buffer: None,
+            handle: window,
+            _display: PhantomData,
+            _marker: PhantomData,
         })
     }
 
@@ -260,12 +405,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             }
         }
 
-        self.buffer = Some(Buffer::new(self.dc.0, width, height));
+        self.buffer = Some(Buffer::internal_buffer_function(self.dc.0, width, height));
 
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W, TY>, SoftBufferError> {
         if self.buffer.is_none() {
             panic!("Must set size of surface before calling `buffer_mut()`");
         }
@@ -279,9 +424,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
     }
 }
 
-pub struct BufferImpl<'a, D, W>(&'a mut Win32Impl<D, W>);
+pub struct BufferImpl<'a, D, W, A>(&'a mut Win32Impl<D, W, A>);
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+#[duplicate_item(
+    TY;
+    [ WithAlpha ];
+    [ WithoutAlpha ];
+  )]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface<TY> for BufferImpl<'a, D, W, TY> {
     #[inline]
     fn pixels(&self) -> &[u32] {
         self.0.buffer.as_ref().unwrap().pixels()
@@ -290,6 +440,14 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
     #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
         self.0.buffer.as_mut().unwrap().pixels_mut()
+    }
+
+    fn pixels_rgb_mut(&mut self) -> &mut [<TY as BufferReturn>::Output] {
+        unsafe {
+            std::mem::transmute::<&mut [u32], &mut [<TY as BufferReturn>::Output]>(
+                self.0.buffer.as_mut().unwrap().pixels_mut(),
+            )
+        }
     }
 
     fn age(&self) -> u8 {
