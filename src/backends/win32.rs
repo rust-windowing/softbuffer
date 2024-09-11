@@ -408,6 +408,14 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> BufferInterfa
         self.0.buffer.as_mut().unwrap().pixels_mut()
     }
 
+    fn pixels_rgb(&self) -> &[<A as BufferReturn>::Output] {
+        unsafe {
+            std::mem::transmute::<&[u32], &[<A as BufferReturn>::Output]>(
+                self.0.buffer.as_ref().unwrap().pixels(),
+            )
+        }
+    }
+
     fn pixels_rgb_mut(&mut self) -> &mut [<A as BufferReturn>::Output] {
         unsafe {
             std::mem::transmute::<&mut [u32], &mut [<A as BufferReturn>::Output]>(
