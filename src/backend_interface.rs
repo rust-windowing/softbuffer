@@ -197,7 +197,6 @@ impl RGBA{
     }
 }
 
-//TODO, change this to be a different impl based on platform
 impl RGBFormat for RGBA{
     fn to_rgba_format(self) -> crate::formats::RGBA {
         crate::formats::RGBA{
