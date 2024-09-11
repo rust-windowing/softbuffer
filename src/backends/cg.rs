@@ -7,7 +7,6 @@ use core_graphics::base::{
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::data_provider::CGDataProvider;
 use core_graphics::image::CGImage;
-use duplicate::duplicate_item;
 use foreign_types::ForeignType;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
@@ -144,15 +143,10 @@ impl<D, W, A> Drop for CGImpl<D, W, A> {
     }
 }
 
-#[duplicate_item(
-    TY;
-    [ WithAlpha ];
-    [ WithoutAlpha ];
-  )]
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for CGImpl<D, W, TY>
+impl<D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> SurfaceInterface<D, W, A> for CGImpl<D, W, A>
 {
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W, TY> where Self: 'a;
+    type Buffer<'a> = BufferImpl<'a, D, W, A> where Self: 'a;
 
     fn new(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
         // `NSView`/`UIView` can only be accessed from the main thread.
@@ -273,121 +267,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for CGI
     }
 
     fn new_with_alpha(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
-        // `NSView`/`UIView` can only be accessed from the main thread.
-        let _mtm = MainThreadMarker::new().ok_or(SoftBufferError::PlatformError(
-            Some("can only access Core Graphics handles from the main thread".to_string()),
-            None,
-        ))?;
-
-        let root_layer = match window_src.window_handle()?.as_raw() {
-            RawWindowHandle::AppKit(handle) => {
-                // SAFETY: The pointer came from `WindowHandle`, which ensures that the
-                // `AppKitWindowHandle` contains a valid pointer to an `NSView`.
-                //
-                // We use `NSObject` here to avoid importing `objc2-app-kit`.
-                let view: &NSObject = unsafe { handle.ns_view.cast().as_ref() };
-
-                // Force the view to become layer backed
-                let _: () = unsafe { msg_send![view, setWantsLayer: Bool::YES] };
-
-                // SAFETY: `-[NSView layer]` returns an optional `CALayer`
-                let layer: Option<Retained<CALayer>> = unsafe { msg_send_id![view, layer] };
-                layer.expect("failed making the view layer-backed")
-            }
-            RawWindowHandle::UiKit(handle) => {
-                // SAFETY: The pointer came from `WindowHandle`, which ensures that the
-                // `UiKitWindowHandle` contains a valid pointer to an `UIView`.
-                //
-                // We use `NSObject` here to avoid importing `objc2-ui-kit`.
-                let view: &NSObject = unsafe { handle.ui_view.cast().as_ref() };
-
-                // SAFETY: `-[UIView layer]` returns `CALayer`
-                let layer: Retained<CALayer> = unsafe { msg_send_id![view, layer] };
-                layer
-            }
-            _ => return Err(InitError::Unsupported(window_src)),
-        };
-
-        // Add a sublayer, to avoid interfering with the root layer, since setting the contents of
-        // e.g. a view-controlled layer is brittle.
-        let layer = CALayer::new();
-        root_layer.addSublayer(&layer);
-
-        // Set the anchor point and geometry. Softbuffer's uses a coordinate system with the origin
-        // in the top-left corner.
-        //
-        // NOTE: This doesn't really matter unless we start modifying the `position` of our layer
-        // ourselves, but it's nice to have in place.
-        layer.setAnchorPoint(CGPoint::new(0.0, 0.0));
-        layer.setGeometryFlipped(true);
-
-        // Do not use auto-resizing mask.
-        //
-        // This is done to work around a bug in macOS 14 and above, where views using auto layout
-        // may end up setting fractional values as the bounds, and that in turn doesn't propagate
-        // properly through the auto-resizing mask and with contents gravity.
-        //
-        // Instead, we keep the bounds of the layer in sync with the root layer using an observer,
-        // see below.
-        //
-        // layer.setAutoresizingMask(kCALayerHeightSizable | kCALayerWidthSizable);
-
-        let observer = Observer::new(&layer);
-        // Observe changes to the root layer's bounds and scale factor, and apply them to our layer.
-        //
-        // The previous implementation updated the scale factor inside `resize`, but this works
-        // poorly with transactions, and is generally inefficient. Instead, we update the scale
-        // factor only when needed because the super layer's scale factor changed.
-        //
-        // Note that inherent in this is an explicit design decision: We control the `bounds` and
-        // `contentsScale` of the layer directly, and instead let the `resize` call that the user
-        // controls only be the size of the underlying buffer.
-        //
-        // SAFETY: Observer deregistered in `Drop` before the observer object is deallocated.
-        unsafe {
-            root_layer.addObserver_forKeyPath_options_context(
-                &observer,
-                ns_string!("contentsScale"),
-                NSKeyValueObservingOptions::NSKeyValueObservingOptionNew
-                    | NSKeyValueObservingOptions::NSKeyValueObservingOptionInitial,
-                ptr::null_mut(),
-            );
-            root_layer.addObserver_forKeyPath_options_context(
-                &observer,
-                ns_string!("bounds"),
-                NSKeyValueObservingOptions::NSKeyValueObservingOptionNew
-                    | NSKeyValueObservingOptions::NSKeyValueObservingOptionInitial,
-                ptr::null_mut(),
-            );
-        }
-
-        // Set the content so that it is placed in the top-left corner if it does not have the same
-        // size as the surface itself.
-        //
-        // TODO(madsmtm): Consider changing this to `kCAGravityResize` to stretch the content if
-        // resized to something that doesn't fit, see #177.
-        layer.setContentsGravity(unsafe { kCAGravityTopLeft });
-
-        // Initialize color space here, to reduce work later on.
-        let color_space = CGColorSpace::create_device_rgb();
-
-        // Grab initial width and height from the layer (whose properties have just been initialized
-        // by the observer using `NSKeyValueObservingOptionInitial`).
-        let size = layer.bounds().size;
-        let scale_factor = layer.contentsScale();
-        let width = (size.width * scale_factor) as usize;
-        let height = (size.height * scale_factor) as usize;
-
-        Ok(Self {
-            layer: SendCALayer(layer),
-            root_layer: SendCALayer(root_layer),
-            observer,
-            color_space: SendCGColorSpace(color_space),
-            width,
-            height,
-            _display: PhantomData,
-            window_handle: window_src,
-        })
+        Self::new(window_src, _display)
     }
 
     #[inline]
@@ -401,7 +281,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for CGI
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W, TY>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W, A>, SoftBufferError> {
         Ok(BufferImpl {
             buffer: vec![0; self.width * self.height],
             imp: self,
@@ -415,12 +295,8 @@ pub struct BufferImpl<'a, D, W, A> {
     buffer: Vec<u32>,
     _marker: PhantomData<A>,
 }
-#[duplicate_item(
-    TY               platform_alpha_mode;
-    [ WithAlpha ]    [kCGImageAlphaFirst];
-    [ WithoutAlpha ] [kCGImageAlphaNoneSkipFirst];
-  )]
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface<TY> for BufferImpl<'a, D, W, TY> {
+
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> BufferInterface<A> for BufferImpl<'a, D, W, A> {
     #[inline]
     fn pixels(&self) -> &[u32] {
         &self.buffer
@@ -431,8 +307,12 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface<TY> for Buffer
         &mut self.buffer
     }
 
-    fn pixels_rgb_mut(&mut self) -> &mut[<TY as BufferReturn>::Output] {
-        unsafe{std::mem::transmute::<& mut [u32],&mut [<TY as BufferReturn>::Output]>(&mut self.buffer[..])}
+    fn pixels_rgb(&self) -> &[<A as BufferReturn>::Output] {
+        unsafe{std::mem::transmute::<&[u32],& [<A as BufferReturn>::Output]>(&self.buffer[..])}
+    }
+
+    fn pixels_rgb_mut(&mut self) -> &mut[<A as BufferReturn>::Output] {
+        unsafe{std::mem::transmute::<& mut [u32],&mut [<A as BufferReturn>::Output]>(&mut self.buffer[..])}
     }
 
     fn age(&self) -> u8 {
@@ -442,6 +322,13 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface<TY> for Buffer
     fn present(self) -> Result<(), SoftBufferError> {
         let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
 
+
+        let bitmap_mode = if A::ALPHA_MODE{
+            kCGImageAlphaFirst
+        }else{
+            kCGImageAlphaNoneSkipFirst
+        };
+
         let image = CGImage::new(
             self.imp.width,
             self.imp.height,
@@ -449,7 +336,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface<TY> for Buffer
             32,
             self.imp.width * 4,
             &self.imp.color_space.0,
-            kCGBitmapByteOrder32Little | platform_alpha_mode,
+            kCGBitmapByteOrder32Little | bitmap_mode,
             &data_provider,
             false,
             kCGRenderingIntentDefault,

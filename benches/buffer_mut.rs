@@ -53,7 +53,7 @@ fn buffer_mut(c: &mut Criterion) {
                     let mut buffer = surface.buffer_mut().unwrap();
                     b.iter(|| {
                         for _ in 0..500 {
-                            let x: &mut [u32] = &mut buffer.pixels_mut();
+                            let x: &mut [u32] = &mut buffer.pixels_platform_dependent_mut();
                             black_box(x);
                         }
                     });

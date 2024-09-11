@@ -4,7 +4,6 @@
 
 use crate::{backend_interface::*, BufferReturn, WithAlpha, WithoutAlpha};
 use crate::{Rect, SoftBufferError};
-use duplicate::duplicate_item;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
@@ -307,14 +306,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle, A> Win32Impl<D, W, A> {
     }
 }
 
-#[duplicate_item(
-    TY                internal_buffer_function;
-    [ WithAlpha ]     [new_with_alpha];
-    [ WithoutAlpha ]  [new];
-  )]
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for Win32Impl<D, W, TY> {
+impl<D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> SurfaceInterface<D, W, A> for Win32Impl<D, W, A> {
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W, TY> where Self: 'a;
+    type Buffer<'a> = BufferImpl<'a, D, W, A> where Self: 'a;
 
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
     fn new(window: W, _display: &D) -> Result<Self, crate::error::InitError<W>> {
@@ -356,34 +350,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for Win
         W: Sized,
         Self: Sized,
     {
-        let raw = window.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::Win32(handle) => handle,
-            _ => return Err(crate::InitError::Unsupported(window)),
-        };
-
-        // Get the handle to the device context.
-        // SAFETY: We have confirmed that the window handle is valid.
-        let hwnd = handle.hwnd.get() as HWND;
-        let dc = Allocator::get().get_dc(hwnd);
-
-        // GetDC returns null if there is a platform error.
-        if dc.is_null() {
-            return Err(SoftBufferError::PlatformError(
-                Some("Device Context is null".into()),
-                Some(Box::new(io::Error::last_os_error())),
-            )
-            .into());
-        }
-
-        Ok(Self {
-            dc: dc.into(),
-            window: hwnd.into(),
-            buffer: None,
-            handle: window,
-            _display: PhantomData,
-            _marker: PhantomData,
-        })
+        Self::new(window,context)
     }
 
     #[inline]
@@ -405,12 +372,16 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for Win
             }
         }
 
-        self.buffer = Some(Buffer::internal_buffer_function(self.dc.0, width, height));
+        if A::ALPHA_MODE{
+            self.buffer = Some(Buffer::new_with_alpha(self.dc.0, width, height));
+        }else{
+            self.buffer = Some(Buffer::new(self.dc.0, width, height));
+        };
 
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W, TY>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W, A>, SoftBufferError> {
         if self.buffer.is_none() {
             panic!("Must set size of surface before calling `buffer_mut()`");
         }
@@ -426,12 +397,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W, TY> for Win
 
 pub struct BufferImpl<'a, D, W, A>(&'a mut Win32Impl<D, W, A>);
 
-#[duplicate_item(
-    TY;
-    [ WithAlpha ];
-    [ WithoutAlpha ];
-  )]
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface<TY> for BufferImpl<'a, D, W, TY> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> BufferInterface<A> for BufferImpl<'a, D, W, A> {
     #[inline]
     fn pixels(&self) -> &[u32] {
         self.0.buffer.as_ref().unwrap().pixels()
@@ -442,9 +408,9 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface<TY> for Buffer
         self.0.buffer.as_mut().unwrap().pixels_mut()
     }
 
-    fn pixels_rgb_mut(&mut self) -> &mut [<TY as BufferReturn>::Output] {
+    fn pixels_rgb_mut(&mut self) -> &mut [<A as BufferReturn>::Output] {
         unsafe {
-            std::mem::transmute::<&mut [u32], &mut [<TY as BufferReturn>::Output]>(
+            std::mem::transmute::<&mut [u32], &mut [<A as BufferReturn>::Output]>(
                 self.0.buffer.as_mut().unwrap().pixels_mut(),
             )
         }

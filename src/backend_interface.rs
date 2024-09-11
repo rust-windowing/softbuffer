@@ -1,6 +1,6 @@
 //! Interface implemented by backends
 
-use crate::{BufferReturn, InitError, Rect, SoftBufferError};
+use crate::{formats::RGBFormat, BufferReturn, InitError, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{fmt::Debug, num::NonZeroU32};
@@ -40,15 +40,18 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
 }
 
 pub(crate) trait BufferInterface<A: BufferReturn> {
-    #[deprecated = "Left for backwards compatibility. Will panic in the future. Switch to using the pixels_rgb or pixels_rgba methods for better cross platform portability"]
+    // #[deprecated = "Left for backwards compatibility. Will panic in the future. Switch to using the pixels_rgb or pixels_rgba methods for better cross platform portability"]
     fn pixels(&self) -> &[u32];
-    #[deprecated = "Left for backwards compatibility. Will panic in the future. Switch to using the pixels_rgb_mut or pixels_rgba_mut methods for better cross platform portability"]
+    // #[deprecated = "Left for backwards compatibility. Will panic in the future. Switch to using the pixels_rgb_mut or pixels_rgba_mut methods for better cross platform portability"]
     fn pixels_mut(&mut self) -> &mut [u32];
+    fn pixels_rgb(&self) -> &[<A as BufferReturn>::Output];
     fn pixels_rgb_mut(&mut self) -> &mut[<A as BufferReturn>::Output];
     fn age(&self) -> u8;
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError>;
     fn present(self) -> Result<(), SoftBufferError>;
 }
+
+
 
 macro_rules! define_rgbx_little_endian {
     (
@@ -60,6 +63,7 @@ macro_rules! define_rgbx_little_endian {
         $(
             $(#[$attr])*
             #[repr(C)]
+            #[derive(Copy,Clone)]
             pub struct RGBX{
                 $forth_vis $forth: u8,
                 $third_vis $third: u8,
@@ -80,6 +84,7 @@ macro_rules! define_rgba_little_endian {
         $(
             $(#[$attr])*
             #[repr(C)]
+            #[derive(Copy,Clone)]
             pub struct RGBA{
                 $forth_vis $forth: u8,
                 $third_vis $third: u8,
@@ -138,7 +143,7 @@ impl RGBX{
         if r > MAX_U8 || g > MAX_U8 || b > MAX_U8{
             Err(SoftBufferError::PrimitiveOutsideOfU8Range)
         }else{
-            Ok(Self { r: r.as_(), g: g.as_(), b: b.as_(), x: 255 })
+            Ok(Self { r: r.as_(), g: g.as_(), b: b.as_(), x: 0 })
         }
     }
 
@@ -152,6 +157,14 @@ impl RGBX{
     {
         Self { r: r.as_(), g: g.as_(), b: b.as_(), x: 255 }
     }
+
+    // pub fn new_from_u32(u32: u32) -> Self{
+    //     todo!()
+    // }
+
+    // pub fn as_u32(&self) -> &u32{
+    //     unsafe{std::mem::transmute(self)}
+    // }
 }
 
 impl RGBA{
@@ -181,5 +194,83 @@ impl RGBA{
         T: AsPrimitive<u8>
     {
         Self { r: r.as_(), g: g.as_(), b: b.as_(), a: a.as_() }
+    }
+}
+
+//TODO, change this to be a different impl based on platform
+impl RGBFormat for RGBA{
+    fn to_rgba_format(self) -> crate::formats::RGBA {
+        crate::formats::RGBA{
+            a: self.a,
+            b: self.b,
+            g: self.g,
+            r: self.r,
+        }
+    }
+    
+    fn from_rgba_format(rgba: crate::formats::RGBA) -> Self {
+        Self{
+            b: rgba.b,
+            g: rgba.g,
+            r: rgba.r,
+            a: rgba.a,
+        }
+    }
+    
+    fn to_rgba_u8_format(self) -> crate::formats::RGBAu8 {
+        crate::formats::RGBAu8{
+            a: self.a,
+            b: self.b,
+            g: self.g,
+            r: self.r,
+        }
+    }
+    
+    fn from_rgba_u8_format(rgba: crate::formats::RGBAu8) -> Self {
+        Self{
+            b: rgba.b,
+            g: rgba.g,
+            r: rgba.r,
+            a: rgba.a,
+        }
+    }
+    
+}
+
+impl RGBFormat for RGBX{
+    fn to_rgba_format(self) -> crate::formats::RGBA {
+        crate::formats::RGBA{
+            a: self.x,
+            b: self.b,
+            g: self.g,
+            r: self.r,
+        }
+    }
+    
+    fn from_rgba_format(rgba: crate::formats::RGBA) -> Self {
+        Self{
+            b: rgba.b,
+            g: rgba.g,
+            r: rgba.r,
+            x: rgba.a,
+        }
+    }
+    
+    fn to_rgba_u8_format(self) -> crate::formats::RGBAu8 {
+        crate::formats::RGBAu8{
+            a: self.x,
+            b: self.b,
+            g: self.g,
+            r: self.r,
+        }
+    }
+    
+    fn from_rgba_u8_format(rgba: crate::formats::RGBAu8) -> Self {
+        Self{
+            b: rgba.b,
+            g: rgba.g,
+            r: rgba.r,
+            x: rgba.a,
+        }
     }
 }
