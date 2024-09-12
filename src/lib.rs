@@ -13,7 +13,7 @@ use backend_interface::*;
 use formats::RGBFormat;
 mod backends;
 mod error;
-mod formats;
+pub mod formats;
 mod util;
 
 use std::cell::Cell;

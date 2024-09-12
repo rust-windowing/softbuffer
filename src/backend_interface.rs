@@ -64,6 +64,14 @@ macro_rules! define_rgbx_little_endian {
             $(#[$attr])*
             #[repr(C)]
             #[derive(Copy,Clone)]
+            /// If you want to modify an RGBX returned from a ```buffer[index]``` you can modify the r,g,b fields directly, as doing that is completely platform independent
+            /// # Example:
+            /// ```rust
+            /// let pixel = &mut buffer[index];
+            /// pixel.r = 255;
+            /// pixel.g = 255;
+            /// pixel.b = 255;
+            /// ```
             pub struct RGBX{
                 $forth_vis $forth: u8,
                 $third_vis $third: u8,
@@ -85,6 +93,15 @@ macro_rules! define_rgba_little_endian {
             $(#[$attr])*
             #[repr(C)]
             #[derive(Copy,Clone)]
+            /// If you want to modify an RGBA returned from a ```buffer[index]``` you can modify the r,g,b,a fields directly, as doing that is completely platform independent
+            /// # Example:
+            /// ```rust
+            /// let pixel = &mut buffer[index];
+            /// pixel.r = 255;
+            /// pixel.g = 255;
+            /// pixel.b = 255;
+            /// pixel.a = 255;
+            /// ```
             pub struct RGBA{
                 $forth_vis $forth: u8,
                 $third_vis $third: u8,
@@ -158,13 +175,32 @@ impl RGBX{
         Self { r: r.as_(), g: g.as_(), b: b.as_(), x: 255 }
     }
 
-    // pub fn new_from_u32(u32: u32) -> Self{
-    //     todo!()
-    // }
+    /// Creates a RGBX from a u32
+    /// It is not recommended to use this function as you need to ensure that the u32 matches the format expected by your target platform
+    ///
+    /// Instead it is better if you must create an RGBX from a u32, to instead use the ```softbuffer::formats::RGBFormat```, that way you can use a
+    /// specific format that is not platform dependent, and if using the correct format for your platform, this is a Zero Cost abstraction.
+    /// ```rust
+    /// RGBA::from_rgba_format(softbuffer::formats::RGBA::new_from_u32(u32_rgba))
+    /// ```
+    pub fn new_from_u32_platform_dependent(u32: u32) -> Self{
+        unsafe{std::mem::transmute(u32)}
+    }
 
-    // pub fn as_u32(&self) -> &u32{
-    //     unsafe{std::mem::transmute(self)}
-    // }
+    /// Creates a u32 from a RGBX
+    /// It is not recommended to use this function as is will be in whatever format your platform uses
+    /// 
+    /// If you want to modify an RGBX returned from a ```buffer[index]``` you can modify the r,g,b fields directly, as doing that is completely platform independent
+    /// # Example:
+    /// ```rust
+    /// let pixel = &mut buffer[index];
+    /// pixel.r = 255;
+    /// pixel.g = 255;
+    /// pixel.b = 255;
+    /// ```
+    pub fn as_u32(&self) -> &u32{
+        unsafe{std::mem::transmute(self)}
+    }
 }
 
 impl RGBA{
@@ -195,81 +231,89 @@ impl RGBA{
     {
         Self { r: r.as_(), g: g.as_(), b: b.as_(), a: a.as_() }
     }
+
+    /// Creates a RGBA from a u32
+    /// It is not recommended to use this function as you need to ensure that the u32 matches the format expected by your target platform
+    ///
+    /// Instead it is better if you must create an RGBA from a u32, to instead use the ```softbuffer::formats::RGBFormat```, that way you can use a
+    /// specific format that is not platform dependent, and if using the correct format for your platform, this is a Zero Cost abstraction.
+    /// ```rust
+    /// RGBA::from_rgba_format(softbuffer::formats::RGBA::new_from_u32(u32_rgba))
+    /// ```
+    #[inline]
+    pub fn new_from_u32_platform_dependent(u32: u32) -> Self{
+        unsafe{std::mem::transmute(u32)}
+    }
+
+    /// Creates a u32 from a RGBA
+    /// It is not recommended to use this function as is will be in whatever format your platform uses
+    /// 
+    /// If you want to modify an RGBA returned from a ```buffer[index]``` you can modify the r,g,b fields directly, as doing that is completely platform independent
+    /// # Example:
+    /// ```rust
+    /// let pixel = &mut buffer[index];
+    /// pixel.r = 255;
+    /// pixel.g = 255;
+    /// pixel.b = 255;
+    /// pixel.a = 255;
+    /// ```
+    #[inline]
+    pub fn as_u32(&self) -> &u32{
+        unsafe{std::mem::transmute(self)}
+    }
 }
 
-impl RGBFormat for RGBA{
-    fn to_rgba_format(self) -> crate::formats::RGBA {
-        crate::formats::RGBA{
-            a: self.a,
-            b: self.b,
-            g: self.g,
-            r: self.r,
+macro_rules! impl_conversions {
+    (
+        $(
+            $to_func: ident => $from_func: ident => $to_type:ident;
+        )*
+    ) => {
+        impl RGBFormat for RGBA{
+            $(
+                fn $to_func(self) -> crate::formats::$to_type {
+                    crate::formats::$to_type{
+                        a: self.a,
+                        b: self.b,
+                        g: self.g,
+                        r: self.r,
+                    }
+                }
+                fn $from_func(rgba: crate::formats::$to_type) -> Self {
+                    Self{
+                        b: rgba.b,
+                        g: rgba.g,
+                        r: rgba.r,
+                        a: rgba.a,
+                    }
+                }
+            )*
         }
-    }
-    
-    fn from_rgba_format(rgba: crate::formats::RGBA) -> Self {
-        Self{
-            b: rgba.b,
-            g: rgba.g,
-            r: rgba.r,
-            a: rgba.a,
+        impl RGBFormat for RGBX{
+            $(
+                fn $to_func(self) -> crate::formats::$to_type {
+                    crate::formats::$to_type{
+                        a: self.x,
+                        b: self.b,
+                        g: self.g,
+                        r: self.r,
+                    }
+                }
+                fn $from_func(rgba: crate::formats::$to_type) -> Self {
+                    Self{
+                        b: rgba.b,
+                        g: rgba.g,
+                        r: rgba.r,
+                        x: rgba.a,
+                    }
+                }
+            )*
         }
-    }
-    
-    fn to_rgba_u8_format(self) -> crate::formats::RGBAu8 {
-        crate::formats::RGBAu8{
-            a: self.a,
-            b: self.b,
-            g: self.g,
-            r: self.r,
-        }
-    }
-    
-    fn from_rgba_u8_format(rgba: crate::formats::RGBAu8) -> Self {
-        Self{
-            b: rgba.b,
-            g: rgba.g,
-            r: rgba.r,
-            a: rgba.a,
-        }
-    }
-    
+    };
 }
 
-impl RGBFormat for RGBX{
-    fn to_rgba_format(self) -> crate::formats::RGBA {
-        crate::formats::RGBA{
-            a: self.x,
-            b: self.b,
-            g: self.g,
-            r: self.r,
-        }
-    }
-    
-    fn from_rgba_format(rgba: crate::formats::RGBA) -> Self {
-        Self{
-            b: rgba.b,
-            g: rgba.g,
-            r: rgba.r,
-            x: rgba.a,
-        }
-    }
-    
-    fn to_rgba_u8_format(self) -> crate::formats::RGBAu8 {
-        crate::formats::RGBAu8{
-            a: self.x,
-            b: self.b,
-            g: self.g,
-            r: self.r,
-        }
-    }
-    
-    fn from_rgba_u8_format(rgba: crate::formats::RGBAu8) -> Self {
-        Self{
-            b: rgba.b,
-            g: rgba.g,
-            r: rgba.r,
-            x: rgba.a,
-        }
-    }
+impl_conversions!{
+    to_rgba_format => from_rgba_format => RGBA;
+    to_rgba_u8_format => from_rgba_u8_format => RGBAu8;
+    to_argb_format => from_argb_format => ARGB;
 }
