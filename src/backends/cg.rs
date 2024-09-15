@@ -1,8 +1,8 @@
-use crate::backend_interface::*;
+use crate::{backend_interface::*, BufferReturn, WithAlpha, WithoutAlpha};
 use crate::error::InitError;
 use crate::{Rect, SoftBufferError};
 use core_graphics::base::{
-    kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
+    kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault, kCGImageAlphaFirst
 };
 use core_graphics::color_space::CGColorSpace;
 use core_graphics::data_provider::CGDataProvider;
@@ -19,6 +19,7 @@ use objc2_foundation::{
 use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
+// use core::slice::SlicePattern;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -113,7 +114,7 @@ impl Observer {
     }
 }
 
-pub struct CGImpl<D, W> {
+pub struct CGImpl<D, W, A> {
     /// Our layer.
     layer: SendCALayer,
     /// The layer that our layer was created from.
@@ -127,10 +128,10 @@ pub struct CGImpl<D, W> {
     /// The height of the underlying buffer.
     height: usize,
     window_handle: W,
-    _display: PhantomData<D>,
+    _display: PhantomData<(D,A)>,
 }
 
-impl<D, W> Drop for CGImpl<D, W> {
+impl<D, W, A> Drop for CGImpl<D, W, A> {
     fn drop(&mut self) {
         // SAFETY: Registered in `new`, must be removed before the observer is deallocated.
         unsafe {
@@ -142,9 +143,10 @@ impl<D, W> Drop for CGImpl<D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> SurfaceInterface<D, W, A> for CGImpl<D, W, A>
+{
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a> = BufferImpl<'a, D, W, A> where Self: 'a;
 
     fn new(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
         // `NSView`/`UIView` can only be accessed from the main thread.
@@ -264,6 +266,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         })
     }
 
+    fn new_with_alpha(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
+        Self::new(window_src, _display)
+    }
+
     #[inline]
     fn window(&self) -> &W {
         &self.window_handle
@@ -275,20 +281,22 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W, A>, SoftBufferError> {
         Ok(BufferImpl {
             buffer: vec![0; self.width * self.height],
             imp: self,
+            _marker: PhantomData
         })
     }
 }
 
-pub struct BufferImpl<'a, D, W> {
-    imp: &'a mut CGImpl<D, W>,
+pub struct BufferImpl<'a, D, W, A> {
+    imp: &'a mut CGImpl<D, W, A>,
     buffer: Vec<u32>,
+    _marker: PhantomData<A>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> BufferInterface<A> for BufferImpl<'a, D, W, A> {
     #[inline]
     fn pixels(&self) -> &[u32] {
         &self.buffer
@@ -299,12 +307,27 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
         &mut self.buffer
     }
 
+    fn pixels_rgb(&self) -> &[<A as BufferReturn>::Output] {
+        unsafe{std::mem::transmute::<&[u32],& [<A as BufferReturn>::Output]>(&self.buffer[..])}
+    }
+
+    fn pixels_rgb_mut(&mut self) -> &mut[<A as BufferReturn>::Output] {
+        unsafe{std::mem::transmute::<& mut [u32],&mut [<A as BufferReturn>::Output]>(&mut self.buffer[..])}
+    }
+
     fn age(&self) -> u8 {
         0
     }
 
     fn present(self) -> Result<(), SoftBufferError> {
         let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
+
+
+        let bitmap_mode = if A::ALPHA_MODE{
+            kCGImageAlphaFirst
+        }else{
+            kCGImageAlphaNoneSkipFirst
+        };
 
         let image = CGImage::new(
             self.imp.width,
@@ -313,7 +336,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
             32,
             self.imp.width * 4,
             &self.imp.color_space.0,
-            kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
+            kCGBitmapByteOrder32Little | bitmap_mode,
             &data_provider,
             false,
             kCGRenderingIntentDefault,

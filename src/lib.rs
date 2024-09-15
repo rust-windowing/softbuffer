@@ -10,8 +10,10 @@ mod backend_dispatch;
 use backend_dispatch::*;
 mod backend_interface;
 use backend_interface::*;
+use formats::RGBFormat;
 mod backends;
 mod error;
+pub mod formats;
 mod util;
 
 use std::cell::Cell;
@@ -20,6 +22,7 @@ use std::num::NonZeroU32;
 use std::ops;
 use std::sync::Arc;
 
+pub use backend_interface::{RGBA, RGBX};
 use error::InitError;
 pub use error::SoftBufferError;
 
@@ -71,16 +74,37 @@ pub struct Rect {
     pub height: NonZeroU32,
 }
 
+pub trait BufferReturn {
+    type Output: RGBFormat + Copy;
+    const ALPHA_MODE: bool;
+}
+pub enum WithoutAlpha {}
+
+impl BufferReturn for WithoutAlpha {
+    type Output = RGBX;
+    const ALPHA_MODE: bool = false;
+}
+pub enum WithAlpha {}
+
+impl BufferReturn for WithAlpha {
+    type Output = RGBA;
+
+    const ALPHA_MODE: bool = true;
+}
+
 /// A surface for drawing to a window with software buffers.
-pub struct Surface<D, W> {
+pub struct Surface<D, W, A = WithoutAlpha> {
     /// This is boxed so that `Surface` is the same size on every platform.
-    surface_impl: Box<SurfaceDispatch<D, W>>,
+    surface_impl: Box<SurfaceDispatch<D, W, A>>,
     _marker: PhantomData<Cell<()>>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W, WithoutAlpha> {
     /// Creates a new surface for the context for the provided window.
-    pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
+    pub fn new(
+        context: &Context<D>,
+        window: W,
+    ) -> Result<Surface<D, W, WithoutAlpha>, SoftBufferError> {
         match SurfaceDispatch::new(window, &context.context_impl) {
             Ok(surface_dispatch) => Ok(Self {
                 surface_impl: Box::new(surface_dispatch),
@@ -97,7 +121,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
             Err(InitError::Failure(f)) => Err(f),
         }
     }
+}
 
+impl<D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> Surface<D, W, A> {
     /// Get a reference to the underlying window handle.
     pub fn window(&self) -> &W {
         self.surface_impl.window()
@@ -134,7 +160,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// - On DRM/KMS, there is no reliable and sound way to wait for the page flip to happen from within
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
-    pub fn buffer_mut(&mut self) -> Result<Buffer<'_, D, W>, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<Buffer<'_, D, W, A>, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
             _marker: PhantomData,
@@ -142,14 +168,40 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> AsRef<W> for Surface<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W, WithAlpha> {
+    /// Creates a new surface for the context for the provided window.
+    pub fn new_with_alpha(
+        context: &Context<D>,
+        window: W,
+    ) -> Result<Surface<D, W, WithAlpha>, SoftBufferError> {
+        match SurfaceDispatch::new_with_alpha(window, &context.context_impl) {
+            Ok(surface_dispatch) => Ok(Self {
+                surface_impl: Box::new(surface_dispatch),
+                _marker: PhantomData,
+            }),
+            Err(InitError::Unsupported(window)) => {
+                let raw = window.window_handle()?.as_raw();
+                Err(SoftBufferError::UnsupportedWindowPlatform {
+                    human_readable_window_platform_name: window_handle_type_name(&raw),
+                    human_readable_display_platform_name: context.context_impl.variant_name(),
+                    window_handle: raw,
+                })
+            }
+            Err(InitError::Failure(f)) => Err(f),
+        }
+    }
+}
+
+impl<D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> AsRef<W> for Surface<D, W, A> {
     #[inline]
     fn as_ref(&self) -> &W {
         self.window()
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> HasWindowHandle
+    for Surface<D, W, A>
+{
     #[inline]
     fn window_handle(
         &self,
@@ -196,12 +248,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// - Web
 /// - AppKit
 /// - UIKit
-pub struct Buffer<'a, D, W> {
-    buffer_impl: BufferDispatch<'a, D, W>,
+pub struct Buffer<'a, D, W, A> {
+    buffer_impl: BufferDispatch<'a, D, W, A>,
     _marker: PhantomData<(Arc<D>, Cell<()>)>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> Buffer<'a, D, W, A> {
     /// Is age is the number of frames ago this buffer was last presented. So if the value is
     /// `1`, it is the same as the last frame, and if it is `2`, it is the same as the frame
     /// before that (for backends using double buffering). If the value is `0`, it is a new
@@ -244,7 +296,103 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
     }
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W> {
+macro_rules! cast_to_format_helper {
+    ($self:ident , $src:ident , $dst:ty, $func:ident , $to_func:ident , $from_func:ident) => {
+        {
+            let temp = $self.buffer_impl.pixels_mut();
+            for element in temp.iter_mut() {
+                unsafe {
+                    let temp_as_concrete_type =
+                        std::mem::transmute::<&mut u32, &mut <$src as BufferReturn>::Output>(element);
+                    let temp_as_destination_type = temp_as_concrete_type.$to_func();
+                    *element = std::mem::transmute(temp_as_destination_type);
+                }
+            }
+            $func(temp);
+            for element in temp.iter_mut() {
+                unsafe {
+                    let temp_as_concrete_type =
+                        std::mem::transmute::<&mut u32, &mut $dst>(element);
+                    let temp_as_destination_type =
+                        &mut <$src as BufferReturn>::Output::$from_func(*temp_as_concrete_type);
+                    *element = *std::mem::transmute::<&mut <$src as BufferReturn>::Output, &mut u32>(
+                        temp_as_destination_type,
+                    );
+                }
+            }
+        }
+    };
+}
+
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> Buffer<'a, D, W, A> {
+    /// Gets a ```&[u32]``` of the buffer of pixels
+    /// The layout of the pixels is dependent on the platform that you are on
+    /// It is recommended to deref pixels to a ```&[RGBA]``` ```&[RGBX]``` struct as that will automatically handle the differences across platforms for free
+    /// If you need a ```&[u32]``` of a specific format, there are helper functions to get those, and conversions are automatic based on platform.
+    /// If using the format for your native platform, there is no cost.
+    pub fn pixels_platform_dependent(&self) -> &[u32] {
+        self.buffer_impl.pixels()
+    }
+    /// Gets a ```&mut [u32]``` of the buffer of pixels
+    /// The layout of the pixels is dependent on the platform that you are on
+    /// It is recommended to deref pixels to a ```&mut [RGBA]``` ```&mut [RGBX]``` struct as that will automatically handle the differences across platforms for free
+    /// If you need a ```&mut [u32]``` of a specific format, there are helper functions to get those, and conversions are automatic based on platform.
+    /// If using the format for your native platform, there is no cost. 
+    pub fn pixels_platform_dependent_mut(&mut self) -> &mut [u32] {
+        self.buffer_impl.pixels_mut()
+    }
+
+    /// Access the platform dependent representation of the pixel buffer.
+    /// Will return either ```&[RGBX]``` or ```&[RGBA]``` depending on if called on a surface with alpha enabled or not.
+    /// This is the generally recommended method of accessing the pixel buffer as it is a zero cost abstraction, that 
+    /// automatically handles any platform dependent ordering of the r,g,b,a fields for you.
+    /// 
+    /// Alternative to using Deref on buffer. 
+    pub fn pixels_rgb(&mut self) -> &[<A as BufferReturn>::Output]{
+        self.buffer_impl.pixels_rgb()
+    }
+
+    /// Access the platform dependent representation of the pixel buffer.
+    /// Will return either ```&[RGBX]``` or ```&[RGBA]``` depending on if called on a surface with alpha enabled or not.
+    /// This is the generally recommended method of accessing the pixel buffer as it is a zero cost abstraction, that 
+    /// automatically handles any platform dependent ordering of the r,g,b,a fields for you.
+    /// 
+    /// Alternative to using Deref on buffer. 
+    pub fn pixels_rgb_mut(&mut self) -> &mut[<A as BufferReturn>::Output]{
+        self.buffer_impl.pixels_rgb_mut()
+    }
+
+    /// Gives a ```&mut [u32]``` slice in the RGBA u32 format.
+    /// Endianness is adjusted based on platform automatically.
+    /// If using the format for your native platform, there is no cost.
+    /// Useful when using other crates that require a specific format.
+    /// 
+    /// This takes a closure that gives you the required ```&mut [u32]```.
+    /// The closure is necessary because if conversion is required for your platform, we need to convert back to the platform native format before presenting to the buffer.
+    pub fn pixel_u32slice_rgba<F: FnOnce(&mut [u32])>(&mut self, f: F) {
+        cast_to_format_helper!(self,A,formats::RGBA,f,to_rgba_format,from_rgba_format)
+    }
+
+    /// Gives a ```&mut [u32]``` slice in the RGBA u8 format.
+    /// If using the format for your native platform, there is no cost.
+    /// Useful when using other crates that require a specific format.
+    /// 
+    /// This takes a closure that gives you the required ```&mut [u32]```.
+    /// The closure is necessary because if conversion is required for your platform, we need to convert back to the platform native format before presenting to the buffer
+    pub fn pixel_u8_slice_rgba<F: FnOnce(&mut [u8])>(&mut self, f: F) {
+        let wrapper = |x: &mut [u32]|{
+            f(bytemuck::cast_slice_mut(x))
+        };
+        cast_to_format_helper!(self,A,formats::RGBAu8,wrapper,to_rgba_u8_format,from_rgba_u8_format)
+    }
+}
+
+
+
+#[cfg(feature = "compatibility")]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> ops::Deref
+    for Buffer<'a, D, W, A>
+{
     type Target = [u32];
 
     #[inline]
@@ -253,10 +401,36 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W
     }
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'a, D, W> {
+#[cfg(feature = "compatibility")]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> ops::DerefMut
+    for Buffer<'a, D, W, A>
+{
     #[inline]
     fn deref_mut(&mut self) -> &mut [u32] {
         self.buffer_impl.pixels_mut()
+    }
+}
+
+#[cfg(not(feature = "compatibility"))]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> ops::Deref
+    for Buffer<'a, D, W, A>
+{
+    type Target = [<A as BufferReturn>::Output];
+
+    #[inline]
+    fn deref(&self) -> &[<A as BufferReturn>::Output] {
+        self.buffer_impl.pixels_rgb()
+    }
+}
+
+#[cfg(not(feature = "compatibility"))]
+impl<'a, D: HasDisplayHandle, W: HasWindowHandle, A: BufferReturn> ops::DerefMut
+    for Buffer<'a, D, W, A>
+{
+    // type Target = [crate::RGBX];
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [<A as BufferReturn>::Output] {
+        self.buffer_impl.pixels_rgb_mut()
     }
 }
 
@@ -330,7 +504,7 @@ fn __assert_send() {
     is_send::<Context<()>>();
     is_sync::<Context<()>>();
     is_send::<Surface<(), ()>>();
-    is_send::<Buffer<'static, (), ()>>();
+    is_send::<Buffer<'static, (), (), ()>>();
 
     /// ```compile_fail
     /// use softbuffer::Surface;

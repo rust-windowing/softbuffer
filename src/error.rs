@@ -100,6 +100,9 @@ pub enum SoftBufferError {
     /// actual error type.
     PlatformError(Option<String>, Option<Box<dyn Error>>),
 
+    /// An Error returned from RGBX/RGBA::new() if called with numbers that are higher than u8::MAX
+    PrimitiveOutsideOfU8Range,
+
     /// This function is unimplemented on this platform.
     Unimplemented,
 }
@@ -138,6 +141,7 @@ impl fmt::Display for SoftBufferError {
                 "Damage rect {}x{} at ({}, {}) out of range for backend.",
                 rect.width, rect.height, rect.x, rect.y
             ),
+            Self::PrimitiveOutsideOfU8Range => write!(f, "The passed in primitive value is greater than what can fit in a u8"),
             Self::Unimplemented => write!(f, "This function is unimplemented on this platform."),
         }
     }
