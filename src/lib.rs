@@ -196,13 +196,16 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// - Web
 /// - AppKit
 /// - UIKit
+///
+/// Buffer copies an channel swizzling happen on:
+/// - Android
 pub struct Buffer<'a, D, W> {
     buffer_impl: BufferDispatch<'a, D, W>,
     _marker: PhantomData<(Arc<D>, Cell<()>)>,
 }
 
 impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
-    /// Is age is the number of frames ago this buffer was last presented. So if the value is
+    /// `age` is the number of frames ago this buffer was last presented. So if the value is
     /// `1`, it is the same as the last frame, and if it is `2`, it is the same as the frame
     /// before that (for backends using double buffering). If the value is `0`, it is a new
     /// buffer that has unspecified contents.
