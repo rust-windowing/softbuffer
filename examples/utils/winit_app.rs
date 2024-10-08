@@ -31,76 +31,94 @@ pub(crate) fn make_window(
 }
 
 /// Easily constructable winit application.
-pub(crate) struct WinitApp<T, Init, Handler> {
-    /// Closure to initialize state.
+pub(crate) struct WinitApp<T, S, Init, InitSurface, Handler> {
+    /// Closure to initialize `state`.
     init: Init,
+
+    /// Closure to initialize `surface_state`.
+    init_surface: InitSurface,
 
     /// Closure to run on window events.
     event: Handler,
 
     /// Contained state.
     state: Option<T>,
+
+    /// Contained surface state.
+    surface_state: Option<S>,
 }
 
 /// Builder that makes it so we don't have to name `T`.
-pub(crate) struct WinitAppBuilder<T, Init> {
-    /// Closure to initialize state.
+pub(crate) struct WinitAppBuilder<T, S, Init, InitSurface> {
+    /// Closure to initialize `state`.
     init: Init,
 
+    /// Closure to initialize `surface_state`.
+    init_surface: InitSurface,
+
     /// Eat the type parameter.
-    _marker: PhantomData<Option<T>>,
+    _marker: PhantomData<(Option<T>, Option<S>)>,
 }
 
-impl<T, Init> WinitAppBuilder<T, Init>
+impl<T, S, Init, InitSurface> WinitAppBuilder<T, S, Init, InitSurface>
 where
     Init: FnMut(&ActiveEventLoop) -> T,
+    InitSurface: FnMut(&ActiveEventLoop, &mut T) -> S,
 {
     /// Create with an "init" closure.
-    pub(crate) fn with_init(init: Init) -> Self {
+    pub(crate) fn with_init(init: Init, init_surface: InitSurface) -> Self {
         Self {
             init,
+            init_surface,
             _marker: PhantomData,
         }
     }
 
     /// Build a new application.
-    pub(crate) fn with_event_handler<F>(self, handler: F) -> WinitApp<T, Init, F>
+    pub(crate) fn with_event_handler<F>(self, handler: F) -> WinitApp<T, S, Init, InitSurface, F>
     where
-        F: FnMut(&mut T, Event<()>, &ActiveEventLoop),
+        F: FnMut(&mut T, Option<&mut S>, Event<()>, &ActiveEventLoop),
     {
-        WinitApp::new(self.init, handler)
+        WinitApp::new(self.init, self.init_surface, handler)
     }
 }
 
-impl<T, Init, Handler> WinitApp<T, Init, Handler>
+impl<T, S, Init, InitSurface, Handler> WinitApp<T, S, Init, InitSurface, Handler>
 where
     Init: FnMut(&ActiveEventLoop) -> T,
-    Handler: FnMut(&mut T, Event<()>, &ActiveEventLoop),
+    InitSurface: FnMut(&ActiveEventLoop, &mut T) -> S,
+    Handler: FnMut(&mut T, Option<&mut S>, Event<()>, &ActiveEventLoop),
 {
     /// Create a new application.
-    pub(crate) fn new(init: Init, event: Handler) -> Self {
+    pub(crate) fn new(init: Init, init_surface: InitSurface, event: Handler) -> Self {
         Self {
             init,
+            init_surface,
             event,
             state: None,
+            surface_state: None,
         }
     }
 }
 
-impl<T, Init, Handler> ApplicationHandler for WinitApp<T, Init, Handler>
+impl<T, S, Init, InitSurface, Handler> ApplicationHandler
+    for WinitApp<T, S, Init, InitSurface, Handler>
 where
     Init: FnMut(&ActiveEventLoop) -> T,
-    Handler: FnMut(&mut T, Event<()>, &ActiveEventLoop),
+    InitSurface: FnMut(&ActiveEventLoop, &mut T) -> S,
+    Handler: FnMut(&mut T, Option<&mut S>, Event<()>, &ActiveEventLoop),
 {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         debug_assert!(self.state.is_none());
-        self.state = Some((self.init)(el));
+        let mut state = (self.init)(el);
+        self.surface_state = Some((self.init_surface)(el, &mut state));
+        self.state = Some(state);
     }
 
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
-        let state = self.state.take();
-        debug_assert!(state.is_some());
-        drop(state);
+        let surface_state = self.surface_state.take();
+        debug_assert!(surface_state.is_some());
+        drop(surface_state);
     }
 
     fn window_event(
@@ -110,12 +128,23 @@ where
         event: WindowEvent,
     ) {
         let state = self.state.as_mut().unwrap();
-        (self.event)(state, Event::WindowEvent { window_id, event }, event_loop);
+        let surface_state = self.surface_state.as_mut();
+        (self.event)(
+            state,
+            surface_state,
+            Event::WindowEvent { window_id, event },
+            event_loop,
+        );
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(state) = self.state.as_mut() {
-            (self.event)(state, Event::AboutToWait, event_loop);
+            (self.event)(
+                state,
+                self.surface_state.as_mut(),
+                Event::AboutToWait,
+                event_loop,
+            );
         }
     }
 }

@@ -14,28 +14,32 @@ fn main() {
 
     let event_loop = EventLoop::new().unwrap();
 
-    let app = winit_app::WinitAppBuilder::with_init(move |elwt| {
-        let window = winit_app::make_window(elwt, |w| {
-            w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
-        });
+    let app = winit_app::WinitAppBuilder::with_init(
+        move |elwt| {
+            let window = winit_app::make_window(elwt, |w| {
+                w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
+            });
 
-        let context = softbuffer::Context::new(window.clone()).unwrap();
-        let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+            let context = softbuffer::Context::new(window.clone()).unwrap();
 
-        // Intentionally only set the size of the surface once, at creation.
-        // This is needed if the window chooses to ignore the size we passed in above, and for the
-        // platforms softbuffer supports that don't yet extract the size from the window.
-        surface
-            .resize(
-                NonZeroU32::new(width).unwrap(),
-                NonZeroU32::new(height).unwrap(),
-            )
-            .unwrap();
-
-        (window, surface)
-    })
-    .with_event_handler(move |state, event, elwt| {
-        let (window, surface) = state;
+            (window, context)
+        },
+        move |_elwt, (window, context)| {
+            let mut surface = softbuffer::Surface::new(context, window.clone()).unwrap();
+            // Intentionally only set the size of the surface once, at creation.
+            // This is needed if the window chooses to ignore the size we passed in above, and for the
+            // platforms softbuffer supports that don't yet extract the size from the window.
+            surface
+                .resize(
+                    NonZeroU32::new(width).unwrap(),
+                    NonZeroU32::new(height).unwrap(),
+                )
+                .unwrap();
+            surface
+        },
+    )
+    .with_event_handler(move |state, surface, event, elwt| {
+        let (window, _context) = state;
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
@@ -43,6 +47,11 @@ fn main() {
                 window_id,
                 event: WindowEvent::RedrawRequested,
             } if window_id == window.id() => {
+                let Some(surface) = surface else {
+                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    return;
+                };
+
                 let mut buffer = surface.buffer_mut().unwrap();
                 let width = fruit.width() as usize;
                 for (x, y, pixel) in fruit.pixels() {
