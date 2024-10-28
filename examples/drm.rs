@@ -168,12 +168,14 @@ mod imple {
         fn find() -> Result<Card, Box<dyn std::error::Error>> {
             for i in 0..10 {
                 let path = format!("/dev/dri/card{i}");
-                let device = Card::open(path)?;
+                // Card enumeration may not start at zero, allow failures while opening
+                let Ok(device) = Card::open(path) else {
+                    continue;
+                };
 
                 // Only use it if it has connectors.
-                let handles = match device.resource_handles() {
-                    Ok(handles) => handles,
-                    Err(_) => continue,
+                let Ok(handles) = device.resource_handles() else {
+                    continue;
                 };
 
                 if handles
