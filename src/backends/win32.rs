@@ -208,7 +208,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Impl<D, W> {
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
     fn new(window: W, _display: &D) -> Result<Self, crate::error::InitError<W>> {
