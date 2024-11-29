@@ -178,6 +178,8 @@ macro_rules! make_dispatch {
 
 make_dispatch! {
     <D, W> =>
+    #[cfg(target_os = "android")]
+    Android(D, backends::android::AndroidImpl<D, W>, backends::android::BufferImpl<'a, D, W>),
     #[cfg(x11_platform)]
     X11(Arc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'a, D, W>),
     #[cfg(wayland_platform)]

@@ -208,14 +208,16 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Impl<D, W> {
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
     fn new(window: W, _display: &D) -> Result<Self, crate::error::InitError<W>> {
         let raw = window.window_handle()?.as_raw();
-        let handle = match raw {
-            RawWindowHandle::Win32(handle) => handle,
-            _ => return Err(crate::InitError::Unsupported(window)),
+        let RawWindowHandle::Win32(handle) = raw else {
+            return Err(crate::InitError::Unsupported(window));
         };
 
         // Get the handle to the device context.
@@ -248,8 +250,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
-            let width = NonZeroI32::new(i32::try_from(width.get()).ok()?)?;
-            let height = NonZeroI32::new(i32::try_from(height.get()).ok()?)?;
+            let width = NonZeroI32::try_from(width).ok()?;
+            let height = NonZeroI32::try_from(height).ok()?;
             Some((width, height))
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;

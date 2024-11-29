@@ -144,7 +144,10 @@ impl<D, W> Drop for CGImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<D, W> {
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     fn new(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
         // `NSView`/`UIView` can only be accessed from the main thread.
