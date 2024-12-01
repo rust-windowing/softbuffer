@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust_version: ['1.70.0', stable, nightly]
+        rust_version: ['1.71.0', stable, nightly]
         platform:
           - { target: x86_64-pc-windows-msvc,   os: windows-latest,  }
           - { target: i686-pc-windows-msvc,     os: windows-latest,  }
@@ -51,7 +51,7 @@ jobs:
           - { target: wasm32-unknown-unknown,   os: ubuntu-latest,   }
         exclude:
           # Orbital doesn't follow MSRV
-          - rust_version: '1.70.0'
+          - rust_version: '1.71.0'
             platform: { target: x86_64-unknown-redox, os: ubuntu-latest }
         include:
           - rust_version: nightly
@@ -96,11 +96,9 @@ jobs:
       run: sudo apt-get install gcc-multilib
 
     - name: Pin deps that break MSRV
-      if: matrix.rust_version == '1.70.0'
+      if: matrix.rust_version == '1.71.0'
       run: |
-        cargo update -p ahash --precise 0.8.7
         cargo update -p bumpalo --precise 3.14.0
-        cargo update -p objc2-encode --precise 4.0.3
 
     - name: Build crate
       shell: bash
