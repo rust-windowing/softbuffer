@@ -144,7 +144,10 @@ impl<D, W> Drop for CGImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<D, W> {
     type Context = D;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     fn new(window_src: W, _display: &D) -> Result<Self, InitError<W>> {
         // `NSView`/`UIView` can only be accessed from the main thread.
@@ -288,7 +291,7 @@ pub struct BufferImpl<'a, D, W> {
     buffer: Vec<u32>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     #[inline]
     fn pixels(&self) -> &[u32] {
         &self.buffer

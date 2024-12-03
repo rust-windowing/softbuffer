@@ -184,7 +184,10 @@ struct ShmBuffer {
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for X11Impl<D, W> {
     type Context = Arc<X11DisplayImpl<D>>;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     /// Create a new `X11Impl` from a `HasWindowHandle`.
     fn new(window_src: W, display: &Arc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
@@ -384,8 +387,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
 
 pub struct BufferImpl<'a, D: ?Sized, W: ?Sized>(&'a mut X11Impl<D, W>);
 
-impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
-    for BufferImpl<'a, D, W>
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
+    for BufferImpl<'_, D, W>
 {
     #[inline]
     fn pixels(&self) -> &[u32] {

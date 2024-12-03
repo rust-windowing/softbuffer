@@ -134,7 +134,10 @@ struct SharedBuffer {
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for KmsImpl<D, W> {
     type Context = Arc<KmsDisplayImpl<D>>;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     /// Create a new KMS backend.
     fn new(window: W, display: &Arc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
@@ -191,7 +194,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             .filter(|connector| {
                 connector
                     .current_encoder()
-                    .map_or(false, |encoder| encoders.contains(&encoder))
+                    .is_some_and(|encoder| encoders.contains(&encoder))
             })
             .map(|info| info.handle())
             .collect::<Vec<_>>();

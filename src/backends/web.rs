@@ -207,7 +207,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl<D, W> {
     type Context = WebDisplayImpl<D>;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     fn new(window: W, display: &WebDisplayImpl<D>) -> Result<Self, InitError<W>> {
         let raw = window.window_handle()?.as_raw();
@@ -374,7 +377,7 @@ pub struct BufferImpl<'a, D, W> {
     imp: &'a mut WebImpl<D, W>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     fn pixels(&self) -> &[u32] {
         &self.imp.buffer
     }

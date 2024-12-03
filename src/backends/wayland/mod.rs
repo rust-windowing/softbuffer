@@ -151,7 +151,10 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
     for WaylandImpl<D, W>
 {
     type Context = Arc<WaylandDisplayImpl<D>>;
-    type Buffer<'a> = BufferImpl<'a, D, W> where Self: 'a;
+    type Buffer<'a>
+        = BufferImpl<'a, D, W>
+    where
+        Self: 'a;
 
     fn new(window: W, display: &Arc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the raw Wayland window.
@@ -261,9 +264,7 @@ pub struct BufferImpl<'a, D: ?Sized, W> {
     age: u8,
 }
 
-impl<'a, D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface
-    for BufferImpl<'a, D, W>
-{
+impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     #[inline]
     fn pixels(&self) -> &[u32] {
         self.stack.member()

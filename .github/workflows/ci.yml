@@ -64,7 +64,10 @@ jobs:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
       RUSTFLAGS: "-C debuginfo=0 --deny warnings ${{ matrix.platform.rustflags }}"
-      OPTIONS: ${{ matrix.platform.options }}
+      # Disable doc tests on Rust 1.83, since some path handling regressed there.
+      # This has been fixed in Rust 1.84 beta.
+      # https://github.com/rust-lang/rust/issues/132203
+      OPTIONS: ${{ matrix.platform.options }} ${{ matrix.rust_version == 'stable' && '--lib' || '' }}
       FEATURES: ${{ format(',{0}', matrix.platform.features ) }}
       CMD: ${{ matrix.platform.cmd }}
       RUSTDOCFLAGS: -Dwarnings
