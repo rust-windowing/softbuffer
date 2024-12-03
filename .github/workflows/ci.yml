@@ -64,7 +64,8 @@ jobs:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
       RUSTFLAGS: "-C debuginfo=0 --deny warnings ${{ matrix.platform.rustflags }}"
-      OPTIONS: ${{ matrix.platform.options }}
+      # Disable doc tests on Rust 1.83
+      OPTIONS: ${{ matrix.platform.options }} ${{ matrix.rust_version == 'stable' && '--lib' || '' }}
       FEATURES: ${{ format(',{0}', matrix.platform.features ) }}
       CMD: ${{ matrix.platform.cmd }}
       RUSTDOCFLAGS: -Dwarnings
