@@ -194,7 +194,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             .filter(|connector| {
                 connector
                     .current_encoder()
-                    .map_or(false, |encoder| encoders.contains(&encoder))
+                    .is_some_and(|encoder| encoders.contains(&encoder))
             })
             .map(|info| info.handle())
             .collect::<Vec<_>>();

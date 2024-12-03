@@ -201,7 +201,7 @@ pub struct Buffer<'a, D, W> {
     _marker: PhantomData<(Arc<D>, Cell<()>)>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> Buffer<'_, D, W> {
     /// Is age is the number of frames ago this buffer was last presented. So if the value is
     /// `1`, it is the same as the last frame, and if it is `2`, it is the same as the frame
     /// before that (for backends using double buffering). If the value is `0`, it is a new
@@ -244,7 +244,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> Buffer<'a, D, W> {
     }
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'_, D, W> {
     type Target = [u32];
 
     #[inline]
@@ -253,7 +253,7 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'a, D, W
     }
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'a, D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'_, D, W> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [u32] {
         self.buffer_impl.pixels_mut()

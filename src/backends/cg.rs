@@ -291,7 +291,7 @@ pub struct BufferImpl<'a, D, W> {
     buffer: Vec<u32>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     #[inline]
     fn pixels(&self) -> &[u32] {
         &self.buffer

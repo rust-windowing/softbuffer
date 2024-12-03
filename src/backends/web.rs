@@ -377,7 +377,7 @@ pub struct BufferImpl<'a, D, W> {
     imp: &'a mut WebImpl<D, W>,
 }
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     fn pixels(&self) -> &[u32] {
         &self.imp.buffer
     }
