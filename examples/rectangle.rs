@@ -31,7 +31,14 @@ fn main() {
         });
 
         let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+        let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+
+        surface
+            .resize(
+                NonZeroU32::new(window.inner_size().width).unwrap(),
+                NonZeroU32::new(window.inner_size().height).unwrap(),
+            )
+            .unwrap();
 
         let flag = false;
 
