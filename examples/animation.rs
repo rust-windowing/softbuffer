@@ -18,7 +18,14 @@ fn main() {
         let window = winit_app::make_window(event_loop, |w| w);
 
         let context = softbuffer::Context::new(window.clone()).unwrap();
-        let surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+        let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+
+        surface
+            .resize(
+                NonZeroU32::new(window.inner_size().width).unwrap(),
+                NonZeroU32::new(window.inner_size().height).unwrap(),
+            )
+            .unwrap();
 
         let old_size = (0, 0);
         let frames = pre_render_frames(0, 0);
