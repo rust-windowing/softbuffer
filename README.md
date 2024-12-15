@@ -10,12 +10,12 @@ libraries that are available in the Rust ecosystem.
 Alternatives
 ==
 
-[minifb](https://crates.io/crates/minifb) also allows putting a 2D buffer/image on a window in a platform-independent way. Minifb's approach to doing window management itself, however, is problematic
-code duplication. We already have very high quality libraries for this in the Rust ecosystem
-(such as [winit](https://crates.io/crates/winit)), and minifb's implementation of window management is not ideal. For
-example, it occasionally segfaults on some platforms and is missing key features such as the ability to set a window
-icon. While it would be possible to add these features to minifb, it makes more sense to instead use the standard
-window handling systems.
+[minifb](https://crates.io/crates/minifb) also allows putting a 2D buffer/image on a window in a platform-independent way.
+Minifb's approach to doing window management itself, however, is problematic code duplication. We already have very high quality
+libraries for this in the Rust ecosystem (such as [winit](https://crates.io/crates/winit)), and minifb's implementation
+of window management is not ideal. For example, it occasionally segfaults and is missing key features such as setting
+a window icon on some platforms. While adding these features to minifb would be possible, it makes more sense to use
+the standard window handling systems instead.
 
 What about [pixels](https://crates.io/crates/pixels)? Pixels accomplishes a very similar goal to Softbuffer,
 however there are two key differences. Pixels provides some capacity for GPU-accelerated post-processing of what is
