@@ -162,7 +162,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             let handle = match plane_info.crtc() {
                 Some(crtc) => crtc,
                 None => {
-                    log::warn!("no CRTC attached to plane, falling back to primary CRTC");
+                    tracing::warn!("no CRTC attached to plane, falling back to primary CRTC");
                     handles
                         .filter_crtcs(plane_info.possible_crtcs())
                         .first()
