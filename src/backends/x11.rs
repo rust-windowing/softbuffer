@@ -93,7 +93,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<X11DisplayImpl<D>
             }
             None => {
                 // The user didn't provide an XCB connection, so create our own.
-                log::info!("no XCB connection provided by the user, so spawning our own");
+                tracing::info!("no XCB connection provided by the user, so spawning our own");
                 XCBConnection::connect(None)
                     .swbuf_err("Failed to spawn XCB connection")?
                     .0
@@ -102,7 +102,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<X11DisplayImpl<D>
 
         let is_shm_available = is_shm_available(&connection);
         if !is_shm_available {
-            log::warn!("SHM extension is not available. Performance may be poor.");
+            tracing::warn!("SHM extension is not available. Performance may be poor.");
         }
 
         let supported_visuals = supported_visuals(&connection);
@@ -207,7 +207,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             }
         };
 
-        log::trace!("new: window_handle={:X}", window_handle.window);
+        tracing::trace!("new: window_handle={:X}", window_handle.window);
         let window = window_handle.window.get();
 
         // Run in parallel: start getting the window depth and (if necessary) visual.
@@ -307,7 +307,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
 
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        log::trace!(
+        tracing::trace!(
             "resize: window={:X}, size={}x{}",
             self.window,
             width,
@@ -337,7 +337,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        log::trace!("buffer_mut: window={:X}", self.window);
+        tracing::trace!("buffer_mut: window={:X}", self.window);
 
         // Finish waiting on the previous `shm::PutImage` request, if any.
         self.buffer.finish_wait(self.display.connection())?;
@@ -347,7 +347,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
 
     fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-        log::trace!("fetch: window={:X}", self.window);
+        tracing::trace!("fetch: window={:X}", self.window);
 
         let (width, height) = self
             .size
@@ -416,12 +416,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
             .size
             .expect("Must set size of surface before calling `present_with_damage()`");
 
-        log::trace!("present: window={:X}", imp.window);
+        tracing::trace!("present: window={:X}", imp.window);
 
         match imp.buffer {
             Buffer::Wire(ref wire) => {
                 // This is a suboptimal strategy, raise a stink in the debug logs.
-                log::debug!("Falling back to non-SHM method for window drawing.");
+                tracing::debug!("Falling back to non-SHM method for window drawing.");
 
                 imp.display
                     .connection()
@@ -834,7 +834,7 @@ fn create_shm_id() -> io::Result<OwnedFd> {
             }
 
             Err(rustix::io::Errno::EXIST) => {
-                log::warn!("x11: SHM ID collision at {} on try number {}", name, i);
+                tracing::warn!("x11: SHM ID collision at {} on try number {}", name, i);
             }
 
             Err(e) => return Err(e.into()),
@@ -886,7 +886,7 @@ fn supported_visuals(c: &impl Connection) -> HashSet<Visualid> {
         .iter()
         .any(|f| (f.depth == 24 || f.depth == 32) && f.bits_per_pixel == 32)
     {
-        log::warn!("X11 server does not have a depth 24/32 format with 32 bits per pixel");
+        tracing::warn!("X11 server does not have a depth 24/32 format with 32 bits per pixel");
         return HashSet::new();
     }
 
