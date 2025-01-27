@@ -53,7 +53,7 @@ features = ["Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessagin
 bytemuck = { version = "1.12.3", features = ["extern_crate_alloc"] }
 core-graphics = "0.24.0"
 foreign-types = "0.5.0"
-objc2 = "0.5.2"
+objc2 = "0.6.0"
 objc2-foundation = { version = "0.2.2", features = [
     "NSDictionary",
     "NSGeometry",
