@@ -62,7 +62,7 @@ objc2-foundation = { version = "0.2.2", features = [
     "NSThread",
     "NSValue",
 ] }
-objc2-quartz-core = { version = "0.2.2", features = ["CALayer", "CATransaction"] }
+objc2-quartz-core = { version = "0.3.0", features = ["CALayer", "CATransaction"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3.63"
