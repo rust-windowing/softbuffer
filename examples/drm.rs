@@ -62,7 +62,7 @@ mod imple {
         let planes = planes
             .iter()
             .filter(|&&plane| {
-                device.get_plane(plane).map_or(false, |plane| {
+                device.get_plane(plane).is_ok_and(|plane| {
                     let crtcs = handles.filter_crtcs(plane.possible_crtcs());
                     crtcs.contains(&crtc.handle())
                 })
@@ -77,7 +77,7 @@ mod imple {
                     let (ids, vals) = props.as_props_and_values();
                     for (&id, &val) in ids.iter().zip(vals.iter()) {
                         if let Ok(info) = device.get_property(id) {
-                            if info.name().to_str().map_or(false, |x| x == "type") {
+                            if info.name().to_str() == Ok("type") {
                                 return val == PlaneType::Primary as u32 as u64;
                             }
                         }
