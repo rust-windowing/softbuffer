@@ -1,55 +1,38 @@
 use crate::backend_interface::*;
 use crate::error::InitError;
 use crate::{Rect, SoftBufferError};
-use core_graphics::base::{
-    kCGBitmapByteOrder32Little, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
-};
-use core_graphics::color_space::CGColorSpace;
-use core_graphics::data_provider::CGDataProvider;
-use core_graphics::image::CGImage;
-use foreign_types::ForeignType;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
-use objc2::{declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
+use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
+use objc2_core_foundation::{CFRetained, CGPoint};
+use objc2_core_graphics::{
+    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGColorSpaceCreateDeviceRGB,
+    CGDataProviderCreateWithData, CGImageAlphaInfo, CGImageCreate,
+};
 use objc2_foundation::{
-    ns_string, CGPoint, MainThreadMarker, NSDictionary, NSKeyValueChangeKey,
-    NSKeyValueChangeNewKey, NSKeyValueObservingOptions, NSNumber, NSObject,
-    NSObjectNSKeyValueObserverRegistration, NSString, NSValue,
+    ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
+    NSKeyValueObservingOptions, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
+    NSString, NSValue,
 };
 use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use std::mem::size_of;
 use std::num::NonZeroU32;
 use std::ops::Deref;
-use std::ptr;
-use std::sync::Arc;
+use std::ptr::{self, slice_from_raw_parts_mut, NonNull};
 
-struct Buffer(Vec<u32>);
-
-impl AsRef<[u8]> for Buffer {
-    fn as_ref(&self) -> &[u8] {
-        bytemuck::cast_slice(&self.0)
-    }
-}
-
-declare_class!(
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "SoftbufferObserver"]
+    #[ivars = Retained<CALayer>]
     struct Observer;
 
-    unsafe impl ClassType for Observer {
-        type Super = NSObject;
-        type Mutability = mutability::InteriorMutable;
-        const NAME: &'static str = "SoftbufferObserver";
-    }
-
-    impl DeclaredClass for Observer {
-        type Ivars = Retained<CALayer>;
-    }
-
-    // NSKeyValueObserving
-    unsafe impl Observer {
-        #[method(observeValueForKeyPath:ofObject:change:context:)]
+    /// NSKeyValueObserving
+    impl Observer {
+        #[unsafe(method(observeValueForKeyPath:ofObject:change:context:))]
         fn observe_value(
             &self,
             key_path: Option<&NSString>,
@@ -69,7 +52,7 @@ unsafe impl Sync for Observer {}
 impl Observer {
     fn new(layer: &CALayer) -> Retained<Self> {
         let this = Self::alloc().set_ivars(layer.retain());
-        unsafe { msg_send_id![super(this), init] }
+        unsafe { msg_send![super(this), init] }
     }
 
     fn update(
@@ -81,9 +64,11 @@ impl Observer {
 
         let change =
             change.expect("requested a change dictionary in `addObserver`, but none was provided");
-        let new = change
-            .get(unsafe { NSKeyValueChangeNewKey })
-            .expect("requested change dictionary did not contain `NSKeyValueChangeNewKey`");
+        let new = unsafe {
+            change
+                .objectForKey(NSKeyValueChangeNewKey)
+                .expect("requested change dictionary did not contain `NSKeyValueChangeNewKey`")
+        };
 
         // NOTE: Setting these values usually causes a quarter second animation to occur, which is
         // undesirable.
@@ -92,14 +77,14 @@ impl Observer {
         // ongoing, and as such we don't need to wrap this in a `CATransaction` ourselves.
 
         if key_path == Some(ns_string!("contentsScale")) {
-            let new = unsafe { &*(new as *const AnyObject as *const NSNumber) };
+            let new = new.downcast::<NSNumber>().unwrap();
             let scale_factor = new.as_cgfloat();
 
             // Set the scale factor of the layer to match the root layer when it changes (e.g. if
             // moved to a different monitor, or monitor settings changed).
             layer.setContentsScale(scale_factor);
         } else if key_path == Some(ns_string!("bounds")) {
-            let new = unsafe { &*(new as *const AnyObject as *const NSValue) };
+            let new = new.downcast::<NSValue>().unwrap();
             let bounds = new.get_rect().expect("new bounds value was not CGRect");
 
             // Set `bounds` and `position` so that the new layer is inside the superlayer.
@@ -168,7 +153,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
                 let _: () = unsafe { msg_send![view, setWantsLayer: Bool::YES] };
 
                 // SAFETY: `-[NSView layer]` returns an optional `CALayer`
-                let layer: Option<Retained<CALayer>> = unsafe { msg_send_id![view, layer] };
+                let layer: Option<Retained<CALayer>> = unsafe { msg_send![view, layer] };
                 layer.expect("failed making the view layer-backed")
             }
             RawWindowHandle::UiKit(handle) => {
@@ -179,7 +164,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
                 let view: &NSObject = unsafe { handle.ui_view.cast().as_ref() };
 
                 // SAFETY: `-[UIView layer]` returns `CALayer`
-                let layer: Retained<CALayer> = unsafe { msg_send_id![view, layer] };
+                let layer: Retained<CALayer> = unsafe { msg_send![view, layer] };
                 layer
             }
             _ => return Err(InitError::Unsupported(window_src)),
@@ -225,15 +210,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             root_layer.addObserver_forKeyPath_options_context(
                 &observer,
                 ns_string!("contentsScale"),
-                NSKeyValueObservingOptions::NSKeyValueObservingOptionNew
-                    | NSKeyValueObservingOptions::NSKeyValueObservingOptionInitial,
+                NSKeyValueObservingOptions::New | NSKeyValueObservingOptions::Initial,
                 ptr::null_mut(),
             );
             root_layer.addObserver_forKeyPath_options_context(
                 &observer,
                 ns_string!("bounds"),
-                NSKeyValueObservingOptions::NSKeyValueObservingOptionNew
-                    | NSKeyValueObservingOptions::NSKeyValueObservingOptionInitial,
+                NSKeyValueObservingOptions::New | NSKeyValueObservingOptions::Initial,
                 ptr::null_mut(),
             );
         }
@@ -246,7 +229,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         layer.setContentsGravity(unsafe { kCAGravityTopLeft });
 
         // Initialize color space here, to reduce work later on.
-        let color_space = CGColorSpace::create_device_rgb();
+        let color_space = unsafe { CGColorSpaceCreateDeviceRGB() }.unwrap();
 
         // Grab initial width and height from the layer (whose properties have just been initialized
         // by the observer using `NSKeyValueObservingOptionInitial`).
@@ -280,7 +263,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         Ok(BufferImpl {
-            buffer: vec![0; self.width * self.height],
+            buffer: vec![0; self.width * self.height].into(),
             imp: self,
         })
     }
@@ -288,7 +271,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
 pub struct BufferImpl<'a, D, W> {
     imp: &'a mut CGImpl<D, W>,
-    buffer: Vec<u32>,
+    buffer: Box<[u32]>,
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
@@ -307,21 +290,47 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 
     fn present(self) -> Result<(), SoftBufferError> {
-        let data_provider = CGDataProvider::from_buffer(Arc::new(Buffer(self.buffer)));
+        unsafe extern "C-unwind" fn release(
+            _info: *mut c_void,
+            data: NonNull<c_void>,
+            size: usize,
+        ) {
+            let data = data.cast::<u32>();
+            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<u32>());
+            // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
+            drop(unsafe { Box::from_raw(slice) })
+        }
 
-        let image = CGImage::new(
-            self.imp.width,
-            self.imp.height,
-            8,
-            32,
-            self.imp.width * 4,
-            &self.imp.color_space.0,
-            kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
-            &data_provider,
-            false,
-            kCGRenderingIntentDefault,
-        );
-        let contents = unsafe { (image.as_ptr() as *mut AnyObject).as_ref() };
+        let data_provider = {
+            let len = self.buffer.len() * size_of::<u32>();
+            let buffer: *mut [u32] = Box::into_raw(self.buffer);
+            // Convert slice pointer to thin pointer.
+            let data_ptr = buffer.cast::<c_void>();
+
+            // SAFETY: The data pointer and length are valid.
+            // The info pointer can safely be NULL, we don't use it in the `release` callback.
+            unsafe {
+                CGDataProviderCreateWithData(ptr::null_mut(), data_ptr, len, Some(release)).unwrap()
+            }
+        };
+
+        let image = unsafe {
+            CGImageCreate(
+                self.imp.width,
+                self.imp.height,
+                8,
+                32,
+                self.imp.width * 4,
+                Some(&self.imp.color_space.0),
+                // TODO: This looks incorrect!
+                CGBitmapInfo::ByteOrder32Little | CGBitmapInfo(CGImageAlphaInfo::NoneSkipFirst.0),
+                Some(&data_provider),
+                ptr::null(),
+                false,
+                CGColorRenderingIntent::RenderingIntentDefault,
+            )
+        }
+        .unwrap();
 
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
@@ -330,7 +339,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
         CATransaction::setDisableActions(true);
 
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
-        unsafe { self.imp.layer.setContents(contents) };
+        unsafe { self.imp.layer.setContents(Some(image.as_ref())) };
 
         CATransaction::commit();
         Ok(())
@@ -341,7 +350,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 }
 
-struct SendCGColorSpace(CGColorSpace);
+struct SendCGColorSpace(CFRetained<CGColorSpace>);
 // SAFETY: `CGColorSpace` is immutable, and can freely be shared between threads.
 unsafe impl Send for SendCGColorSpace {}
 unsafe impl Sync for SendCGColorSpace {}
