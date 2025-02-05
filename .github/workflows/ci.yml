@@ -81,6 +81,27 @@ jobs:
       with:
         tool: wasm-bindgen-cli
 
+    - name: Install nightly rust to generate `-Zminimal-versions` lockfile (for MSRV)
+      if: matrix.rust_version == '1.71.0'
+      uses: dtolnay/rust-toolchain@nightly
+
+    - name: Pin deps that break MSRV
+      if: matrix.rust_version == '1.71.0'
+      # By downgrading all our dependency versions, we ensure that our minimum
+      # version bounds are actually adequate (i.e. users can build `softbuffer`
+      # with minimal versions themselves) and opt-out of any unexpected MSRV
+      # bumps in semver-compatible releases of downstream crates.
+      run: |
+        cargo -Zminimal-versions generate-lockfile
+        # Bump `regex` - only used by our `dev-dependencies` `criterion` dependency - to fix:
+        # https://github.com/rust-lang/regex/issues/931
+        # Can be removed on the next `criterion` upgrade: https://github.com/bheisler/criterion.rs/pull/821
+        cargo update -p regex --precise 1.5.1
+        cargo update -p num-traits --precise 0.2.16 # Unconditional i128 support used by image
+        cargo update -p anyhow --precise 1.0.19 # walrus needs bail!() string support from 1.0.1, wasm-bindgen-cli-support requires format_err from 1.0.19
+        cargo update -p foreign-types-macros --precise 0.2.2 # `core-graphics 0.23.1` from `winit 0.30` fails to compile on 0.2.1
+        cargo update -p same-file --precise 1.0.5 # First release with `unknown` support for wasm32
+
     - uses: hecrj/setup-rust-action@v2
       with:
         rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
@@ -94,17 +115,6 @@ jobs:
     - name: Install GCC Multilib
       if: (matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')
       run: sudo apt-get install gcc-multilib
-
-    - name: Pin deps that break MSRV
-      if: matrix.rust_version == '1.71.0'
-      run: |
-        cargo update -p dpi --precise 0.1.1
-        cargo update -p image --precise 0.25.6
-        cargo update -p zune-jpeg --precise 0.4.14
-        cargo update -p half --precise 2.4.1
-        cargo update -p bumpalo --precise 3.14.0
-        cargo update -p rayon --precise 1.10.0
-        cargo update -p rayon-core --precise 1.12.1
 
     - name: Build crate
       shell: bash
