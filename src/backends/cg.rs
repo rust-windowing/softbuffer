@@ -297,7 +297,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
         ) {
             let data = data.cast::<u32>();
             let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<u32>());
-            // SAFETY: This is the same slice that we
+            // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
             drop(unsafe { Box::from_raw(slice) })
         }
 
