@@ -9,7 +9,7 @@ fn buffer_mut(c: &mut Criterion) {
         let _ = c;
     }
 
-    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
+    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64", target_env = "ohos")))]
     {
         use criterion::black_box;
         use softbuffer::{Context, Surface};
