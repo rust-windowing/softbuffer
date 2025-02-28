@@ -322,8 +322,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
                 32,
                 self.imp.width * 4,
                 Some(&self.imp.color_space.0),
-                // TODO: This looks incorrect!
-                CGBitmapInfo::ByteOrder32Little | CGBitmapInfo(CGImageAlphaInfo::NoneSkipFirst.0),
+                CGBitmapInfo::ByteOrder32Little
+                    | CGBitmapInfo(CGImageAlphaInfo::PremultipliedFirst.0),
                 Some(&data_provider),
                 ptr::null(),
                 false,
