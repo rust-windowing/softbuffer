@@ -126,7 +126,7 @@ mod imple {
                     &device,
                     rustix::event::PollFlags::IN,
                 )],
-                -1,
+                None,
             )?;
 
             // Receive the events.
