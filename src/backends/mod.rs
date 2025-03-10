@@ -17,6 +17,8 @@ pub(crate) mod web;
 pub(crate) mod win32;
 #[cfg(x11_platform)]
 pub(crate) mod x11;
+#[cfg(target_env = "ohos")]
+pub(crate) mod ohos;
 
 impl<D: HasDisplayHandle> ContextInterface<D> for D {
     fn new(display: D) -> Result<Self, InitError<D>> {

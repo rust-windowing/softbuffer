@@ -10,11 +10,14 @@ use winit::window::{Window, WindowAttributes, WindowId};
 /// Run a Winit application.
 #[allow(unused_mut)]
 pub(crate) fn run_app(event_loop: EventLoop<()>, mut app: impl ApplicationHandler<()> + 'static) {
-    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
+    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64", target_env = "ohos")))]
     event_loop.run_app(&mut app).unwrap();
 
     #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
     winit::platform::web::EventLoopExtWebSys::spawn_app(event_loop, app);
+
+    #[cfg(target_env = "ohos")]
+    winit::platform::ohos::EventLoopExtOpenHarmony::spawn_app(event_loop, app);
 }
 
 /// Create a window from a set of window attributes.
