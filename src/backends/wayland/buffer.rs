@@ -30,7 +30,7 @@ fn create_memfile() -> File {
 
 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 fn create_memfile() -> File {
-    use rustix::{fs::Mode, io::Errno, shm::ShmOFlags};
+    use rustix::{fs::Mode, io::Errno, shm::OFlags};
     use std::iter;
 
     // Use a cached RNG to avoid hammering the thread local.
@@ -43,14 +43,14 @@ fn create_memfile() -> File {
 
         let name = unsafe { CStr::from_bytes_with_nul_unchecked(name.as_bytes()) };
         // `CLOEXEC` is implied with `shm_open`
-        let fd = rustix::shm::shm_open(
+        let fd = rustix::shm::open(
             name,
-            ShmOFlags::RDWR | ShmOFlags::CREATE | ShmOFlags::EXCL,
+            OFlags::RDWR | OFlags::CREATE | OFlags::EXCL,
             Mode::RWXU,
         );
         if !matches!(fd, Err(Errno::EXIST)) {
             let fd = fd.expect("Failed to create POSIX shm to store buffer.");
-            let _ = rustix::shm::shm_unlink(name);
+            let _ = rustix::shm::unlink(name);
             return File::from(fd);
         }
     }

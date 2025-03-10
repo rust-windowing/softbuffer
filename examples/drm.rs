@@ -126,7 +126,7 @@ mod imple {
                     &device,
                     rustix::event::PollFlags::IN,
                 )],
-                -1,
+                None,
             )?;
 
             // Receive the events.
@@ -158,7 +158,7 @@ mod imple {
         }
 
         let color = scale.eval_continuous(i);
-        let pixel = (color.r as u32) << 16 | (color.g as u32) << 8 | (color.b as u32);
+        let pixel = ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
         buf.fill(pixel);
     }
 
