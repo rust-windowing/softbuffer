@@ -810,7 +810,7 @@ impl<D: ?Sized, W: ?Sized> Drop for X11Impl<D, W> {
 
 /// Create a shared memory identifier.
 fn create_shm_id() -> io::Result<OwnedFd> {
-    use posix_shm::{Mode, ShmOFlags};
+    use posix_shm::{Mode, OFlags};
 
     let mut rng = fastrand::Rng::new();
     let mut name = String::with_capacity(23);
@@ -823,13 +823,13 @@ fn create_shm_id() -> io::Result<OwnedFd> {
         name.extend(std::iter::repeat_with(|| rng.alphanumeric()).take(7));
 
         // Try to create the shared memory segment.
-        match posix_shm::shm_open(
+        match posix_shm::open(
             &name,
-            ShmOFlags::RDWR | ShmOFlags::CREATE | ShmOFlags::EXCL,
+            OFlags::RDWR | OFlags::CREATE | OFlags::EXCL,
             Mode::RWXU,
         ) {
             Ok(id) => {
-                posix_shm::shm_unlink(&name).ok();
+                posix_shm::unlink(&name).ok();
                 return Ok(id);
             }
 
