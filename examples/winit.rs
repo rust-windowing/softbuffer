@@ -12,17 +12,13 @@ fn main() {
 }
 
 pub(crate) fn entry(event_loop: EventLoop<()>) {
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+
     let app = winit_app::WinitAppBuilder::with_init(
-        |elwt| {
-            let window = winit_app::make_window(elwt, |w| w);
-
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
-            (window, context)
-        },
-        |_elwt, (window, context)| softbuffer::Surface::new(context, window.clone()).unwrap(),
+        |elwt| winit_app::make_window(elwt, |w| w),
+        move |_elwt, window| softbuffer::Surface::new(&context, window.clone()).unwrap(),
     )
-    .with_event_handler(|(window, _context), surface, event, elwt| {
+    .with_event_handler(|window, surface, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {

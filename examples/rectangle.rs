@@ -24,6 +24,7 @@ fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(
         |elwt| {
@@ -31,18 +32,14 @@ fn main() {
                 w.with_title("Press space to show/hide a rectangle")
             });
 
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
             let flag = false;
 
-            (window, context, flag)
+            (window, flag)
         },
-        |_elwt, (window, context, _flag)| {
-            softbuffer::Surface::new(context, window.clone()).unwrap()
-        },
+        move |_elwt, (window, _flag)| softbuffer::Surface::new(&context, window.clone()).unwrap(),
     )
     .with_event_handler(|state, surface, event, elwt| {
-        let (window, _context, flag) = state;
+        let (window, flag) = state;
 
         elwt.set_control_flow(ControlFlow::Wait);
 
