@@ -14,23 +14,23 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let start = Instant::now();
 
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+
     let app = winit_app::WinitAppBuilder::with_init(
         |event_loop| {
             let window = winit_app::make_window(event_loop, |w| w);
 
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
             let old_size = (0, 0);
             let frames = pre_render_frames(0, 0);
 
-            (window, context, old_size, frames)
+            (window, old_size, frames)
         },
-        |_elwft, (window, context, _old_size, _frames)| {
-            softbuffer::Surface::new(context, window.clone()).unwrap()
+        move |_elwft, (window, _old_size, _frames)| {
+            softbuffer::Surface::new(&context, window.clone()).unwrap()
         },
     )
     .with_event_handler(move |state, surface, event, elwt| {
-        let (window, _context, old_size, frames) = state;
+        let (window, old_size, frames) = state;
 
         elwt.set_control_flow(ControlFlow::Poll);
 

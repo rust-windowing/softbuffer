@@ -11,17 +11,12 @@ const BUFFER_HEIGHT: usize = 128;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(
-        |elwt| {
-            let window = winit_app::make_window(elwt, |w| w);
-
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
-            (window, context)
-        },
-        |_elwt, (window, context)| {
-            let mut surface = softbuffer::Surface::new(context, window.clone()).unwrap();
+        |elwt| winit_app::make_window(elwt, |w| w),
+        move |_elwt, window| {
+            let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
             // Intentionally set the size of the surface to something different than the size of the window.
             surface
                 .resize(
@@ -32,8 +27,7 @@ fn main() {
             surface
         },
     )
-    .with_event_handler(|state, surface, event, elwt| {
-        let (window, _context) = state;
+    .with_event_handler(|window, surface, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
