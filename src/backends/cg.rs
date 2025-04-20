@@ -1,3 +1,4 @@
+//! Softbuffer implementation using CoreGraphics.
 use crate::backend_interface::*;
 use crate::error::InitError;
 use crate::{Rect, SoftBufferError};
@@ -26,7 +27,7 @@ use std::ptr::{self, slice_from_raw_parts_mut, NonNull};
 define_class!(
     #[unsafe(super(NSObject))]
     #[name = "SoftbufferObserver"]
-    #[ivars = Retained<CALayer>]
+    #[ivars = SendCALayer]
     struct Observer;
 
     /// NSKeyValueObserving
@@ -44,13 +45,9 @@ define_class!(
     }
 );
 
-// SAFETY: The `CALayer` that the observer contains is thread safe.
-unsafe impl Send for Observer {}
-unsafe impl Sync for Observer {}
-
 impl Observer {
     fn new(layer: &CALayer) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(layer.retain());
+        let this = Self::alloc().set_ivars(SendCALayer(layer.retain()));
         unsafe { msg_send![super(this), init] }
     }
 
@@ -63,11 +60,9 @@ impl Observer {
 
         let change =
             change.expect("requested a change dictionary in `addObserver`, but none was provided");
-        let new = unsafe {
-            change
-                .objectForKey(NSKeyValueChangeNewKey)
-                .expect("requested change dictionary did not contain `NSKeyValueChangeNewKey`")
-        };
+        let new = change
+            .objectForKey(unsafe { NSKeyValueChangeNewKey })
+            .expect("requested change dictionary did not contain `NSKeyValueChangeNewKey`");
 
         // NOTE: Setting these values usually causes a quarter second animation to occur, which is
         // undesirable.
@@ -105,7 +100,7 @@ pub struct CGImpl<D, W> {
     /// Can also be retrieved from `layer.superlayer()`.
     root_layer: SendCALayer,
     observer: Retained<Observer>,
-    color_space: SendCGColorSpace,
+    color_space: CFRetained<CGColorSpace>,
     /// The width of the underlying buffer.
     width: usize,
     /// The height of the underlying buffer.
@@ -241,7 +236,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             layer: SendCALayer(layer),
             root_layer: SendCALayer(root_layer),
             observer,
-            color_space: SendCGColorSpace(color_space),
+            color_space,
             width,
             height,
             _display: PhantomData,
@@ -320,7 +315,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
                 8,
                 32,
                 self.imp.width * 4,
-                Some(&self.imp.color_space.0),
+                Some(&self.imp.color_space),
                 // TODO: This looks incorrect!
                 CGBitmapInfo::ByteOrder32Little | CGBitmapInfo(CGImageAlphaInfo::NoneSkipFirst.0),
                 Some(&data_provider),
@@ -349,16 +344,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 }
 
-struct SendCGColorSpace(CFRetained<CGColorSpace>);
-// SAFETY: `CGColorSpace` is immutable, and can freely be shared between threads.
-unsafe impl Send for SendCGColorSpace {}
-unsafe impl Sync for SendCGColorSpace {}
-
 struct SendCALayer(Retained<CALayer>);
-// CALayer is thread safe, like most things in Core Animation, see:
+
+// SAFETY: CALayer is dubiously thread safe, like most things in Core Animation.
+// But since we make sure to do our changes within a CATransaction, it is
+// _probably_ fine for us to use CALayer from different threads.
+//
+// See also:
 // https://developer.apple.com/documentation/quartzcore/catransaction/1448267-lock?language=objc
 // https://stackoverflow.com/questions/76250226/how-to-render-content-of-calayer-on-a-background-thread
 unsafe impl Send for SendCALayer {}
+// SAFETY: Same as above.
 unsafe impl Sync for SendCALayer {}
 
 impl Deref for SendCALayer {
