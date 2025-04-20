@@ -81,7 +81,7 @@ features = [
 ]
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
-objc2-core-graphics = { version = "0.3.0", default-features = false, features = [
+objc2-core-graphics = { version = "0.3.1", default-features = false, features = [
     "std",
     "objc2",
     "CGColorSpace",
@@ -89,11 +89,11 @@ objc2-core-graphics = { version = "0.3.0", default-features = false, features = 
     "CGImage",
 ] }
 objc2 = "0.6.0"
-objc2-core-foundation = { version = "0.3.0", default-features = false, features = [
+objc2-core-foundation = { version = "0.3.1", default-features = false, features = [
     "std",
     "CFCGTypes",
 ] }
-objc2-foundation = { version = "0.3.0", default-features = false, features = [
+objc2-foundation = { version = "0.3.1", default-features = false, features = [
     "std",
     "objc2-core-foundation",
     "NSDictionary",
@@ -103,7 +103,7 @@ objc2-foundation = { version = "0.3.0", default-features = false, features = [
     "NSThread",
     "NSValue",
 ] }
-objc2-quartz-core = { version = "0.3.0", default-features = false, features = [
+objc2-quartz-core = { version = "0.3.1", default-features = false, features = [
     "std",
     "objc2-core-foundation",
     "CALayer",

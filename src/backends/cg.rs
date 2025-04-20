@@ -6,8 +6,7 @@ use objc2::runtime::{AnyObject, Bool};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
 use objc2_core_foundation::{CFRetained, CGPoint};
 use objc2_core_graphics::{
-    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGColorSpaceCreateDeviceRGB,
-    CGDataProviderCreateWithData, CGImageAlphaInfo, CGImageCreate,
+    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage, CGImageAlphaInfo,
 };
 use objc2_foundation::{
     ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
@@ -229,7 +228,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         layer.setContentsGravity(unsafe { kCAGravityTopLeft });
 
         // Initialize color space here, to reduce work later on.
-        let color_space = unsafe { CGColorSpaceCreateDeviceRGB() }.unwrap();
+        let color_space = unsafe { CGColorSpace::new_device_rgb() }.unwrap();
 
         // Grab initial width and height from the layer (whose properties have just been initialized
         // by the observer using `NSKeyValueObservingOptionInitial`).
@@ -310,12 +309,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
             // SAFETY: The data pointer and length are valid.
             // The info pointer can safely be NULL, we don't use it in the `release` callback.
             unsafe {
-                CGDataProviderCreateWithData(ptr::null_mut(), data_ptr, len, Some(release)).unwrap()
+                CGDataProvider::with_data(ptr::null_mut(), data_ptr, len, Some(release)).unwrap()
             }
         };
 
         let image = unsafe {
-            CGImageCreate(
+            CGImage::new(
                 self.imp.width,
                 self.imp.height,
                 8,
