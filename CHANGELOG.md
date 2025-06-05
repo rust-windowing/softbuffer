@@ -3,6 +3,7 @@
 - Update to `objc2` 0.6.0.
 - Bump MSRV to Rust 1.71.
 - Make `Context` cloneable.
+- `Context`, `Surface` and `Buffer` now implement `Debug`.
 
 # 0.4.6
 
