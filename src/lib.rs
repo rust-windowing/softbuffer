@@ -30,6 +30,7 @@ pub use backends::web::SurfaceExtWeb;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
+#[derive(Clone)]
 pub struct Context<D> {
     /// The inner static dispatch object.
     context_impl: ContextDispatch<D>,
