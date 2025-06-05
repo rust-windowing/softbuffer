@@ -30,7 +30,7 @@ pub use backends::web::SurfaceExtWeb;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Context<D> {
     /// The inner static dispatch object.
     context_impl: ContextDispatch<D>,
@@ -73,6 +73,7 @@ pub struct Rect {
 }
 
 /// A surface for drawing to a window with software buffers.
+#[derive(Debug)]
 pub struct Surface<D, W> {
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch<D, W>>,
@@ -200,6 +201,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 ///
 /// Buffer copies an channel swizzling happen on:
 /// - Android
+#[derive(Debug)]
 pub struct Buffer<'a, D, W> {
     buffer_impl: BufferDispatch<'a, D, W>,
     _marker: PhantomData<(Arc<D>, Cell<()>)>,
