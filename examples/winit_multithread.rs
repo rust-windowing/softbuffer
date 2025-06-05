@@ -8,7 +8,7 @@ mod winit_app;
 pub mod ex {
     use std::num::NonZeroU32;
     use std::sync::{mpsc, Arc, Mutex};
-    use winit::event::{Event, KeyEvent, WindowEvent};
+    use winit::event::{KeyEvent, WindowEvent};
     use winit::event_loop::{ControlFlow, EventLoop, OwnedDisplayHandle};
     use winit::keyboard::{Key, NamedKey};
     use winit::window::Window;
@@ -91,15 +91,16 @@ pub mod ex {
                 ))
             },
         )
-        .with_event_handler(|state, surface, event, elwt| {
+        .with_event_handler(|state, surface, window_id, event, elwt| {
             let (window, start_render, finish_render) = state;
             elwt.set_control_flow(ControlFlow::Wait);
 
+            if window_id != window.id() {
+                return;
+            }
+
             match event {
-                Event::WindowEvent {
-                    window_id,
-                    event: WindowEvent::RedrawRequested,
-                } if window_id == window.id() => {
+                WindowEvent::RedrawRequested => {
                     let Some(surface) = surface else {
                         eprintln!("RedrawRequested fired before Resumed or after Suspended");
                         return;
@@ -108,19 +109,15 @@ pub mod ex {
                     start_render.send(surface.clone()).unwrap();
                     finish_render.recv().unwrap();
                 }
-                Event::WindowEvent {
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
                     event:
-                        WindowEvent::CloseRequested
-                        | WindowEvent::KeyboardInput {
-                            event:
-                                KeyEvent {
-                                    logical_key: Key::Named(NamedKey::Escape),
-                                    ..
-                                },
+                        KeyEvent {
+                            logical_key: Key::Named(NamedKey::Escape),
                             ..
                         },
-                    window_id,
-                } if window_id == window.id() => {
+                    ..
+                } => {
                     elwt.exit();
                 }
                 _ => {}

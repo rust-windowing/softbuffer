@@ -88,11 +88,15 @@ fn main() {
         },
         |_elwt, window| softbuffer::Surface::new(&context, window.clone()).unwrap(),
     )
-    .with_event_handler(|window, surface, event, elwt| {
+    .with_event_handler(|window, surface, window_id, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
+        if window_id != window.id() {
+            return;
+        }
+
         match event {
-            Event::WindowEvent { window_id, event: WindowEvent::RedrawRequested } if window_id == window.id() => {
+            WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
@@ -121,10 +125,7 @@ fn main() {
 
                 buffer.present().unwrap();
             }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == window.id() => {
+            WindowEvent::CloseRequested => {
                 elwt.exit();
             }
             _ => {}
