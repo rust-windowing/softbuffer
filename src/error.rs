@@ -204,6 +204,7 @@ impl<T> SwResultExt<T> for Option<T> {
 ///
 /// This prevents `x11-dl` and `x11rb` from becoming public dependencies, since users cannot downcast
 /// to this type.
+#[allow(dead_code)]
 struct LibraryError<E>(E);
 
 impl<E: fmt::Debug> fmt::Debug for LibraryError<E> {
