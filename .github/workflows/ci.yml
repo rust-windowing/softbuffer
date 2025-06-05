@@ -98,6 +98,7 @@ jobs:
     - name: Pin deps that break MSRV
       if: matrix.rust_version == '1.71.0'
       run: |
+        cargo update -p half --precise 2.4.1
         cargo update -p bumpalo --precise 3.14.0
 
     - name: Build crate
