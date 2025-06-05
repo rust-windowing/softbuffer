@@ -123,6 +123,14 @@ pub struct BufferImpl<'a, D: ?Sized, W> {
 unsafe impl<'a, D, W> Send for BufferImpl<'a, D, W> {}
 
 impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+    fn width(&self) -> usize {
+        self.native_window_buffer.width()
+    }
+
+    fn height(&self) -> usize {
+        self.native_window_buffer.height()
+    }
+
     #[inline]
     fn pixels(&self) -> &[u32] {
         &self.buffer

@@ -284,6 +284,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 pub struct BufferImpl<'a, D, W>(&'a mut Win32Impl<D, W>);
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+    fn width(&self) -> usize {
+        self.0.buffer.as_ref().unwrap().width.get() as usize
+    }
+
+    fn height(&self) -> usize {
+        self.0.buffer.as_ref().unwrap().height.get() as usize
+    }
+
     #[inline]
     fn pixels(&self) -> &[u32] {
         self.0.buffer.as_ref().unwrap().pixels()

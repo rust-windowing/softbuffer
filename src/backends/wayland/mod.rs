@@ -263,6 +263,14 @@ pub struct BufferImpl<'a, D: ?Sized, W> {
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+    fn width(&self) -> usize {
+        self.stack.member().width
+    }
+
+    fn height(&self) -> usize {
+        self.stack.member().height
+    }
+
     #[inline]
     fn pixels(&self) -> &[u32] {
         self.stack.member()
