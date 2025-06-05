@@ -18,6 +18,7 @@ use std::num::NonZeroU32;
 /// Display implementation for the web platform.
 ///
 /// This just caches the document to prevent having to query it every time.
+#[derive(Clone)]
 pub struct WebDisplayImpl<D> {
     document: web_sys::Document,
     _display: D,
