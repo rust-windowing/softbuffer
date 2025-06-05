@@ -49,23 +49,19 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
                 };
-                let size = window.inner_size();
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    let mut buffer = surface.buffer_mut().unwrap();
-                    for y in 0..height.get() {
-                        for x in 0..width.get() {
-                            let red = x % 255;
-                            let green = y % 255;
-                            let blue = (x * y) % 255;
-                            let index = y as usize * width.get() as usize + x as usize;
-                            buffer[index] = blue | (green << 8) | (red << 16);
-                        }
-                    }
 
-                    buffer.present().unwrap();
+                let mut buffer = surface.buffer_mut().unwrap();
+                for y in 0..buffer.height() {
+                    for x in 0..buffer.width() {
+                        let red = x as u32 % 255;
+                        let green = y as u32 % 255;
+                        let blue = (x as u32 * y as u32) % 255;
+                        let index = y * buffer.width() + x;
+                        buffer[index] = blue | (green << 8) | (red << 16);
+                    }
                 }
+
+                buffer.present().unwrap();
             }
             Event::WindowEvent {
                 event:
