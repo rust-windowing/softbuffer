@@ -59,23 +59,20 @@ fn main() {
                     return;
                 };
 
-                let size = window.inner_size();
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    let elapsed = start.elapsed().as_secs_f64() % 1.0;
+                let elapsed = start.elapsed().as_secs_f64() % 1.0;
 
-                    if (width.get(), height.get()) != *old_size {
-                        *old_size = (width.get(), height.get());
-                        *frames = pre_render_frames(width.get() as usize, height.get() as usize);
-                    };
+                let mut buffer = surface.buffer_mut().unwrap();
 
-                    let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
-
-                    let mut buffer = surface.buffer_mut().unwrap();
-                    buffer.copy_from_slice(frame);
-                    buffer.present().unwrap();
+                let size = (buffer.width(), buffer.height());
+                if size != *old_size {
+                    *old_size = size;
+                    *frames = pre_render_frames(size.0, size.1);
                 }
+
+                let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
+
+                buffer.copy_from_slice(frame);
+                buffer.present().unwrap();
             }
             Event::AboutToWait => {
                 window.request_redraw();

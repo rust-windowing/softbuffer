@@ -293,6 +293,14 @@ impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
 }
 
 impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
+    fn width(&self) -> usize {
+        self.size.0.get() as usize
+    }
+
+    fn height(&self) -> usize {
+        self.size.1.get() as usize
+    }
+
     #[inline]
     fn pixels(&self) -> &[u32] {
         bytemuck::cast_slice(self.mapping.as_ref())

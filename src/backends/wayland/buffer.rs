@@ -74,8 +74,8 @@ pub(super) struct WaylandBuffer {
     pool: wl_shm_pool::WlShmPool,
     pool_size: i32,
     buffer: wl_buffer::WlBuffer,
-    width: i32,
-    height: i32,
+    pub width: i32,
+    pub height: i32,
     released: Arc<AtomicBool>,
     pub age: u8,
 }

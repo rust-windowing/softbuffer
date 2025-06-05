@@ -1,3 +1,5 @@
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use softbuffer::Buffer;
 use std::num::NonZeroU32;
 use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -6,7 +8,9 @@ use winit::keyboard::{Key, NamedKey};
 #[path = "utils/winit_app.rs"]
 mod winit_app;
 
-fn redraw(buffer: &mut [u32], width: usize, height: usize, flag: bool) {
+fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, flag: bool) {
+    let width = buffer.width();
+    let height = buffer.height();
     for y in 0..height {
         for x in 0..width {
             let value = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
@@ -71,21 +75,10 @@ fn main() {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
                 };
-                // Grab the window's client area dimensions, and ensure they're valid
-                let size = window.inner_size();
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    // Draw something in the window
-                    let mut buffer = surface.buffer_mut().unwrap();
-                    redraw(
-                        &mut buffer,
-                        width.get() as usize,
-                        height.get() as usize,
-                        *flag,
-                    );
-                    buffer.present().unwrap();
-                }
+                // Draw something in the window
+                let mut buffer = surface.buffer_mut().unwrap();
+                redraw(&mut buffer, *flag);
+                buffer.present().unwrap();
             }
 
             Event::WindowEvent {
