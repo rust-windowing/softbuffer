@@ -72,7 +72,7 @@ x11rb = { version = "0.13.0", features = [
 ], optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-sys]
-version = "0.59.0"
+version = "0.60.2"
 features = [
     "Win32_Graphics_Gdi",
     "Win32_UI_Shell",
