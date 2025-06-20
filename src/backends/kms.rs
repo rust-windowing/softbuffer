@@ -236,7 +236,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             })
             .swbuf_err("No mode found")?;
 
-        // When chaning the display resolution, we need to modeset
+        // When changing the display resolution, we need to modeset
         self.display
             .set_crtc(
                 self.crtc.handle(),
