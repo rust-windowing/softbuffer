@@ -17,6 +17,7 @@ macro_rules! make_dispatch {
             ($context_inner: ty, $surface_inner: ty, $buffer_inner: ty),
         )*
     ) => {
+        #[derive(Clone)]
         pub(crate) enum ContextDispatch<$dgen> {
             $(
                 $(#[$attr])*

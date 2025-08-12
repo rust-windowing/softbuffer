@@ -13,19 +13,16 @@ fn main() {
     let (width, height) = (fruit.width(), fruit.height());
 
     let event_loop = EventLoop::new().unwrap();
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(
         move |elwt| {
-            let window = winit_app::make_window(elwt, |w| {
+            winit_app::make_window(elwt, |w| {
                 w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
-            });
-
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
-            (window, context)
+            })
         },
-        move |_elwt, (window, context)| {
-            let mut surface = softbuffer::Surface::new(context, window.clone()).unwrap();
+        move |_elwt, window| {
+            let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
             // Intentionally only set the size of the surface once, at creation.
             // This is needed if the window chooses to ignore the size we passed in above, and for the
             // platforms softbuffer supports that don't yet extract the size from the window.
@@ -38,8 +35,7 @@ fn main() {
             surface
         },
     )
-    .with_event_handler(move |state, surface, event, elwt| {
-        let (window, _context) = state;
+    .with_event_handler(move |window, surface, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
         match event {
