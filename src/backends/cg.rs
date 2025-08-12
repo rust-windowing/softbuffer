@@ -3,7 +3,7 @@ use crate::backend_interface::*;
 use crate::error::InitError;
 use crate::{util, Pixel, Rect, SoftBufferError};
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, Bool};
+use objc2::runtime::{AnyObject, Bool, ProtocolObject};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
 use objc2_core_foundation::{CFRetained, CGPoint};
 use objc2_core_graphics::{
@@ -12,10 +12,10 @@ use objc2_core_graphics::{
 };
 use objc2_foundation::{
     ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
-    NSKeyValueObservingOptions, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
+    NSKeyValueObservingOptions, NSNull, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
     NSString, NSValue,
 };
-use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
+use objc2_quartz_core::{kCAGravityTopLeft, CALayer};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::ffi::c_void;
@@ -225,6 +225,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         // resized to something that doesn't fit, see #177.
         layer.setContentsGravity(unsafe { kCAGravityTopLeft });
 
+        // The CALayer has a default action associated with a change in the layer contents, causing
+        // a quarter second fade transition to happen every time a new buffer is applied.
+        //
+        // We avoid this by setting the action for the "contents" key to NULL.
+        //
+        // TODO(madsmtm): Do we want to do the same for bounds/contentsScale for smoother resizing?
+        layer.setActions(Some(&NSDictionary::from_slices(
+            &[ns_string!("contents")],
+            &[ProtocolObject::from_ref(&*NSNull::null())],
+        )));
+
         // Initialize color space here, to reduce work later on.
         let color_space = CGColorSpace::new_device_rgb().unwrap();
 
@@ -354,16 +365,9 @@ impl BufferInterface for BufferImpl<'_> {
         }
         .unwrap();
 
-        // The CALayer has a default action associated with a change in the layer contents, causing
-        // a quarter second fade transition to happen every time a new buffer is applied. This can
-        // be avoided by wrapping the operation in a transaction and disabling all actions.
-        CATransaction::begin();
-        CATransaction::setDisableActions(true);
-
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
         unsafe { self.layer.setContents(Some(image.as_ref())) };
 
-        CATransaction::commit();
         Ok(())
     }
 }

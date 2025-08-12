@@ -114,6 +114,7 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
     "NSString",
     "NSThread",
     "NSValue",
+    "NSNull",
 ] }
 objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
     "std",

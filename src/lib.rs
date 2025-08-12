@@ -301,6 +301,21 @@ impl Buffer<'_> {
     ///
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
+    ///
+    /// ## macOS / iOS
+    ///
+    /// On macOS/iOS/etc., this sets the [contents] of the underlying [`CALayer`], but doesn't yet
+    /// actually commit those contents to the compositor; that is instead done automatically by
+    /// QuartzCore at the end of the current iteration of the runloop. This synchronizes the
+    /// contents with the rest of the window, which is important to avoid flickering when resizing.
+    ///
+    /// If you need to send the contents to the compositor immediately (might be useful when
+    /// rendering from a separate thread or when using Softbuffer without the standard AppKit/UIKit
+    /// runloop), you'll want to wrap this function in a [`CATransaction`].
+    ///
+    /// [contents]: https://developer.apple.com/documentation/quartzcore/calayer/contents?language=objc
+    /// [`CALayer`]: https://developer.apple.com/documentation/quartzcore/calayer?language=objc
+    /// [`CATransaction`]: https://developer.apple.com/documentation/quartzcore/catransaction?language=objc
     #[inline]
     pub fn present(self) -> Result<(), SoftBufferError> {
         // Damage the entire buffer.
