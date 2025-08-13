@@ -102,6 +102,8 @@ jobs:
         cargo update -p zune-jpeg --precise 0.4.14
         cargo update -p half --precise 2.4.1
         cargo update -p bumpalo --precise 3.14.0
+        cargo update -p rayon --precise 1.10.0
+        cargo update -p rayon-core --precise 1.12.1
 
     - name: Build crate
       shell: bash
