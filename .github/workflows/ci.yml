@@ -10,7 +10,7 @@ jobs:
     name: Tidy Code
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: hecrj/setup-rust-action@v2
       with:
         rust-version: stable
@@ -74,7 +74,7 @@ jobs:
 
     runs-on: ${{ matrix.platform.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - uses: taiki-e/install-action@v2
       if: matrix.platform.target == 'wasm32-unknown-unknown'
