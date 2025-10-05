@@ -9,6 +9,8 @@ pub(crate) mod cg;
 pub(crate) mod kms;
 #[cfg(target_os = "redox")]
 pub(crate) mod orbital;
+#[cfg(target_os = "uefi")]
+pub(crate) mod uefi;
 #[cfg(wayland_platform)]
 pub(crate) mod wayland;
 #[cfg(target_arch = "wasm32")]

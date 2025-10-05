@@ -304,6 +304,7 @@ fn window_handle_type_name(handle: &RawWindowHandle) -> &'static str {
         RawWindowHandle::Drm(_) => "DRM",
         RawWindowHandle::Gbm(_) => "GBM",
         RawWindowHandle::Haiku(_) => "Haiku",
+        RawWindowHandle::Uefi(_) => "UEFI",
         _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
     }
 }
@@ -322,11 +323,12 @@ fn display_handle_type_name(handle: &RawDisplayHandle) -> &'static str {
         RawDisplayHandle::Haiku(_) => "Haiku",
         RawDisplayHandle::Windows(_) => "Windows",
         RawDisplayHandle::Android(_) => "Android",
+        RawDisplayHandle::Uefi(_) => "UEFI",
         _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(not(any(target_family = "wasm", target_os = "uefi")))]
 fn __assert_send() {
     fn is_send<T: Send>() {}
     fn is_sync<T: Sync>() {}
