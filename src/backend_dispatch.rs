@@ -215,4 +215,6 @@ make_dispatch! {
     Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'a, D, W>),
     #[cfg(target_os = "redox")]
     Orbital(D, backends::orbital::OrbitalImpl<D, W>, backends::orbital::BufferImpl<'a, D, W>),
+    #[cfg(target_os = "uefi")]
+    Uefi(backends::uefi::UefiDisplayImpl<D>, backends::uefi::UefiImpl<D, W>, backends::uefi::BufferImpl<'a, D, W>),
 }

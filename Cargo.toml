@@ -39,7 +39,7 @@ x11 = [
 x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
 
 [dependencies]
-raw_window_handle = { package = "raw-window-handle", version = "0.6", features = [
+raw_window_handle = { package = "raw-window-handle", git = "https://github.com/RossComputerGuy/raw-window-handle", branch = "feat/uefi", features = [
     "std",
 ] }
 tracing = { version = "0.1.41", default-features = false }
@@ -129,6 +129,9 @@ features = [
 
 [target.'cfg(target_os = "redox")'.dependencies]
 redox_syscall = "0.5"
+
+[target.'cfg(target_os = "uefi")'.dependencies]
+uefi = "0.35.0"
 
 [build-dependencies]
 cfg_aliases = "0.2.0"
