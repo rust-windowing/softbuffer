@@ -7,7 +7,7 @@
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{Rect, SoftBufferError};
+use crate::{util, Rect, SoftBufferError};
 use raw_window_handle::{
     HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, XcbDisplayHandle,
     XcbWindowHandle,
@@ -163,7 +163,7 @@ enum Buffer {
     Shm(ShmBuffer),
 
     /// A normal buffer that we send over the wire.
-    Wire(Vec<u32>),
+    Wire(util::PixelBuffer),
 }
 
 #[derive(Debug)]
@@ -289,7 +289,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             })
         } else {
             // SHM is not available.
-            Buffer::Wire(Vec::new())
+            Buffer::Wire(util::PixelBuffer(Vec::new()))
         };
 
         Ok(Self {
@@ -801,7 +801,10 @@ impl<D: ?Sized> Drop for X11DisplayImpl<D> {
 impl<D: ?Sized, W: ?Sized> Drop for X11Impl<D, W> {
     fn drop(&mut self) {
         // If we used SHM, make sure it's detached from the server.
-        if let Buffer::Shm(mut shm) = mem::replace(&mut self.buffer, Buffer::Wire(Vec::new())) {
+        if let Buffer::Shm(mut shm) = mem::replace(
+            &mut self.buffer,
+            Buffer::Wire(util::PixelBuffer(Vec::new())),
+        ) {
             // If we were in the middle of processing a buffer, wait for it to finish.
             shm.finish_wait(self.display.connection()).ok();
 

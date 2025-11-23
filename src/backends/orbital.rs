@@ -3,7 +3,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, 
 use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::backend_interface::*;
-use crate::{Rect, SoftBufferError};
+use crate::{util, Rect, SoftBufferError};
 
 #[derive(Debug)]
 struct OrbitalMap {
@@ -177,7 +177,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
                     .expect("failed to map orbital window"),
             )
         } else {
-            Pixels::Buffer(vec![0; self.width as usize * self.height as usize])
+            Pixels::Buffer(util::PixelBuffer(vec![
+                0;
+                self.width as usize
+                    * self.height as usize
+            ]))
         };
         Ok(BufferImpl { imp: self, pixels })
     }
@@ -186,7 +190,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
 #[derive(Debug)]
 enum Pixels {
     Mapping(OrbitalMap),
-    Buffer(Vec<u32>),
+    Buffer(util::PixelBuffer),
 }
 
 #[derive(Debug)]

@@ -12,7 +12,7 @@ use raw_window_handle::AndroidNdkWindowHandle;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use crate::error::InitError;
-use crate::{BufferInterface, Rect, SoftBufferError, SurfaceInterface};
+use crate::{util, BufferInterface, Rect, SoftBufferError, SurfaceInterface};
 
 /// The handle to a window for software buffering.
 #[derive(Debug)]
@@ -103,7 +103,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 
         Ok(BufferImpl {
             native_window_buffer,
-            buffer,
+            buffer: util::PixelBuffer(buffer),
             marker: PhantomData,
         })
     }
@@ -117,7 +117,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 #[derive(Debug)]
 pub struct BufferImpl<'a, D: ?Sized, W> {
     native_window_buffer: NativeWindowBufferLockGuard<'a>,
-    buffer: Vec<u32>,
+    buffer: util::PixelBuffer,
     marker: PhantomData<(&'a D, &'a W)>,
 }
 
