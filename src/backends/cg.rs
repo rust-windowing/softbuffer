@@ -8,6 +8,7 @@ use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMark
 use objc2_core_foundation::{CFRetained, CGPoint};
 use objc2_core_graphics::{
     CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage, CGImageAlphaInfo,
+    CGImageByteOrderInfo, CGImageComponentInfo, CGImagePixelFormatInfo,
 };
 use objc2_foundation::{
     ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
@@ -223,7 +224,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         layer.setContentsGravity(unsafe { kCAGravityTopLeft });
 
         // Initialize color space here, to reduce work later on.
-        let color_space = unsafe { CGColorSpace::new_device_rgb() }.unwrap();
+        let color_space = CGColorSpace::new_device_rgb().unwrap();
 
         // Grab initial width and height from the layer (whose properties have just been initialized
         // by the observer using `NSKeyValueObservingOptionInitial`).
@@ -308,6 +309,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
             }
         };
 
+        // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
+        // `CGImageByteOrderInfo` and `CGImagePixelFormatInfo` (see e.g. `CGBitmapInfoMake`).
+        //
+        // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
+        let bitmap_info = CGBitmapInfo(
+            CGImageAlphaInfo::NoneSkipFirst.0
+                | CGImageComponentInfo::Integer.0
+                | CGImageByteOrderInfo::Order32Little.0
+                | CGImagePixelFormatInfo::Packed.0,
+        );
+
         let image = unsafe {
             CGImage::new(
                 self.imp.width,
@@ -316,8 +328,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
                 32,
                 self.imp.width * 4,
                 Some(&self.imp.color_space),
-                // TODO: This looks incorrect!
-                CGBitmapInfo::ByteOrder32Little | CGBitmapInfo(CGImageAlphaInfo::NoneSkipFirst.0),
+                bitmap_info,
                 Some(&data_provider),
                 ptr::null(),
                 false,
