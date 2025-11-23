@@ -2,7 +2,7 @@
 
 - Update to `objc2` 0.6.0.
 - Bump MSRV to Rust 1.71.
-- Added `Buffer::width` and `Buffer::height`.
+- Added `Buffer::width()` and `Buffer::height()` getters.
 
 # 0.4.6
 
