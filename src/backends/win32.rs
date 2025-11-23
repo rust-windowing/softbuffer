@@ -25,6 +25,7 @@ const ZERO_QUAD: Gdi::RGBQUAD = Gdi::RGBQUAD {
     rgbReserved: 0,
 };
 
+#[derive(Debug)]
 struct Buffer {
     dc: Gdi::HDC,
     bitmap: Gdi::HBITMAP,
@@ -135,6 +136,7 @@ impl Buffer {
 }
 
 /// The handle to a window for software buffering.
+#[derive(Debug)]
 pub struct Win32Impl<D: ?Sized, W> {
     /// The window handle.
     window: OnlyUsedFromOrigin<HWND>,
@@ -281,6 +283,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D, W>(&'a mut Win32Impl<D, W>);
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
@@ -468,6 +471,7 @@ impl Command {
     }
 }
 
+#[derive(Debug)]
 struct OnlyUsedFromOrigin<T>(T);
 unsafe impl<T> Send for OnlyUsedFromOrigin<T> {}
 

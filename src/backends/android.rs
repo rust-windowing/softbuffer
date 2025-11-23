@@ -15,6 +15,7 @@ use crate::error::InitError;
 use crate::{BufferInterface, Rect, SoftBufferError, SurfaceInterface};
 
 /// The handle to a window for software buffering.
+#[derive(Debug)]
 pub struct AndroidImpl<D, W> {
     native_window: NativeWindow,
     window: W,
@@ -113,6 +114,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D: ?Sized, W> {
     native_window_buffer: NativeWindowBufferLockGuard<'a>,
     buffer: Vec<u32>,

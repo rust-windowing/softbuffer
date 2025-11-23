@@ -5,6 +5,7 @@ use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 use crate::backend_interface::*;
 use crate::{Rect, SoftBufferError};
 
+#[derive(Debug)]
 struct OrbitalMap {
     address: usize,
     size: usize,
@@ -55,6 +56,7 @@ impl Drop for OrbitalMap {
     }
 }
 
+#[derive(Debug)]
 pub struct OrbitalImpl<D, W> {
     handle: ThreadSafeWindowHandle,
     width: u32,
@@ -64,6 +66,7 @@ pub struct OrbitalImpl<D, W> {
     _display: PhantomData<D>,
 }
 
+#[derive(Debug)]
 struct ThreadSafeWindowHandle(OrbitalWindowHandle);
 unsafe impl Send for ThreadSafeWindowHandle {}
 unsafe impl Sync for ThreadSafeWindowHandle {}
@@ -180,11 +183,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
     }
 }
 
+#[derive(Debug)]
 enum Pixels {
     Mapping(OrbitalMap),
     Buffer(Vec<u32>),
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D, W> {
     imp: &'a mut OrbitalImpl<D, W>,
     pixels: Pixels,

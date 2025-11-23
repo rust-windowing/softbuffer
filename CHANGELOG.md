@@ -5,6 +5,7 @@
 - Make `Context` cloneable.
 - Added `Buffer::width()` and `Buffer::height()` getters.
 - Added support for `wasm64-*` targets.
+- `Context`, `Surface` and `Buffer` now implement `Debug`.
 
 # 0.4.6
 

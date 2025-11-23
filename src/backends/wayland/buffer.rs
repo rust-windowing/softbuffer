@@ -67,6 +67,7 @@ unsafe fn map_file(file: &File) -> MmapMut {
     unsafe { MmapMut::map_mut(file.as_raw_fd()).expect("Failed to map shared memory") }
 }
 
+#[derive(Debug)]
 pub(super) struct WaylandBuffer {
     qh: QueueHandle<State>,
     tempfile: File,

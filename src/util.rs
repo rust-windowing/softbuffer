@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use std::cmp;
+use std::fmt;
 use std::num::NonZeroU32;
 
 use crate::Rect;
@@ -47,6 +48,14 @@ impl<'a, T: 'a + ?Sized, U: 'a + ?Sized> BorrowStack<'a, T, U> {
         // SAFETY: Since we consume self and no longer reference member, this
         // mutable reference is unique.
         unsafe { &mut *self.container }
+    }
+}
+
+impl<'a, T: 'a + ?Sized, U: 'a + ?Sized + fmt::Debug> fmt::Debug for BorrowStack<'a, T, U> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BorrowStack")
+            .field("member", &self.member())
+            .finish_non_exhaustive()
     }
 }
 

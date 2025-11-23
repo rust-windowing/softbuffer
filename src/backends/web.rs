@@ -18,7 +18,7 @@ use std::num::NonZeroU32;
 /// Display implementation for the web platform.
 ///
 /// This just caches the document to prevent having to query it every time.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WebDisplayImpl<D> {
     document: web_sys::Document,
     _display: D,
@@ -43,6 +43,7 @@ impl<D: HasDisplayHandle> ContextInterface<D> for WebDisplayImpl<D> {
     }
 }
 
+#[derive(Debug)]
 pub struct WebImpl<D, W> {
     /// The handle and context to the canvas that we're drawing to.
     canvas: Canvas,
@@ -65,6 +66,7 @@ pub struct WebImpl<D, W> {
 
 /// Holding canvas and context for [`HtmlCanvasElement`] or [`OffscreenCanvas`],
 /// since they have different types.
+#[derive(Debug)]
 enum Canvas {
     Canvas {
         canvas: HtmlCanvasElement,
@@ -373,6 +375,7 @@ impl Canvas {
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D, W> {
     imp: &'a mut WebImpl<D, W>,
 }
