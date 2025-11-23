@@ -3,7 +3,7 @@
 #[cfg(kms_platform)]
 mod imple {
     use drm::control::{connector, Device as CtrlDevice, Event, ModeTypeFlags, PlaneType};
-    use drm::Device;
+    use drm::{ClientCapability, Device};
 
     use raw_window_handle::{DisplayHandle, DrmDisplayHandle, DrmWindowHandle, WindowHandle};
     use softbuffer::{Context, Surface};
@@ -16,6 +16,7 @@ mod imple {
     pub(super) fn entry() -> Result<(), Box<dyn std::error::Error>> {
         // Open a new device.
         let device = Card::find()?;
+        device.set_client_capability(ClientCapability::UniversalPlanes, true)?;
 
         // Create the softbuffer context.
         let context = unsafe {
