@@ -28,10 +28,6 @@
 /// assert_eq!(red.r, 255);
 /// assert_eq!(red.g, 128);
 /// assert_eq!(red.b, 0);
-/// assert_eq!(red.a, 0xff);
-///
-/// let from_struct_literal = Pixel { r: 255, g: 0x80, b: 0, a: 0xff };
-/// assert_eq!(red, from_struct_literal);
 /// ```
 ///
 /// Convert a pixel to an array of `u8`s.
@@ -63,15 +59,15 @@
 ///
 /// if cfg!(any(target_family = "wasm", target_os = "android")) {
 ///     // RGBX
-///     assert_eq!(red, u32::from_ne_bytes([0xff, 0x00, 0x00, 0xff]));
+///     assert_eq!(red, u32::from_ne_bytes([0xff, 0x00, 0x00, 0x00]));
 /// } else {
 ///     // BGRX
-///     assert_eq!(red, u32::from_ne_bytes([0x00, 0x00, 0xff, 0xff]));
+///     assert_eq!(red, u32::from_ne_bytes([0x00, 0x00, 0xff, 0x00]));
 /// }
 /// ```
 #[repr(C)]
 #[repr(align(4))] // May help the compiler to see that this is a u32
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Pixel {
     #[cfg(any(target_family = "wasm", target_os = "android"))]
     /// The red component.
@@ -97,17 +93,28 @@ pub struct Pixel {
     ///
     /// `0xff` here means opaque, whereas `0` means transparent.
     ///
-    /// NOTE: Transparency is yet poorly supported, see [#17], until that is resolved, you will
-    /// probably want to set this to `0xff`.
+    /// NOTE: Transparency is not yet supported, see [#17], so this doesn't actually do anything.
     ///
     /// [#17]: https://github.com/rust-windowing/softbuffer/issues/17
-    pub a: u8,
+    pub(crate) a: u8,
+}
+
+impl Default for Pixel {
+    /// A black opaque pixel.
+    fn default() -> Self {
+        Self {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0xff,
+        }
+    }
 }
 
 impl Pixel {
     /// Creates a new pixel from a red, a green and a blue component.
     ///
-    /// The alpha component is set to opaque.
+    /// The pixel is opaque.
     ///
     /// # Example
     ///
@@ -123,7 +130,7 @@ impl Pixel {
 
     /// Creates a new pixel from a blue, a green and a red component.
     ///
-    /// The alpha component is set to opaque.
+    /// The pixel is opaque.
     ///
     /// # Example
     ///
