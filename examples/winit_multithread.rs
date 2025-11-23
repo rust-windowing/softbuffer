@@ -40,13 +40,13 @@ pub mod ex {
                 surface.resize(width, height).unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                for y in 0..height.get() {
-                    for x in 0..width.get() {
+                for y in 0..buffer.height().get() {
+                    for x in 0..buffer.width().get() {
                         let red = x % 255;
                         let green = y % 255;
                         let blue = (x * y) % 255;
-                        let index = y as usize * width.get() as usize + x as usize;
-                        buffer[index] = blue | (green << 8) | (red << 16);
+                        let index = y * buffer.width().get() + x;
+                        buffer[index as usize] = blue | (green << 8) | (red << 16);
                     }
                 }
 

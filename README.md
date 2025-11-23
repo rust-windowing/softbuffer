@@ -101,21 +101,18 @@ fn main() {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
                 };
-                let (width, height) = {
-                    let size = window.inner_size();
-                    (size.width, size.height)
-                };
+                let size = window.inner_size();
                 surface
                     .resize(
-                        NonZeroU32::new(width).unwrap(),
-                        NonZeroU32::new(height).unwrap(),
+                        NonZeroU32::new(size.width).unwrap(),
+                        NonZeroU32::new(size.height).unwrap(),
                     )
                     .unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                for index in 0..(width * height) {
-                    let y = index / width;
-                    let x = index % width;
+                for index in 0..(buffer.width().get() * buffer.height().get()) {
+                    let y = index / buffer.width().get();
+                    let x = index % buffer.width().get();
                     let red = x % 255;
                     let green = y % 255;
                     let blue = (x * y) % 255;

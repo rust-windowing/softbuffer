@@ -6,9 +6,6 @@ use winit::keyboard::{Key, NamedKey};
 #[path = "utils/winit_app.rs"]
 mod winit_app;
 
-const BUFFER_WIDTH: usize = 256;
-const BUFFER_HEIGHT: usize = 128;
-
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
@@ -19,10 +16,7 @@ fn main() {
             let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
             // Intentionally set the size of the surface to something different than the size of the window.
             surface
-                .resize(
-                    NonZeroU32::new(BUFFER_WIDTH as u32).unwrap(),
-                    NonZeroU32::new(BUFFER_HEIGHT as u32).unwrap(),
-                )
+                .resize(NonZeroU32::new(256).unwrap(), NonZeroU32::new(128).unwrap())
                 .unwrap();
             surface
         },
@@ -42,14 +36,15 @@ fn main() {
                 };
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                for y in 0..BUFFER_HEIGHT {
-                    for x in 0..BUFFER_WIDTH {
-                        let red = x as u32 % 255;
-                        let green = y as u32 % 255;
-                        let blue = (x as u32 * y as u32) % 255;
+                let width = buffer.width().get();
+                for y in 0..buffer.height().get() {
+                    for x in 0..width {
+                        let red = x % 255;
+                        let green = y % 255;
+                        let blue = (x * y) % 255;
 
                         let color = blue | (green << 8) | (red << 16);
-                        buffer[y * BUFFER_WIDTH + x] = color;
+                        buffer[(y * width + x) as usize] = color;
                     }
                 }
                 buffer.present().unwrap();

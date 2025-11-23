@@ -240,11 +240,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             ));
         };
 
+        let width = self.buffers.as_mut().unwrap().1.width;
+        let height = self.buffers.as_mut().unwrap().1.height;
         let age = self.buffers.as_mut().unwrap().1.age;
         Ok(BufferImpl {
             stack: util::BorrowStack::new(self, |buffer| {
                 Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
             })?,
+            width,
+            height,
             age,
         })
     }
@@ -259,10 +263,20 @@ impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
 
 pub struct BufferImpl<'a, D: ?Sized, W> {
     stack: util::BorrowStack<'a, WaylandImpl<D, W>, [u32]>,
+    width: i32,
+    height: i32,
     age: u8,
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+    fn width(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.width as u32).unwrap()
+    }
+
+    fn height(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.height as usize as u32).unwrap()
+    }
+
     #[inline]
     fn pixels(&self) -> &[u32] {
         self.stack.member()

@@ -57,23 +57,20 @@ fn main() {
                     return;
                 };
 
-                let size = window.inner_size();
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    let elapsed = start.elapsed().as_secs_f64() % 1.0;
+                let elapsed = start.elapsed().as_secs_f64() % 1.0;
 
-                    if (width.get(), height.get()) != *old_size {
-                        *old_size = (width.get(), height.get());
-                        *frames = pre_render_frames(width.get() as usize, height.get() as usize);
-                    };
+                let mut buffer = surface.buffer_mut().unwrap();
 
-                    let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
-
-                    let mut buffer = surface.buffer_mut().unwrap();
-                    buffer.copy_from_slice(frame);
-                    buffer.present().unwrap();
+                let size = (buffer.width().get(), buffer.height().get());
+                if size != *old_size {
+                    *old_size = size;
+                    *frames = pre_render_frames(size.0, size.1);
                 }
+
+                let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
+
+                buffer.copy_from_slice(frame);
+                buffer.present().unwrap();
             }
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
@@ -97,7 +94,7 @@ fn main() {
     winit_app::run_app(event_loop, app);
 }
 
-fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>> {
+fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<u32>> {
     let render = |frame_id| {
         let elapsed = ((frame_id as f64) / (60.0)) * 2.0 * PI;
 
