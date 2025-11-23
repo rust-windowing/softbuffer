@@ -1,6 +1,6 @@
 //! Implements `buffer_interface::*` traits for enums dispatching to backends
 
-use crate::{backend_interface::*, backends, InitError, Rect, SoftBufferError};
+use crate::{backend_interface::*, backends, InitError, Pixel, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
@@ -107,7 +107,7 @@ macro_rules! make_dispatch {
                 }
             }
 
-            fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+            fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -146,7 +146,7 @@ macro_rules! make_dispatch {
             }
 
             #[inline]
-            fn pixels(&self) -> &[u32] {
+            fn pixels(&self) -> &[Pixel] {
                 match self {
                     $(
                         $(#[$attr])*
@@ -156,7 +156,7 @@ macro_rules! make_dispatch {
             }
 
             #[inline]
-            fn pixels_mut(&mut self) -> &mut [u32] {
+            fn pixels_mut(&mut self) -> &mut [Pixel] {
                 match self {
                     $(
                         $(#[$attr])*

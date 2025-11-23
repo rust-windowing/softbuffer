@@ -3,7 +3,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, 
 use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::backend_interface::*;
-use crate::{Rect, SoftBufferError};
+use crate::{Pixel, Rect, SoftBufferError};
 
 struct OrbitalMap {
     address: usize,
@@ -37,12 +37,12 @@ impl OrbitalMap {
         })
     }
 
-    unsafe fn data(&self) -> &[u32] {
-        unsafe { slice::from_raw_parts(self.address as *const u32, self.size_unaligned / 4) }
+    unsafe fn data(&self) -> &[Pixel] {
+        unsafe { slice::from_raw_parts(self.address as *const Pixel, self.size_unaligned / 4) }
     }
 
-    unsafe fn data_mut(&mut self) -> &mut [u32] {
-        unsafe { slice::from_raw_parts_mut(self.address as *mut u32, self.size_unaligned / 4) }
+    unsafe fn data_mut(&mut self) -> &mut [Pixel] {
+        unsafe { slice::from_raw_parts_mut(self.address as *mut Pixel, self.size_unaligned / 4) }
     }
 }
 
@@ -93,7 +93,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
         (window_width, window_height)
     }
 
-    fn set_buffer(&self, buffer: &[u32], width_u32: u32, height_u32: u32) {
+    fn set_buffer(&self, buffer: &[Pixel], width_u32: u32, height_u32: u32) {
         // Read the current width and size
         let (window_width, window_height) = self.window_size();
 
@@ -103,7 +103,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
                 unsafe { OrbitalMap::new(self.window_fd(), window_width * window_height * 4) }
                     .expect("failed to map orbital window");
 
-            // Window buffer is u32 color data in 0xAABBGGRR format
+            // Window buffer is u32 color data in BGRA format:
+            // https://docs.rs/orbclient/0.3.48/src/orbclient/color.rs.html#25-29
             let window_data = unsafe { window_map.data_mut() };
 
             // Copy each line, cropping to fit
@@ -174,7 +175,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
                     .expect("failed to map orbital window"),
             )
         } else {
-            Pixels::Buffer(vec![0; self.width as usize * self.height as usize])
+            Pixels::Buffer(vec![
+                Pixel::default();
+                self.width as usize * self.height as usize
+            ])
         };
         Ok(BufferImpl { imp: self, pixels })
     }
@@ -182,7 +186,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
 
 enum Pixels {
     Mapping(OrbitalMap),
-    Buffer(Vec<u32>),
+    Buffer(Vec<Pixel>),
 }
 
 pub struct BufferImpl<'a, D, W> {
@@ -200,7 +204,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[Pixel] {
         match &self.pixels {
             Pixels::Mapping(mapping) => unsafe { mapping.data() },
             Pixels::Buffer(buffer) => buffer,
@@ -208,7 +212,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         match &mut self.pixels {
             Pixels::Mapping(mapping) => unsafe { mapping.data_mut() },
             Pixels::Buffer(buffer) => buffer,

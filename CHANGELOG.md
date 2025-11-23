@@ -1,5 +1,7 @@
 # Unreleased
 
+- **Breaking:** Add `Pixel` struct, and use that for pixels instead of `u32`.
+
 - Update to `objc2` 0.6.0.
 - Bump MSRV to Rust 1.71.
 - Make `Context` cloneable.

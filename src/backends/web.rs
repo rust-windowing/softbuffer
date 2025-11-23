@@ -11,7 +11,7 @@ use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
+use crate::{util, NoDisplayHandle, NoWindowHandle, Pixel, Rect, SoftBufferError};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
@@ -48,7 +48,7 @@ pub struct WebImpl<D, W> {
     canvas: Canvas,
 
     /// The buffer that we're drawing to.
-    buffer: Vec<u32>,
+    buffer: Vec<Pixel>,
 
     /// Buffer has been presented.
     buffer_presented: bool,
@@ -133,7 +133,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
         };
 
         // Create a bitmap from the buffer.
-        let bitmap: Vec<_> = self
+        let bitmap: Vec<u8> = self
             .buffer
             .chunks_exact(buffer_width.get() as usize)
             .skip(union_damage.y as usize)
@@ -143,8 +143,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
                     .skip(union_damage.x as usize)
                     .take(union_damage.width.get() as usize)
             })
-            .copied()
-            .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
+            // TODO: Verify that this optimizes away to nothing (and if it doesn't, unsafely cast instead).
+            .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
             .collect();
 
         debug_assert_eq!(
@@ -252,7 +252,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
-            self.buffer.resize(total_len(width.get(), height.get()), 0);
+            self.buffer
+                .resize(total_len(width.get(), height.get()), Pixel::default());
             self.canvas.set_width(width.get());
             self.canvas.set_height(height.get());
             self.size = Some((width, height));
@@ -265,7 +266,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         Ok(BufferImpl { imp: self })
     }
 
-    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `fetch()`");
@@ -281,7 +282,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
             .data()
             .0
             .chunks_exact(4)
-            .map(|chunk| u32::from_be_bytes([0, chunk[0], chunk[1], chunk[2]]))
+            .map(|chunk| Pixel {
+                r: chunk[0],
+                g: chunk[1],
+                b: chunk[2],
+                a: chunk[3],
+            })
             .collect())
     }
 }
@@ -392,11 +398,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
             .1
     }
 
-    fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[Pixel] {
         &self.imp.buffer
     }
 
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         &mut self.imp.buffer
     }
 

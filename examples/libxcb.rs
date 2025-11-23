@@ -16,8 +16,6 @@ mod example {
         xcb_ffi::XCBConnection,
     };
 
-    const RED: u32 = 255 << 16;
-
     pub(crate) fn run() {
         // Create a new XCB connection
         let (conn, screen) = XCBConnection::connect(None).expect("Failed to connect to X server");
@@ -113,7 +111,7 @@ mod example {
                         )
                         .unwrap();
                     let mut buffer = surface.buffer_mut().unwrap();
-                    buffer.fill(RED);
+                    buffer.fill(softbuffer::Pixel::new_rgb(0xff, 0, 0));
                     buffer.present().unwrap();
                 }
                 Event::ConfigureNotify(configure_notify) => {

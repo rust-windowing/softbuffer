@@ -12,7 +12,7 @@ fn buffer_mut(c: &mut Criterion) {
     #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
     {
         use criterion::black_box;
-        use softbuffer::{Context, Surface};
+        use softbuffer::{Context, Pixel, Surface};
         use std::num::NonZeroU32;
         use winit::event_loop::ControlFlow;
         use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
@@ -51,7 +51,7 @@ fn buffer_mut(c: &mut Criterion) {
                     let mut buffer = surface.buffer_mut().unwrap();
                     b.iter(|| {
                         for _ in 0..500 {
-                            let x: &mut [u32] = &mut buffer;
+                            let x: &mut [Pixel] = &mut buffer;
                             black_box(x);
                         }
                     });

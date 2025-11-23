@@ -1,5 +1,5 @@
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use softbuffer::Buffer;
+use softbuffer::{Buffer, Pixel};
 use std::num::NonZeroU32;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -14,12 +14,12 @@ fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, 
     for y in 0..height {
         for x in 0..width {
             let value = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
-                0x00ffffff
+                Pixel::new_rgb(0xff, 0xff, 0xff)
             } else {
                 let red = (x & 0xff) ^ (y & 0xff);
                 let green = (x & 0x7f) ^ (y & 0x7f);
                 let blue = (x & 0x3f) ^ (y & 0x3f);
-                blue | (green << 8) | (red << 16)
+                Pixel::new_rgb(red as u8, green as u8, blue as u8)
             };
             buffer[(y * width + x) as usize] = value;
         }

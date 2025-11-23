@@ -1,6 +1,6 @@
 //! Softbuffer implementation using CoreGraphics.
-use crate::backend_interface::*;
 use crate::error::InitError;
+use crate::{backend_interface::*, Pixel};
 use crate::{Rect, SoftBufferError};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
@@ -258,7 +258,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         Ok(BufferImpl {
-            buffer: vec![0; self.width * self.height].into(),
+            buffer: vec![Pixel::default(); self.width * self.height].into(),
             imp: self,
         })
     }
@@ -266,7 +266,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
 pub struct BufferImpl<'a, D, W> {
     imp: &'a mut CGImpl<D, W>,
-    buffer: Box<[u32]>,
+    buffer: Box<[Pixel]>,
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
@@ -279,12 +279,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[Pixel] {
         &self.buffer
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         &mut self.buffer
     }
 
@@ -298,15 +298,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
             data: NonNull<c_void>,
             size: usize,
         ) {
-            let data = data.cast::<u32>();
-            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<u32>());
+            let data = data.cast::<Pixel>();
+            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<Pixel>());
             // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
             drop(unsafe { Box::from_raw(slice) })
         }
 
         let data_provider = {
-            let len = self.buffer.len() * size_of::<u32>();
-            let buffer: *mut [u32] = Box::into_raw(self.buffer);
+            let len = self.buffer.len() * size_of::<Pixel>();
+            let buffer: *mut [Pixel] = Box::into_raw(self.buffer);
             // Convert slice pointer to thin pointer.
             let data_ptr = buffer.cast::<c_void>();
 

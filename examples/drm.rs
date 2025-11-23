@@ -6,7 +6,7 @@ mod imple {
     use drm::Device;
 
     use raw_window_handle::{DisplayHandle, DrmDisplayHandle, DrmWindowHandle, WindowHandle};
-    use softbuffer::{Context, Surface};
+    use softbuffer::{Context, Pixel, Surface};
 
     use std::num::NonZeroU32;
     use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd};
@@ -150,7 +150,7 @@ mod imple {
         Ok(())
     }
 
-    fn draw_to_buffer(buf: &mut [u32], tick: usize) {
+    fn draw_to_buffer(buf: &mut [Pixel], tick: usize) {
         let scale = colorous::SINEBOW;
         let mut i = (tick as f64) / 20.0;
         while i > 1.0 {
@@ -158,8 +158,7 @@ mod imple {
         }
 
         let color = scale.eval_continuous(i);
-        let pixel = ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
-        buf.fill(pixel);
+        buf.fill(Pixel::new_rgb(color.r, color.g, color.b));
     }
 
     struct Card(std::fs::File);

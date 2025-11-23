@@ -1,3 +1,4 @@
+use softbuffer::Pixel;
 use std::num::NonZeroU32;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -39,11 +40,11 @@ fn main() {
                 let width = buffer.width().get();
                 for y in 0..buffer.height().get() {
                     for x in 0..width {
-                        let red = x % 255;
-                        let green = y % 255;
-                        let blue = (x * y) % 255;
+                        let red = (x % 255) as u8;
+                        let green = (y % 255) as u8;
+                        let blue = ((x * y) % 255) as u8;
 
-                        let color = blue | (green << 8) | (red << 16);
+                        let color = Pixel::new_rgb(red, green, blue);
                         buffer[(y * width + x) as usize] = color;
                     }
                 }

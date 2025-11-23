@@ -1,7 +1,7 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    util, Rect, SoftBufferError,
+    util, Pixel, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
@@ -262,7 +262,7 @@ impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
 }
 
 pub struct BufferImpl<'a, D: ?Sized, W> {
-    stack: util::BorrowStack<'a, WaylandImpl<D, W>, [u32]>,
+    stack: util::BorrowStack<'a, WaylandImpl<D, W>, [Pixel]>,
     width: i32,
     height: i32,
     age: u8,
@@ -278,12 +278,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for Buffe
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[Pixel] {
         self.stack.member()
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         self.stack.member_mut()
     }
 
