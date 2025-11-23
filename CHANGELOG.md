@@ -4,6 +4,7 @@
 - Bump MSRV to Rust 1.71.
 - Make `Context` cloneable.
 - Added `Buffer::width()` and `Buffer::height()` getters.
+- `Context`, `Surface` and `Buffer` now implement `Debug`.
 
 # 0.4.6
 

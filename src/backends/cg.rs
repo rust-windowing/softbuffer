@@ -29,6 +29,7 @@ define_class!(
     #[unsafe(super(NSObject))]
     #[name = "SoftbufferObserver"]
     #[ivars = SendCALayer]
+    #[derive(Debug)]
     struct Observer;
 
     /// NSKeyValueObserving
@@ -93,6 +94,7 @@ impl Observer {
     }
 }
 
+#[derive(Debug)]
 pub struct CGImpl<D, W> {
     /// Our layer.
     layer: SendCALayer,
@@ -264,6 +266,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D, W> {
     imp: &'a mut CGImpl<D, W>,
     buffer: Box<[u32]>,
@@ -363,6 +366,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 }
 
+#[derive(Debug)]
 struct SendCALayer(Retained<CALayer>);
 
 // SAFETY: CALayer is dubiously thread safe, like most things in Core Animation.
