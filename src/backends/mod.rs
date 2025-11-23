@@ -7,6 +7,8 @@ pub(crate) mod android;
 pub(crate) mod cg;
 #[cfg(kms_platform)]
 pub(crate) mod kms;
+#[cfg(target_env = "ohos")]
+pub(crate) mod ohos;
 #[cfg(target_os = "redox")]
 pub(crate) mod orbital;
 #[cfg(wayland_platform)]

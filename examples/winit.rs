@@ -6,10 +6,13 @@ use winit::keyboard::{Key, NamedKey};
 #[path = "utils/winit_app.rs"]
 mod winit_app;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
 fn main() {
     entry(EventLoop::new().unwrap())
 }
+
+#[cfg(any(target_os = "android", target_env = "ohos"))]
+fn main() {}
 
 pub(crate) fn entry(event_loop: EventLoop<()>) {
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();

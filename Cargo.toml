@@ -48,7 +48,10 @@ tracing = { version = "0.1.41", default-features = false }
 bytemuck = "1.12.3"
 ndk = "0.9.0"
 
-[target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox"))))'.dependencies]
+[target.'cfg(target_env = "ohos")'.dependencies]
+ohos-native-window-binding = { version = "0.1" }
+
+[target.'cfg(all(unix, not(any(target_vendor = "apple", target_os = "android", target_os = "redox", target_env = "ohos"))))'.dependencies]
 as-raw-xcb-connection = { version = "1.0.0", optional = true }
 bytemuck = { version = "1.12.3", optional = true }
 drm = { version = "0.14.1", default-features = false, optional = true }
@@ -145,6 +148,11 @@ winit = "0.30.0"
 winit = { version = "0.30.0", features = ["android-native-activity"] }
 android-activity = "0.6"
 
+[target.'cfg(target_env = "ohos")'.dev-dependencies]
+winit = { version = "0.30" }
+openharmony-ability = { version = "0.0.4" }
+openharmony-ability-derive = { version = "0.0.3" }
+
 [dev-dependencies.image]
 version = "0.25.0"
 # Disable rayon on web
@@ -167,6 +175,11 @@ members = ["run-wasm"]
 [[example]]
 # Run with `cargo apk r --example winit_android`
 name = "winit_android"
+crate-type = ["cdylib"]
+
+[[example]]
+# Run with `ohrs build -- --example winit_android`
+name = "winit_ohos"
 crate-type = ["cdylib"]
 
 [[example]]

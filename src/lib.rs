@@ -326,6 +326,7 @@ fn window_handle_type_name(handle: &RawWindowHandle) -> &'static str {
         RawWindowHandle::Drm(_) => "DRM",
         RawWindowHandle::Gbm(_) => "GBM",
         RawWindowHandle::Haiku(_) => "Haiku",
+        RawWindowHandle::OhosNdk(_) => "OhosNdk",
         _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
     }
 }
@@ -344,6 +345,7 @@ fn display_handle_type_name(handle: &RawDisplayHandle) -> &'static str {
         RawDisplayHandle::Haiku(_) => "Haiku",
         RawDisplayHandle::Windows(_) => "Windows",
         RawDisplayHandle::Android(_) => "Android",
+        RawDisplayHandle::Ohos(_) => "Ohos",
         _ => "Unknown Name", //don't completely fail to compile if there is a new raw window handle type that's added at some point
     }
 }
