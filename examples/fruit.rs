@@ -50,14 +50,14 @@ fn main() {
                 };
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                let width = fruit.width() as usize;
+                let width = fruit.width();
                 for (x, y, pixel) in fruit.pixels() {
                     let red = pixel.0[0] as u32;
                     let green = pixel.0[1] as u32;
                     let blue = pixel.0[2] as u32;
 
                     let color = blue | (green << 8) | (red << 16);
-                    buffer[y as usize * width + x as usize] = color;
+                    buffer[(y * width + x) as usize] = color;
                 }
 
                 buffer.present().unwrap();

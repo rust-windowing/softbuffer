@@ -388,12 +388,12 @@ pub struct BufferImpl<'a, D: ?Sized, W: ?Sized>(&'a mut X11Impl<D, W>);
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
     for BufferImpl<'_, D, W>
 {
-    fn width(&self) -> usize {
-        self.0.size.unwrap().0.get() as usize
+    fn width(&self) -> NonZeroU32 {
+        self.0.size.unwrap().0.into()
     }
 
-    fn height(&self) -> usize {
-        self.0.size.unwrap().1.get() as usize
+    fn height(&self) -> NonZeroU32 {
+        self.0.size.unwrap().1.into()
     }
 
     #[inline]

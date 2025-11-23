@@ -9,8 +9,8 @@ use winit::keyboard::{Key, NamedKey};
 mod winit_app;
 
 fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, flag: bool) {
-    let width = buffer.width();
-    let height = buffer.height();
+    let width = buffer.width().get();
+    let height = buffer.height().get();
     for y in 0..height {
         for x in 0..width {
             let value = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
@@ -21,7 +21,7 @@ fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, 
                 let blue = (x & 0x3f) ^ (y & 0x3f);
                 (blue | (green << 8) | (red << 16)) as u32
             };
-            buffer[y * width + x] = value;
+            buffer[(y * width + x) as usize] = value;
         }
     }
 }

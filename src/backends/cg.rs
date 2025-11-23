@@ -270,12 +270,12 @@ pub struct BufferImpl<'a, D, W> {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
-    fn width(&self) -> usize {
-        self.imp.width
+    fn width(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.imp.width as u32).unwrap()
     }
 
-    fn height(&self) -> usize {
-        self.imp.height
+    fn height(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.imp.height as u32).unwrap()
     }
 
     #[inline]

@@ -126,7 +126,7 @@ macro_rules! make_dispatch {
 
         impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferDispatch<'a, D, W> {
             #[inline]
-            fn width(&self) -> usize {
+            fn width(&self) -> NonZeroU32 {
                 match self {
                     $(
                         $(#[$attr])*
@@ -136,7 +136,7 @@ macro_rules! make_dispatch {
             }
 
             #[inline]
-            fn height(&self) -> usize {
+            fn height(&self) -> NonZeroU32 {
                 match self {
                     $(
                         $(#[$attr])*

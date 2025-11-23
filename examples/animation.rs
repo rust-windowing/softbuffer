@@ -61,7 +61,7 @@ fn main() {
 
                 let mut buffer = surface.buffer_mut().unwrap();
 
-                let size = (buffer.width(), buffer.height());
+                let size = (buffer.width().get(), buffer.height().get());
                 if size != *old_size {
                     *old_size = size;
                     *frames = pre_render_frames(size.0, size.1);
@@ -94,7 +94,7 @@ fn main() {
     winit_app::run_app(event_loop, app);
 }
 
-fn pre_render_frames(width: usize, height: usize) -> Vec<Vec<u32>> {
+fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<u32>> {
     let render = |frame_id| {
         let elapsed = ((frame_id as f64) / (60.0)) * 2.0 * PI;
 
