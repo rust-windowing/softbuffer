@@ -42,9 +42,9 @@ pub mod ex {
                 let mut buffer = surface.buffer_mut().unwrap();
                 for y in 0..buffer.height().get() {
                     for x in 0..buffer.width().get() {
-                        let red = x as u32 % 255;
-                        let green = y as u32 % 255;
-                        let blue = (x as u32 * y as u32) % 255;
+                        let red = x % 255;
+                        let green = y % 255;
+                        let blue = (x * y) % 255;
                         let index = y * buffer.width().get() + x;
                         buffer[index as usize] = blue | (green << 8) | (red << 16);
                     }

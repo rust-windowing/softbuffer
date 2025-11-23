@@ -39,9 +39,9 @@ fn main() {
                 let width = buffer.width().get();
                 for y in 0..buffer.height().get() {
                     for x in 0..width {
-                        let red = x as u32 % 255;
-                        let green = y as u32 % 255;
-                        let blue = (x as u32 * y as u32) % 255;
+                        let red = x % 255;
+                        let green = y % 255;
+                        let blue = (x * y) % 255;
 
                         let color = blue | (green << 8) | (red << 16);
                         buffer[(y * width + x) as usize] = color;
