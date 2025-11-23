@@ -160,12 +160,12 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
             assert_eq!(output.len(), input.len() * 4);
 
             for (i, pixel) in input.iter().enumerate() {
-                // Swizzle colors from RGBX to BGR
-                let [b, g, r, _] = pixel.to_le_bytes();
-                output[i * 4].write(b);
+                // Swizzle colors from BGR(A) to RGB(A)
+                let [b, g, r, a] = pixel.to_le_bytes();
+                output[i * 4].write(r);
                 output[i * 4 + 1].write(g);
-                output[i * 4 + 2].write(r);
-                // TODO alpha?
+                output[i * 4 + 2].write(b);
+                output[i * 4 + 3].write(a);
             }
         }
         Ok(())
