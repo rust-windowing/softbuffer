@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use winit::application::ApplicationHandler;
-use winit::event::{Event, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
@@ -31,7 +31,7 @@ pub(crate) fn make_window(
 }
 
 /// Easily constructable winit application.
-pub(crate) struct WinitApp<T, S, Init, InitSurface, Handler> {
+pub(crate) struct WinitApp<T, S, Init, InitSurface, Handler, AboutToWaitHandler> {
     /// Closure to initialize `state`.
     init: Init,
 
@@ -40,6 +40,9 @@ pub(crate) struct WinitApp<T, S, Init, InitSurface, Handler> {
 
     /// Closure to run on window events.
     event: Handler,
+
+    /// Closure to run on about_to_wait events.
+    about_to_wait: AboutToWaitHandler,
 
     /// Contained state.
     state: Option<T>,
@@ -75,38 +78,63 @@ where
     }
 
     /// Build a new application.
-    pub(crate) fn with_event_handler<F>(self, handler: F) -> WinitApp<T, S, Init, InitSurface, F>
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn with_event_handler<F>(
+        self,
+        handler: F,
+    ) -> WinitApp<T, S, Init, InitSurface, F, impl FnMut(&mut T, Option<&mut S>, &ActiveEventLoop)>
     where
-        F: FnMut(&mut T, Option<&mut S>, Event<()>, &ActiveEventLoop),
+        F: FnMut(&mut T, Option<&mut S>, WindowId, WindowEvent, &ActiveEventLoop),
     {
-        WinitApp::new(self.init, self.init_surface, handler)
+        WinitApp::new(self.init, self.init_surface, handler, |_, _, _| {})
     }
 }
 
-impl<T, S, Init, InitSurface, Handler> WinitApp<T, S, Init, InitSurface, Handler>
+impl<T, S, Init, InitSurface, Handler, AboutToWaitHandler>
+    WinitApp<T, S, Init, InitSurface, Handler, AboutToWaitHandler>
 where
     Init: FnMut(&ActiveEventLoop) -> T,
     InitSurface: FnMut(&ActiveEventLoop, &mut T) -> S,
-    Handler: FnMut(&mut T, Option<&mut S>, Event<()>, &ActiveEventLoop),
+    Handler: FnMut(&mut T, Option<&mut S>, WindowId, WindowEvent, &ActiveEventLoop),
+    AboutToWaitHandler: FnMut(&mut T, Option<&mut S>, &ActiveEventLoop),
 {
     /// Create a new application.
-    pub(crate) fn new(init: Init, init_surface: InitSurface, event: Handler) -> Self {
+    pub(crate) fn new(
+        init: Init,
+        init_surface: InitSurface,
+        event: Handler,
+        about_to_wait: AboutToWaitHandler,
+    ) -> Self {
         Self {
             init,
             init_surface,
             event,
+            about_to_wait,
             state: None,
             surface_state: None,
         }
     }
+
+    /// Build a new application.
+    #[allow(dead_code)]
+    pub(crate) fn with_about_to_wait_handler<F>(
+        self,
+        about_to_wait: F,
+    ) -> WinitApp<T, S, Init, InitSurface, Handler, F>
+    where
+        F: FnMut(&mut T, Option<&mut S>, &ActiveEventLoop),
+    {
+        WinitApp::new(self.init, self.init_surface, self.event, about_to_wait)
+    }
 }
 
-impl<T, S, Init, InitSurface, Handler> ApplicationHandler
-    for WinitApp<T, S, Init, InitSurface, Handler>
+impl<T, S, Init, InitSurface, Handler, AboutToWaitHandler> ApplicationHandler
+    for WinitApp<T, S, Init, InitSurface, Handler, AboutToWaitHandler>
 where
     Init: FnMut(&ActiveEventLoop) -> T,
     InitSurface: FnMut(&ActiveEventLoop, &mut T) -> S,
-    Handler: FnMut(&mut T, Option<&mut S>, Event<()>, &ActiveEventLoop),
+    Handler: FnMut(&mut T, Option<&mut S>, WindowId, WindowEvent, &ActiveEventLoop),
+    AboutToWaitHandler: FnMut(&mut T, Option<&mut S>, &ActiveEventLoop),
 {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         debug_assert!(self.state.is_none());
@@ -129,22 +157,13 @@ where
     ) {
         let state = self.state.as_mut().unwrap();
         let surface_state = self.surface_state.as_mut();
-        (self.event)(
-            state,
-            surface_state,
-            Event::WindowEvent { window_id, event },
-            event_loop,
-        );
+        (self.event)(state, surface_state, window_id, event, event_loop);
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(state) = self.state.as_mut() {
-            (self.event)(
-                state,
-                self.surface_state.as_mut(),
-                Event::AboutToWait,
-                event_loop,
-            );
+            let surface_state = self.surface_state.as_mut();
+            (self.about_to_wait)(state, surface_state, event_loop);
         }
     }
 }

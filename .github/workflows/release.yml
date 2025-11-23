@@ -13,7 +13,7 @@ jobs:
     if: github.repository_owner == 'rust-windowing'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: taiki-e/create-gh-release-action@v1
         with:
           changelog: CHANGELOG.md

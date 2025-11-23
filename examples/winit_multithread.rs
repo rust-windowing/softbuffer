@@ -8,14 +8,14 @@ mod winit_app;
 pub mod ex {
     use std::num::NonZeroU32;
     use std::sync::{mpsc, Arc, Mutex};
-    use winit::event::{Event, KeyEvent, WindowEvent};
-    use winit::event_loop::{ControlFlow, EventLoop};
+    use winit::event::{KeyEvent, WindowEvent};
+    use winit::event_loop::{ControlFlow, EventLoop, OwnedDisplayHandle};
     use winit::keyboard::{Key, NamedKey};
     use winit::window::Window;
 
     use super::winit_app;
 
-    type Surface = softbuffer::Surface<Arc<Window>, Arc<Window>>;
+    type Surface = softbuffer::Surface<OwnedDisplayHandle, Arc<Window>>;
 
     fn render_thread(
         window: Arc<Window>,
@@ -60,6 +60,8 @@ pub mod ex {
     }
 
     pub fn entry(event_loop: EventLoop<()>) {
+        let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+
         let app = winit_app::WinitAppBuilder::with_init(
             |elwt| {
                 let attributes = Window::default_attributes();
@@ -67,8 +69,6 @@ pub mod ex {
                 let attributes =
                     winit::platform::web::WindowAttributesExtWebSys::with_append(attributes, true);
                 let window = Arc::new(elwt.create_window(attributes).unwrap());
-
-                let context = softbuffer::Context::new(window.clone()).unwrap();
 
                 // Spawn a thread to handle rendering for this specific surface. The channels will
                 // be closed and the thread will be stopped whenever this surface (the returned
@@ -82,24 +82,25 @@ pub mod ex {
                     move || render_thread(window, do_render, render_done)
                 });
 
-                (window, context, start_render, finish_render)
+                (window, start_render, finish_render)
             },
-            |_elwt, (window, context, _start_render, _finish_render)| {
+            move |_elwt, (window, _start_render, _finish_render)| {
                 println!("making surface...");
                 Arc::new(Mutex::new(
-                    softbuffer::Surface::new(context, window.clone()).unwrap(),
+                    softbuffer::Surface::new(&context, window.clone()).unwrap(),
                 ))
             },
         )
-        .with_event_handler(|state, surface, event, elwt| {
-            let (window, _context, start_render, finish_render) = state;
+        .with_event_handler(|state, surface, window_id, event, elwt| {
+            let (window, start_render, finish_render) = state;
             elwt.set_control_flow(ControlFlow::Wait);
 
+            if window_id != window.id() {
+                return;
+            }
+
             match event {
-                Event::WindowEvent {
-                    window_id,
-                    event: WindowEvent::RedrawRequested,
-                } if window_id == window.id() => {
+                WindowEvent::RedrawRequested => {
                     let Some(surface) = surface else {
                         eprintln!("RedrawRequested fired before Resumed or after Suspended");
                         return;
@@ -108,19 +109,15 @@ pub mod ex {
                     start_render.send(surface.clone()).unwrap();
                     finish_render.recv().unwrap();
                 }
-                Event::WindowEvent {
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
                     event:
-                        WindowEvent::CloseRequested
-                        | WindowEvent::KeyboardInput {
-                            event:
-                                KeyEvent {
-                                    logical_key: Key::Named(NamedKey::Escape),
-                                    ..
-                                },
+                        KeyEvent {
+                            logical_key: Key::Named(NamedKey::Escape),
                             ..
                         },
-                    window_id,
-                } if window_id == window.id() => {
+                    ..
+                } => {
                     elwt.exit();
                 }
                 _ => {}

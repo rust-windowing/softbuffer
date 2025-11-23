@@ -79,24 +79,24 @@ mod winit_app;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let mut app = winit_app::WinitAppBuilder::with_init(
         |elwt| {
-            let window = {
-                let window = elwt.create_window(Window::default_attributes());
-                Rc::new(window.unwrap())
-            };
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
-            (window, context)
+            let window = elwt.create_window(Window::default_attributes());
+            Rc::new(window.unwrap())
         },
-        |_elwt, (window, context)| softbuffer::Surface::new(context, window.clone()).unwrap(),
+        |_elwt, window| softbuffer::Surface::new(&context, window.clone()).unwrap(),
     )
-    .with_event_handler(|(window, _context), surface, event, elwt| {
+    .with_event_handler(|window, surface, window_id, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
+        if window_id != window.id() {
+            return;
+        }
+
         match event {
-            Event::WindowEvent { window_id, event: WindowEvent::RedrawRequested } if window_id == window.id() => {
+            WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
@@ -122,10 +122,7 @@ fn main() {
 
                 buffer.present().unwrap();
             }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-            } if window_id == window.id() => {
+            WindowEvent::CloseRequested => {
                 elwt.exit();
             }
             _ => {}

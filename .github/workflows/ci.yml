@@ -10,7 +10,7 @@ jobs:
     name: Tidy Code
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: hecrj/setup-rust-action@v2
       with:
         rust-version: stable
@@ -74,7 +74,7 @@ jobs:
 
     runs-on: ${{ matrix.platform.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - uses: taiki-e/install-action@v2
       if: matrix.platform.target == 'wasm32-unknown-unknown'
@@ -99,9 +99,12 @@ jobs:
       if: matrix.rust_version == '1.71.0'
       run: |
         cargo update -p dpi --precise 0.1.1
+        cargo update -p image --precise 0.25.6
         cargo update -p zune-jpeg --precise 0.4.14
         cargo update -p half --precise 2.4.1
         cargo update -p bumpalo --precise 3.14.0
+        cargo update -p rayon --precise 1.10.0
+        cargo update -p rayon-core --precise 1.12.1
 
     - name: Build crate
       shell: bash

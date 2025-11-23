@@ -1,7 +1,7 @@
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use softbuffer::Buffer;
 use std::num::NonZeroU32;
-use winit::event::{ElementState, Event, KeyEvent, WindowEvent};
+use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
@@ -28,6 +28,7 @@ fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, 
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(
         |elwt| {
@@ -35,26 +36,23 @@ fn main() {
                 w.with_title("Press space to show/hide a rectangle")
             });
 
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
             let flag = false;
 
-            (window, context, flag)
+            (window, flag)
         },
-        |_elwt, (window, context, _flag)| {
-            softbuffer::Surface::new(context, window.clone()).unwrap()
-        },
+        move |_elwt, (window, _flag)| softbuffer::Surface::new(&context, window.clone()).unwrap(),
     )
-    .with_event_handler(|state, surface, event, elwt| {
-        let (window, _context, flag) = state;
+    .with_event_handler(|state, surface, window_id, event, elwt| {
+        let (window, flag) = state;
 
         elwt.set_control_flow(ControlFlow::Wait);
 
+        if window_id != window.id() {
+            return;
+        }
+
         match event {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::Resized(size),
-            } if window_id == window.id() => {
+            WindowEvent::Resized(size) => {
                 let Some(surface) = surface else {
                     eprintln!("Resized fired before Resumed or after Suspended");
                     return;
@@ -67,10 +65,7 @@ fn main() {
                     surface.resize(width, height).unwrap();
                 }
             }
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::RedrawRequested,
-            } if window_id == window.id() => {
+            WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
@@ -81,35 +76,27 @@ fn main() {
                 buffer.present().unwrap();
             }
 
-            Event::WindowEvent {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
                 event:
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                logical_key: Key::Named(NamedKey::Escape),
-                                ..
-                            },
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Escape),
                         ..
                     },
-                window_id,
-            } if window_id == window.id() => {
+                ..
+            } => {
                 elwt.exit();
             }
 
-            Event::WindowEvent {
+            WindowEvent::KeyboardInput {
                 event:
-                    WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                state: ElementState::Pressed,
-                                logical_key: Key::Named(NamedKey::Space),
-                                ..
-                            },
+                    KeyEvent {
+                        state: ElementState::Pressed,
+                        logical_key: Key::Named(NamedKey::Space),
                         ..
                     },
-                window_id,
-            } if window_id == window.id() => {
+                ..
+            } => {
                 // Flip the rectangle flag and request a redraw to show the changed image
                 *flag = !*flag;
                 window.request_redraw();

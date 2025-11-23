@@ -1,6 +1,6 @@
 use image::GenericImageView;
 use std::num::NonZeroU32;
-use winit::event::{Event, KeyEvent, WindowEvent};
+use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
@@ -13,19 +13,16 @@ fn main() {
     let (width, height) = (fruit.width(), fruit.height());
 
     let event_loop = EventLoop::new().unwrap();
+    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(
         move |elwt| {
-            let window = winit_app::make_window(elwt, |w| {
+            winit_app::make_window(elwt, |w| {
                 w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
-            });
-
-            let context = softbuffer::Context::new(window.clone()).unwrap();
-
-            (window, context)
+            })
         },
-        move |_elwt, (window, context)| {
-            let mut surface = softbuffer::Surface::new(context, window.clone()).unwrap();
+        move |_elwt, window| {
+            let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
             // Intentionally only set the size of the surface once, at creation.
             // This is needed if the window chooses to ignore the size we passed in above, and for the
             // platforms softbuffer supports that don't yet extract the size from the window.
@@ -38,15 +35,15 @@ fn main() {
             surface
         },
     )
-    .with_event_handler(move |state, surface, event, elwt| {
-        let (window, _context) = state;
+    .with_event_handler(move |window, surface, window_id, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
+        if window_id != window.id() {
+            return;
+        }
+
         match event {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::RedrawRequested,
-            } if window_id == window.id() => {
+            WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
@@ -65,19 +62,15 @@ fn main() {
 
                 buffer.present().unwrap();
             }
-            Event::WindowEvent {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
                 event:
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                logical_key: Key::Named(NamedKey::Escape),
-                                ..
-                            },
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Escape),
                         ..
                     },
-                window_id,
-            } if window_id == window.id() => {
+                ..
+            } => {
                 elwt.exit();
             }
             _ => {}
