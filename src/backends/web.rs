@@ -49,7 +49,7 @@ pub struct WebImpl<D, W> {
     canvas: Canvas,
 
     /// The buffer that we're drawing to.
-    buffer: Vec<u32>,
+    buffer: util::PixelBuffer,
 
     /// Buffer has been presented.
     buffer_presented: bool,
@@ -84,7 +84,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
         Ok(Self {
             canvas: Canvas::Canvas { canvas, ctx },
-            buffer: Vec::new(),
+            buffer: util::PixelBuffer(Vec::new()),
             buffer_presented: false,
             size: None,
             window_handle: window,
@@ -100,7 +100,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
         Ok(Self {
             canvas: Canvas::OffscreenCanvas { canvas, ctx },
-            buffer: Vec::new(),
+            buffer: util::PixelBuffer(Vec::new()),
             buffer_presented: false,
             size: None,
             window_handle: window,
