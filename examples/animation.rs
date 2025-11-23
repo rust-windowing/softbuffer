@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use std::f64::consts::PI;
 use std::num::NonZeroU32;
 use web_time::Instant;
-use winit::event::{Event, KeyEvent, WindowEvent};
+use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
@@ -29,16 +29,17 @@ fn main() {
             softbuffer::Surface::new(&context, window.clone()).unwrap()
         },
     )
-    .with_event_handler(move |state, surface, event, elwt| {
+    .with_event_handler(move |state, surface, window_id, event, elwt| {
         let (window, old_size, frames) = state;
 
         elwt.set_control_flow(ControlFlow::Poll);
 
+        if window_id != window.id() {
+            return;
+        }
+
         match event {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::Resized(size),
-            } if window_id == window.id() => {
+            WindowEvent::Resized(size) => {
                 let Some(surface) = surface else {
                     eprintln!("Resized fired before Resumed or after Suspended");
                     return;
@@ -50,10 +51,7 @@ fn main() {
                     surface.resize(width, height).unwrap();
                 }
             }
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::RedrawRequested,
-            } if window_id == window.id() => {
+            WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
@@ -77,26 +75,23 @@ fn main() {
                     buffer.present().unwrap();
                 }
             }
-            Event::AboutToWait => {
-                window.request_redraw();
-            }
-            Event::WindowEvent {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
                 event:
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                logical_key: Key::Named(NamedKey::Escape),
-                                ..
-                            },
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Escape),
                         ..
                     },
-                window_id,
-            } if window_id == window.id() => {
+                ..
+            } => {
                 elwt.exit();
             }
             _ => {}
         }
+    })
+    .with_about_to_wait_handler(|state, _, _| {
+        let (window, _, _) = state;
+        window.request_redraw();
     });
 
     winit_app::run_app(event_loop, app);

@@ -1,5 +1,5 @@
 use std::num::NonZeroU32;
-use winit::event::{Event, KeyEvent, WindowEvent};
+use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
@@ -27,14 +27,15 @@ fn main() {
             surface
         },
     )
-    .with_event_handler(|window, surface, event, elwt| {
+    .with_event_handler(|window, surface, window_id, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
 
+        if window_id != window.id() {
+            return;
+        }
+
         match event {
-            Event::WindowEvent {
-                window_id,
-                event: WindowEvent::RedrawRequested,
-            } if window_id == window.id() => {
+            WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
                     return;
@@ -53,19 +54,15 @@ fn main() {
                 }
                 buffer.present().unwrap();
             }
-            Event::WindowEvent {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
                 event:
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        event:
-                            KeyEvent {
-                                logical_key: Key::Named(NamedKey::Escape),
-                                ..
-                            },
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Escape),
                         ..
                     },
-                window_id,
-            } if window_id == window.id() => {
+                ..
+            } => {
                 elwt.exit();
             }
             _ => {}
