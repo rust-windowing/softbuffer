@@ -99,6 +99,7 @@ jobs:
       if: matrix.rust_version == '1.71.0'
       run: |
         cargo update -p dpi --precise 0.1.1
+        cargo update -p image --precise 0.25.6
         cargo update -p zune-jpeg --precise 0.4.14
         cargo update -p half --precise 2.4.1
         cargo update -p bumpalo --precise 3.14.0
