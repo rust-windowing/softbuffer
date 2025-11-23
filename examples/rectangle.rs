@@ -1,3 +1,4 @@
+#![cfg_attr(target_os = "android", no_main)]
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use softbuffer::Buffer;
 use std::num::NonZeroU32;
@@ -26,8 +27,25 @@ fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, 
     }
 }
 
+#[cfg(not(target_os = "android"))]
 fn main() {
     let event_loop = EventLoop::new().unwrap();
+    entry(event_loop)
+}
+
+#[no_mangle]
+#[cfg(target_os = "android")]
+fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    pub use winit::platform::android::EventLoopBuilderExtAndroid;
+
+    let mut builder = EventLoop::builder();
+
+    builder.with_android_app(app);
+
+    entry(builder.build().unwrap())
+}
+
+fn entry(event_loop: EventLoop<()>) {
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(

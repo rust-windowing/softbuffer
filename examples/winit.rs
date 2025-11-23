@@ -1,3 +1,4 @@
+#![cfg_attr(target_os = "android", no_main)]
 use std::num::NonZeroU32;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -11,7 +12,21 @@ fn main() {
     entry(EventLoop::new().unwrap())
 }
 
-pub(crate) fn entry(event_loop: EventLoop<()>) {
+/// Run with `cargo apk run --package softbuffer --example winit`
+#[no_mangle]
+#[cfg(target_os = "android")]
+fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    pub use winit::platform::android::EventLoopBuilderExtAndroid;
+
+    let mut builder = EventLoop::builder();
+
+    // Install the Android event loop extension if necessary.
+    builder.with_android_app(app);
+
+    entry(builder.build().unwrap())
+}
+
+fn entry(event_loop: EventLoop<()>) {
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = winit_app::WinitAppBuilder::with_init(

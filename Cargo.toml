@@ -164,16 +164,6 @@ rustix = { version = "1.0.1", features = ["event"] }
 [workspace]
 members = ["run-wasm"]
 
-[[example]]
-# Run with `cargo apk r --example winit_android`
-name = "winit_android"
-crate-type = ["cdylib"]
-
-[[example]]
-# Run with `cargo apk r --example winit_multithread_android`
-name = "winit_multithread_android"
-crate-type = ["cdylib"]
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -184,3 +174,6 @@ targets = [
     "x86_64-unknown-linux-gnu",
     "wasm32-unknown-unknown",
 ]
+
+[package.metadata.android]
+hacky_bins = true

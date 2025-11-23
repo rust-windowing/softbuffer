@@ -1,4 +1,5 @@
 //! `Surface` implements `Send`. This makes sure that multithreading can work here.
+#![cfg_attr(target_os = "android", no_main)]
 
 #[cfg(not(target_family = "wasm"))]
 #[path = "utils/winit_app.rs"]
@@ -140,4 +141,17 @@ mod ex {
 fn main() {
     use winit::event_loop::EventLoop;
     ex::entry(EventLoop::new().unwrap())
+}
+
+#[no_mangle]
+#[cfg(target_os = "android")]
+fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    use winit::event_loop::EventLoop;
+    pub use winit::platform::android::EventLoopBuilderExtAndroid;
+
+    let mut builder = EventLoop::builder();
+
+    builder.with_android_app(app);
+
+    ex::entry(builder.build().unwrap())
 }
