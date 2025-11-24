@@ -65,7 +65,7 @@ pub mod ex {
         let app = winit_app::WinitAppBuilder::with_init(
             |elwt| {
                 let attributes = Window::default_attributes();
-                #[cfg(target_arch = "wasm32")]
+                #[cfg(target_family = "wasm")]
                 let attributes =
                     winit::platform::web::WindowAttributesExtWebSys::with_append(attributes, true);
                 let window = Arc::new(elwt.create_window(attributes).unwrap());
