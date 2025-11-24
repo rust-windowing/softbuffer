@@ -1,9 +1,14 @@
 # Unreleased
 
-- Update to `objc2` 0.6.0.
-- Bump MSRV to Rust 1.71.
+# 0.4.7
+
+- Add support for Android using the `ndk` crate.
+- Replace `log` with `tracing`.
+- Improved examples.
 - Make `Context` cloneable.
 - Added `Buffer::width()` and `Buffer::height()` getters.
+- Bump MSRV to Rust 1.71.
+- Update to `objc2` 0.6, `objc2-*` 0.3, `drm` 0.14, `rustix` 1.0 and `windows-sys` 0.61.
 
 # 0.4.6
 
