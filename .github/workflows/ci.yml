@@ -25,13 +25,61 @@ jobs:
     - name: Run Typos
       run: typos
 
+  msrv:
+    name: MSRV
+    needs: fmt
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        # Android (breaks MSRV with `indexmap`, which Rust 1.71.1 doesn't allow easily pinning)
+        # - target: aarch64-linux-android
+
+        # CoreGraphics
+        - target: aarch64-apple-darwin
+        - target: x86_64-apple-ios
+
+        # Orbital (doesn't follow MSRV)
+        # - target: x86_64-unknown-redox
+
+        # Wayland, KMS/DRM, X11
+        - target: i686-unknown-linux-gnu
+        - target: x86_64-unknown-linux-gnu
+        - target: x86_64-unknown-linux-gnu
+          features: "x11,x11-dlopen"
+        - target: x86_64-unknown-linux-gnu
+          features: "wayland,wayland-dlopen"
+        - target: x86_64-unknown-linux-gnu
+          features: "kms"
+        - target: x86_64-unknown-freebsd
+        - target: x86_64-unknown-netbsd
+          features: "x11,x11-dlopen,wayland,wayland-dlopen"
+
+        # Web
+        - target: wasm32-unknown-unknown
+
+        # Win32
+        - target: x86_64-pc-windows-msvc
+        - target: x86_64-pc-windows-gnu
+
+    steps:
+    - uses: actions/checkout@v6
+    - uses: hecrj/setup-rust-action@v2
+      with:
+        rust-version: '1.71.1'
+        targets: ${{ matrix.target }}
+
+    - name: Check that crate compiles
+      run: cargo check --verbose --target ${{ matrix.target }} ${{ matrix.features && '--no-default-features --features' }} ${{ matrix.features }}
+
   tests:
     name: Tests
     needs: fmt
     strategy:
       fail-fast: false
       matrix:
-        rust_version: ['1.71.0', stable, nightly]
+        rust_version: [stable, nightly]
         platform:
           - { target: x86_64-pc-windows-msvc,   os: windows-latest,  }
           - { target: i686-pc-windows-msvc,     os: windows-latest,  }
@@ -49,10 +97,6 @@ jobs:
           - { target: x86_64-unknown-netbsd,    os: ubuntu-latest, options: --no-default-features, features: "x11,x11-dlopen,wayland,wayland-dlopen"  }
           - { target: aarch64-apple-darwin,     os: macos-latest,    }
           - { target: wasm32-unknown-unknown,   os: ubuntu-latest,   }
-        exclude:
-          # Orbital doesn't follow MSRV
-          - rust_version: '1.71.0'
-            platform: { target: x86_64-unknown-redox, os: ubuntu-latest }
         include:
           - rust_version: nightly
             platform: { target: wasm32-unknown-unknown, os: ubuntu-latest, options: "-Zbuild-std=panic_abort,std", rustflags: "-Ctarget-feature=+atomics,+bulk-memory" }
@@ -94,17 +138,6 @@ jobs:
     - name: Install GCC Multilib
       if: (matrix.platform.os == 'ubuntu-latest') && contains(matrix.platform.target, 'i686')
       run: sudo apt-get install gcc-multilib
-
-    - name: Pin deps that break MSRV
-      if: matrix.rust_version == '1.71.0'
-      run: |
-        cargo update -p dpi --precise 0.1.1
-        cargo update -p image --precise 0.25.6
-        cargo update -p zune-jpeg --precise 0.4.14
-        cargo update -p half --precise 2.4.1
-        cargo update -p bumpalo --precise 3.14.0
-        cargo update -p rayon --precise 1.10.0
-        cargo update -p rayon-core --precise 1.12.1
 
     - name: Build crate
       shell: bash
