@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -32,11 +31,7 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
                     return;
                 };
 
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    surface.resize(width, height).unwrap();
-                }
+                surface.resize(size.width, size.height).unwrap();
             }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
@@ -45,12 +40,12 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
                 };
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                for y in 0..buffer.height().get() {
-                    for x in 0..buffer.width().get() {
+                for y in 0..buffer.height() {
+                    for x in 0..buffer.width() {
                         let red = x % 255;
                         let green = y % 255;
                         let blue = (x * y) % 255;
-                        let index = y * buffer.width().get() + x;
+                        let index = y * buffer.width() + x;
                         buffer[index as usize] = blue | (green << 8) | (red << 16);
                     }
                 }

@@ -16,7 +16,6 @@ mod util;
 
 use std::cell::Cell;
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
 use std::ops;
 use std::sync::Arc;
 
@@ -67,9 +66,9 @@ pub struct Rect {
     /// y coordinate of top left corner
     pub y: u32,
     /// width
-    pub width: NonZeroU32,
+    pub width: u32,
     /// height
-    pub height: NonZeroU32,
+    pub height: u32,
 }
 
 /// A surface for drawing to a window with software buffers.
@@ -110,7 +109,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// in the upper-left corner of the window. It is recommended in most production use cases
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         self.surface_impl.resize(width, height)
     }
 
@@ -207,10 +206,10 @@ pub struct Buffer<'a, D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> Buffer<'_, D, W> {
     /// The amount of pixels wide the buffer is.
-    pub fn width(&self) -> NonZeroU32 {
+    pub fn width(&self) -> u32 {
         let width = self.buffer_impl.width();
         debug_assert_eq!(
-            width.get() as usize * self.buffer_impl.height().get() as usize,
+            width as usize * self.buffer_impl.height() as usize,
             self.len(),
             "buffer must be sized correctly"
         );
@@ -218,10 +217,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Buffer<'_, D, W> {
     }
 
     /// The amount of pixels tall the buffer is.
-    pub fn height(&self) -> NonZeroU32 {
+    pub fn height(&self) -> u32 {
         let height = self.buffer_impl.height();
         debug_assert_eq!(
-            height.get() as usize * self.buffer_impl.width().get() as usize,
+            height as usize * self.buffer_impl.width() as usize,
             self.len(),
             "buffer must be sized correctly"
         );

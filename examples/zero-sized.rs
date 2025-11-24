@@ -13,8 +13,7 @@ fn main() {
         |elwt| winit_app::make_window(elwt, |w| w),
         move |_elwt, window| {
             let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
-            // Intentionally set the size of the surface to something different than the size of the window.
-            surface.resize(256, 128).unwrap();
+            surface.resize(0, 0).unwrap();
             surface
         },
     )
@@ -26,6 +25,16 @@ fn main() {
         }
 
         match event {
+            WindowEvent::Resized(size) => {
+                let Some(surface) = surface else {
+                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    return;
+                };
+
+                let width = size.width.saturating_sub(100);
+                let height = size.height.saturating_sub(100);
+                surface.resize(width, height).unwrap();
+            }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     eprintln!("RedrawRequested fired before Resumed or after Suspended");
@@ -33,17 +42,16 @@ fn main() {
                 };
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                let width = buffer.width();
                 for y in 0..buffer.height() {
-                    for x in 0..width {
+                    for x in 0..buffer.width() {
                         let red = x % 255;
                         let green = y % 255;
                         let blue = (x * y) % 255;
-
-                        let color = blue | (green << 8) | (red << 16);
-                        buffer[(y * width + x) as usize] = color;
+                        let index = y * buffer.width() + x;
+                        buffer[index as usize] = blue | (green << 8) | (red << 16);
                     }
                 }
+
                 buffer.present().unwrap();
             }
             WindowEvent::CloseRequested

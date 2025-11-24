@@ -1,6 +1,6 @@
 use crate::error::InitError;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, RawWindowHandle};
-use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
+use std::{cmp, marker::PhantomData, slice, str};
 
 use crate::backend_interface::*;
 use crate::{Rect, SoftBufferError};
@@ -154,9 +154,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        let width = width.get();
-        let height = height.get();
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         if width != self.width || height != self.height {
             self.presented = false;
             self.width = width;
@@ -191,12 +189,12 @@ pub struct BufferImpl<'a, D, W> {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
-    fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.width as u32).unwrap()
+    fn width(&self) -> u32 {
+        self.imp.width as u32
     }
 
-    fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.height as u32).unwrap()
+    fn height(&self) -> u32 {
+        self.imp.height as u32
     }
 
     #[inline]

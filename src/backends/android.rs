@@ -1,7 +1,6 @@
 //! Implementation of software buffering for Android.
 
 use std::marker::PhantomData;
-use std::num::{NonZeroI32, NonZeroU32};
 
 use ndk::{
     hardware_buffer_format::HardwareBufferFormat,
@@ -52,18 +51,18 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
     }
 
     /// Also changes the pixel format to [`HardwareBufferFormat::R8G8B8A8_UNORM`].
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
-            let width = NonZeroI32::try_from(width).ok()?;
-            let height = NonZeroI32::try_from(height).ok()?;
+            let width = i32::try_from(width).ok()?;
+            let height = i32::try_from(height).ok()?;
             Some((width, height))
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
 
         self.native_window
             .set_buffers_geometry(
-                width.into(),
-                height.into(),
+                width,
+                height,
                 // Default is typically R5G6B5 16bpp, switch to 32bpp
                 Some(HardwareBufferFormat::R8G8B8X8_UNORM),
             )
@@ -123,12 +122,12 @@ pub struct BufferImpl<'a, D: ?Sized, W> {
 unsafe impl<'a, D, W> Send for BufferImpl<'a, D, W> {}
 
 impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
-    fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.native_window_buffer.width() as u32).unwrap()
+    fn width(&self) -> u32 {
+        self.native_window_buffer.width() as u32
     }
 
-    fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.native_window_buffer.height() as u32).unwrap()
+    fn height(&self) -> u32 {
+        self.native_window_buffer.height() as u32
     }
 
     #[inline]

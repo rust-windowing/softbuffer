@@ -13,7 +13,6 @@ fn buffer_mut(c: &mut Criterion) {
     {
         use criterion::black_box;
         use softbuffer::{Context, Surface};
-        use std::num::NonZeroU32;
         use winit::event_loop::ControlFlow;
         use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
 
@@ -32,12 +31,7 @@ fn buffer_mut(c: &mut Criterion) {
                 let mut surface = Surface::new(&context, &window).unwrap();
 
                 let size = window.inner_size();
-                surface
-                    .resize(
-                        NonZeroU32::new(size.width).unwrap(),
-                        NonZeroU32::new(size.height).unwrap(),
-                    )
-                    .unwrap();
+                surface.resize(size.width, size.height).unwrap();
 
                 c.bench_function("buffer_mut()", |b| {
                     b.iter(|| {

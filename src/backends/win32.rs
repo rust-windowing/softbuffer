@@ -9,7 +9,6 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 use std::io;
 use std::marker::PhantomData;
 use std::mem;
-use std::num::{NonZeroI32, NonZeroU32};
 use std::ptr::{self, NonNull};
 use std::slice;
 use std::sync::{mpsc, Mutex, OnceLock};
@@ -29,8 +28,8 @@ struct Buffer {
     dc: Gdi::HDC,
     bitmap: Gdi::HBITMAP,
     pixels: NonNull<u32>,
-    width: NonZeroI32,
-    height: NonZeroI32,
+    width: i32,
+    height: i32,
     presented: bool,
 }
 
@@ -47,7 +46,7 @@ impl Drop for Buffer {
 }
 
 impl Buffer {
-    fn new(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
+    fn new(window_dc: Gdi::HDC, width: i32, height: i32) -> Self {
         let dc = Allocator::get().allocate(window_dc);
         assert!(!dc.is_null());
 
@@ -55,8 +54,8 @@ impl Buffer {
         let bitmap_info = BitmapInfo {
             bmi_header: Gdi::BITMAPINFOHEADER {
                 biSize: mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32,
-                biWidth: width.get(),
-                biHeight: -height.get(),
+                biWidth: width,
+                biHeight: -height,
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: Gdi::BI_BITFIELDS,
@@ -179,8 +178,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
                     Some((
                         i32::try_from(rect.x).ok()?,
                         i32::try_from(rect.y).ok()?,
-                        i32::try_from(rect.width.get()).ok()?,
-                        i32::try_from(rect.height.get()).ok()?,
+                        i32::try_from(rect.width).ok()?,
+                        i32::try_from(rect.height).ok()?,
                     ))
                 })()
                 .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
@@ -248,10 +247,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         &self.handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
-            let width = NonZeroI32::try_from(width).ok()?;
-            let height = NonZeroI32::try_from(height).ok()?;
+            let width = i32::try_from(width).ok()?;
+            let height = i32::try_from(height).ok()?;
             Some((width, height))
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
@@ -284,11 +283,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 pub struct BufferImpl<'a, D, W>(&'a mut Win32Impl<D, W>);
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
-    fn width(&self) -> NonZeroU32 {
+    fn width(&self) -> u32 {
         self.0.buffer.as_ref().unwrap().width.try_into().unwrap()
     }
 
-    fn height(&self) -> NonZeroU32 {
+    fn height(&self) -> u32 {
         self.0.buffer.as_ref().unwrap().height.try_into().unwrap()
     }
 

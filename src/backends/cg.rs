@@ -21,7 +21,6 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::ptr::{self, slice_from_raw_parts_mut, NonNull};
 
@@ -250,9 +249,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.width = width.get() as usize;
-        self.height = height.get() as usize;
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        self.width = width as usize;
+        self.height = height as usize;
         Ok(())
     }
 
@@ -270,12 +269,12 @@ pub struct BufferImpl<'a, D, W> {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
-    fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.width as u32).unwrap()
+    fn width(&self) -> u32 {
+        self.imp.width as u32
     }
 
-    fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.height as u32).unwrap()
+    fn height(&self) -> u32 {
+        self.imp.height as u32
     }
 
     #[inline]
@@ -305,8 +304,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
         }
 
         let data_provider = {
-            let len = self.buffer.len() * size_of::<u32>();
-            let buffer: *mut [u32] = Box::into_raw(self.buffer);
+            let buffer = if self.buffer.is_empty() {
+                // Clear contents.
+                vec![0; self.imp.width.max(1) * self.imp.height.max(1)].into()
+            } else {
+                self.buffer
+            };
+
+            let len = buffer.len() * size_of::<u32>();
+            let buffer: *mut [u32] = Box::into_raw(buffer);
             // Convert slice pointer to thin pointer.
             let data_ptr = buffer.cast::<c_void>();
 
@@ -330,11 +336,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
 
         let image = unsafe {
             CGImage::new(
-                self.imp.width,
-                self.imp.height,
+                self.imp.width.max(1),
+                self.imp.height.max(1),
                 8,
                 32,
-                self.imp.width * 4,
+                self.imp.width.max(1) * 4,
                 Some(&self.imp.color_space),
                 bitmap_info,
                 Some(&data_provider),

@@ -1,6 +1,5 @@
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use softbuffer::Buffer;
-use std::num::NonZeroU32;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -9,8 +8,8 @@ use winit::keyboard::{Key, NamedKey};
 mod winit_app;
 
 fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, flag: bool) {
-    let width = buffer.width().get();
-    let height = buffer.height().get();
+    let width = buffer.width();
+    let height = buffer.height();
     for y in 0..height {
         for x in 0..width {
             let value = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
@@ -58,12 +57,8 @@ fn main() {
                     return;
                 };
 
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    // Resize surface
-                    surface.resize(width, height).unwrap();
-                }
+                // Resize surface
+                surface.resize(size.width, size.height).unwrap();
             }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
