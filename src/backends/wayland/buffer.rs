@@ -15,6 +15,7 @@ use wayland_client::{
 };
 
 use super::State;
+use crate::Pixel;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn create_memfile() -> File {
@@ -160,8 +161,10 @@ impl WaylandBuffer {
         self.width as usize * self.height as usize
     }
 
-    pub unsafe fn mapped_mut(&mut self) -> &mut [u32] {
-        unsafe { slice::from_raw_parts_mut(self.map.as_mut_ptr() as *mut u32, self.len()) }
+    pub unsafe fn mapped_mut(&mut self) -> &mut [Pixel] {
+        // SAFETY: The `mapping` is a multiple of `Pixel`, and we assume that the memmap allocation
+        // is aligned to at least a multiple of 4 bytes.
+        unsafe { slice::from_raw_parts_mut(self.map.as_mut_ptr().cast::<Pixel>(), self.len()) }
     }
 }
 

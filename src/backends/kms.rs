@@ -13,12 +13,15 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, Raw
 
 use std::collections::HashSet;
 use std::marker::PhantomData;
+use std::mem::size_of;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
+use std::slice;
 use std::sync::Arc;
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
+use crate::Pixel;
 
 #[derive(Debug)]
 pub(crate) struct KmsDisplayImpl<D: ?Sized> {
@@ -302,13 +305,22 @@ impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
-        bytemuck::cast_slice(self.mapping.as_ref())
+    fn pixels(&self) -> &[Pixel] {
+        let ptr = self.mapping.as_ptr().cast::<Pixel>();
+        let len = self.mapping.len() / size_of::<Pixel>();
+        debug_assert_eq!(self.mapping.len() % size_of::<Pixel>(), 0);
+        // SAFETY: The `mapping` is a multiple of `Pixel`, and we assume that the buffer allocation
+        // is aligned to at least a multiple of 4 bytes.
+        unsafe { slice::from_raw_parts(ptr, len) }
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
-        bytemuck::cast_slice_mut(self.mapping.as_mut())
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
+        let ptr = self.mapping.as_mut_ptr().cast::<Pixel>();
+        let len = self.mapping.len() / size_of::<Pixel>();
+        debug_assert_eq!(self.mapping.len() % size_of::<Pixel>(), 0);
+        // SAFETY: Same as above in `pixels`.
+        unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
 
     #[inline]

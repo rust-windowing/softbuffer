@@ -113,11 +113,11 @@ fn main() {
                 for index in 0..(buffer.width().get() * buffer.height().get()) {
                     let y = index / buffer.width().get();
                     let x = index % buffer.width().get();
-                    let red = x % 255;
-                    let green = y % 255;
-                    let blue = (x * y) % 255;
+                    let red = (x % 255) as u8;
+                    let green = (y % 255) as u8;
+                    let blue = ((x * y) % 255) as u8;
 
-                    buffer[index as usize] = blue | (green << 8) | (red << 16);
+                    buffer[index as usize] = softbuffer::Pixel::new_rgb(red, green, blue);
                 }
 
                 buffer.present().unwrap();

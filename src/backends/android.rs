@@ -12,7 +12,7 @@ use raw_window_handle::AndroidNdkWindowHandle;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use crate::error::InitError;
-use crate::{BufferInterface, Rect, SoftBufferError, SurfaceInterface};
+use crate::{BufferInterface, Pixel, Rect, SoftBufferError, SurfaceInterface};
 
 /// The handle to a window for software buffering.
 pub struct AndroidImpl<D, W> {
@@ -98,7 +98,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
             ));
         }
 
-        let buffer = vec![0; native_window_buffer.width() * native_window_buffer.height()];
+        let buffer =
+            vec![Pixel::default(); native_window_buffer.width() * native_window_buffer.height()];
 
         Ok(BufferImpl {
             native_window_buffer,
@@ -108,14 +109,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
     }
 
     /// Fetch the buffer from the window.
-    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)
     }
 }
 
 pub struct BufferImpl<'a, D: ?Sized, W> {
     native_window_buffer: NativeWindowBufferLockGuard<'a>,
-    buffer: Vec<u32>,
+    buffer: Vec<Pixel>,
     marker: PhantomData<(&'a D, &'a W)>,
 }
 
@@ -132,12 +133,12 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
+    fn pixels(&self) -> &[Pixel] {
         &self.buffer
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         &mut self.buffer
     }
 
@@ -159,13 +160,13 @@ impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl
             // .lines() removed the stride
             assert_eq!(output.len(), input.len() * 4);
 
+            // Write RGB(A) to the output.
+            // TODO: Use `slice::write_copy_of_slice` once stable and in MSRV.
             for (i, pixel) in input.iter().enumerate() {
-                // Swizzle colors from BGR(A) to RGB(A)
-                let [b, g, r, a] = pixel.to_le_bytes();
-                output[i * 4].write(r);
-                output[i * 4 + 1].write(g);
-                output[i * 4 + 2].write(b);
-                output[i * 4 + 3].write(a);
+                output[i * 4].write(pixel.r);
+                output[i * 4 + 1].write(pixel.g);
+                output[i * 4 + 2].write(pixel.b);
+                output[i * 4 + 3].write(pixel.a);
             }
         }
         Ok(())

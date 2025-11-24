@@ -1,4 +1,5 @@
 use image::GenericImageView;
+use softbuffer::Pixel;
 use std::num::NonZeroU32;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -52,12 +53,8 @@ fn main() {
                 let mut buffer = surface.buffer_mut().unwrap();
                 let width = fruit.width();
                 for (x, y, pixel) in fruit.pixels() {
-                    let red = pixel.0[0] as u32;
-                    let green = pixel.0[1] as u32;
-                    let blue = pixel.0[2] as u32;
-
-                    let color = blue | (green << 8) | (red << 16);
-                    buffer[(y * width + x) as usize] = color;
+                    let pixel = Pixel::new_rgb(pixel.0[0], pixel.0[1], pixel.0[2]);
+                    buffer[(y * width + x) as usize] = pixel;
                 }
 
                 buffer.present().unwrap();

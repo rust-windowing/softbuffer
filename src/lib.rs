@@ -12,6 +12,7 @@ mod backend_interface;
 use backend_interface::*;
 mod backends;
 mod error;
+mod pixel;
 mod util;
 
 use std::cell::Cell;
@@ -20,8 +21,9 @@ use std::num::NonZeroU32;
 use std::ops;
 use std::sync::Arc;
 
-use error::InitError;
-pub use error::SoftBufferError;
+use self::error::InitError;
+pub use self::error::SoftBufferError;
+pub use self::pixel::Pixel;
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
@@ -122,7 +124,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// - On AppKit, UIKit, Redox and Wayland, this function is unimplemented.
     /// - On Web, this will fail if the content was supplied by
     ///   a different origin depending on the sites CORS rules.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    pub fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         self.surface_impl.fetch()
     }
 
@@ -161,40 +163,28 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 
 /// A buffer that can be written to by the CPU and presented to the window.
 ///
-/// This derefs to a `[u32]`, which depending on the backend may be a mapping into shared memory
-/// accessible to the display server, so presentation doesn't require any (client-side) copying.
+/// This derefs to a [slice] of [`Pixel`]s, which depending on the backend may be a mapping into
+/// shared memory accessible to the display server, so presentation doesn't require any
+/// (client-side) copying.
 ///
 /// This trusts the display server not to mutate the buffer, which could otherwise be unsound.
 ///
 /// # Data representation
 ///
-/// The format of the buffer is as follows. There is one `u32` in the buffer for each pixel in
+/// The format of the buffer is as follows. There is one [`Pixel`] in the buffer for each pixel in
 /// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
-/// etc. (Row-major top to bottom left to right one `u32` per pixel). Within each `u32` the highest
-/// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
-/// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
-/// one way to build this format using bitwise operations.
-///
-/// --------
-///
-/// Pixel format (`u32`):
-///
-/// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
-///
-/// 0: Bit is 0
-/// R: Red channel
-/// G: Green channel
-/// B: Blue channel
+/// etc. (Row-major top to bottom left to right).
 ///
 /// # Platform dependent behavior
+///
 /// No-copy presentation is currently supported on:
 /// - Wayland
 /// - X, when XShm is available
 /// - Win32
 /// - Orbital, when buffer size matches window size
+/// - Web
 ///
 /// Currently [`Buffer::present`] must block copying image data on:
-/// - Web
 /// - AppKit
 /// - UIKit
 ///
@@ -271,17 +261,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Buffer<'_, D, W> {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'_, D, W> {
-    type Target = [u32];
+    type Target = [Pixel];
 
     #[inline]
-    fn deref(&self) -> &[u32] {
+    fn deref(&self) -> &[Pixel] {
         self.buffer_impl.pixels()
     }
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'_, D, W> {
     #[inline]
-    fn deref_mut(&mut self) -> &mut [u32] {
+    fn deref_mut(&mut self) -> &mut [Pixel] {
         self.buffer_impl.pixels_mut()
     }
 }
