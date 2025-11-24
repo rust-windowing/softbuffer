@@ -4,8 +4,6 @@ use crate::{backend_interface::*, backends, InitError, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
-#[cfg(any(wayland_platform, x11_platform, kms_platform))]
-use std::sync::Arc;
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
 macro_rules! make_dispatch {
@@ -201,12 +199,39 @@ make_dispatch! {
     <D, W> =>
     #[cfg(target_os = "android")]
     Android(D, backends::android::AndroidImpl<D, W>, backends::android::BufferImpl<'a, D, W>),
-    #[cfg(x11_platform)]
-    X11(Arc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'a, D, W>),
-    #[cfg(wayland_platform)]
-    Wayland(Arc<backends::wayland::WaylandDisplayImpl<D>>, backends::wayland::WaylandImpl<D, W>, backends::wayland::BufferImpl<'a, D, W>),
-    #[cfg(kms_platform)]
-    Kms(Arc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'a, D, W>),
+    #[cfg(all(
+        feature = "x11",
+        not(any(
+            target_os = "android",
+            target_vendor = "apple",
+            target_os = "redox",
+            target_family = "wasm",
+            target_os = "windows"
+        ))
+    ))]
+    X11(std::sync::Arc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'a, D, W>),
+    #[cfg(all(
+        feature = "wayland",
+        not(any(
+            target_os = "android",
+            target_vendor = "apple",
+            target_os = "redox",
+            target_family = "wasm",
+            target_os = "windows"
+        ))
+    ))]
+    Wayland(std::sync::Arc<backends::wayland::WaylandDisplayImpl<D>>, backends::wayland::WaylandImpl<D, W>, backends::wayland::BufferImpl<'a, D, W>),
+    #[cfg(all(
+        feature = "kms",
+        not(any(
+            target_os = "android",
+            target_vendor = "apple",
+            target_os = "redox",
+            target_family = "wasm",
+            target_os = "windows"
+        ))
+    ))]
+    Kms(std::sync::Arc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'a, D, W>),
     #[cfg(target_os = "windows")]
     Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'a, D, W>),
     #[cfg(target_vendor = "apple")]

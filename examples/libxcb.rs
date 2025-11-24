@@ -1,6 +1,15 @@
 //! Example of using `softbuffer` with `libxcb`.
 
-#[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
+#[cfg(all(
+    feature = "x11",
+    not(any(
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "redox",
+        target_family = "wasm",
+        target_os = "windows"
+    ))
+))]
 mod example {
     use raw_window_handle::{
         DisplayHandle, RawDisplayHandle, RawWindowHandle, WindowHandle, XcbDisplayHandle,
@@ -135,12 +144,30 @@ mod example {
     }
 }
 
-#[cfg(all(feature = "x11", any(target_os = "linux", target_os = "freebsd")))]
+#[cfg(all(
+    feature = "x11",
+    not(any(
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "redox",
+        target_family = "wasm",
+        target_os = "windows"
+    ))
+))]
 fn main() {
     example::run();
 }
 
-#[cfg(not(all(feature = "x11", any(target_os = "linux", target_os = "freebsd"))))]
+#[cfg(not(all(
+    feature = "x11",
+    not(any(
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "redox",
+        target_family = "wasm",
+        target_os = "windows"
+    ))
+)))]
 fn main() {
     eprintln!("This example requires the `x11` feature to be enabled on a supported platform.");
 }

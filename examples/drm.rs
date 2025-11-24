@@ -1,6 +1,15 @@
 //! Example of using softbuffer with drm-rs.
 
-#[cfg(kms_platform)]
+#[cfg(all(
+    feature = "kms",
+    not(any(
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "redox",
+        target_family = "wasm",
+        target_os = "windows"
+    ))
+))]
 mod imple {
     use drm::control::{connector, Device as CtrlDevice, Event, ModeTypeFlags, PlaneType};
     use drm::Device;
@@ -210,7 +219,16 @@ mod imple {
     impl CtrlDevice for Card {}
 }
 
-#[cfg(not(kms_platform))]
+#[cfg(not(all(
+    feature = "kms",
+    not(any(
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "redox",
+        target_family = "wasm",
+        target_os = "windows"
+    ))
+)))]
 mod imple {
     pub(super) fn entry() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("This example requires the `kms` feature.");
