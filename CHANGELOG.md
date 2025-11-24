@@ -1,5 +1,7 @@
 # Unreleased
 
+- Use `u32` instead of `NonZeroU32`, and handle zero-sized buffers internally.
+
 - Update to `objc2` 0.6.0.
 - Bump MSRV to Rust 1.71.
 - Make `Context` cloneable.

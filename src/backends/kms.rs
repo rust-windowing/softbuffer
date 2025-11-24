@@ -102,8 +102,11 @@ pub(crate) struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
     /// This is used to change the front buffer.
     first_is_front: &'a mut bool,
 
-    /// The current size.
-    size: (NonZeroU32, NonZeroU32),
+    /// The current width.
+    width: u32,
+
+    /// The current height.
+    height: u32,
 
     /// The display implementation.
     display: &'a KmsDisplayImpl<D>,
@@ -211,7 +214,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         // Don't resize if we don't have to.
         if let Some(buffer) = &self.buffer {
             let (buffer_width, buffer_height) = buffer.size();
@@ -265,7 +268,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
 
         Ok(BufferImpl {
             mapping,
-            size,
+            width: size.0,
+            height: size.1,
             first_is_front: &mut set.first_is_front,
             front_fb,
             crtc_handle: self.crtc.handle(),
@@ -293,12 +297,12 @@ impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
 }
 
 impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
-    fn width(&self) -> NonZeroU32 {
-        self.size.0
+    fn width(&self) -> u32 {
+        self.width
     }
 
-    fn height(&self) -> NonZeroU32 {
-        self.size.1
+    fn height(&self) -> u32 {
+        self.height
     }
 
     #[inline]
@@ -326,11 +330,11 @@ impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
                     rect.x.try_into().map_err(|_| err())?,
                     rect.y.try_into().map_err(|_| err())?,
                     rect.x
-                        .checked_add(rect.width.get())
+                        .checked_add(rect.width)
                         .and_then(|x| x.try_into().ok())
                         .ok_or_else(err)?,
                     rect.y
-                        .checked_add(rect.height.get())
+                        .checked_add(rect.height)
                         .and_then(|y| y.try_into().ok())
                         .ok_or_else(err)?,
                 ))
@@ -374,13 +378,13 @@ impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
 
     #[inline]
     fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = self.size;
-        self.present_with_damage(&[crate::Rect {
+        let rect = crate::Rect {
             x: 0,
             y: 0,
-            width,
-            height,
-        }])
+            width: self.width,
+            height: self.height,
+        };
+        self.present_with_damage(&[rect])
     }
 }
 
@@ -388,11 +392,11 @@ impl SharedBuffer {
     /// Create a new buffer set.
     pub(crate) fn new<D: ?Sized>(
         display: &KmsDisplayImpl<D>,
-        width: NonZeroU32,
-        height: NonZeroU32,
+        width: u32,
+        height: u32,
     ) -> Result<Self, SoftBufferError> {
         let db = display
-            .create_dumb_buffer((width.get(), height.get()), DrmFourcc::Xrgb8888, 32)
+            .create_dumb_buffer((width, height), DrmFourcc::Xrgb8888, 32)
             .swbuf_err("failed to create dumb buffer")?;
         let fb = display
             .add_framebuffer(&db, 24, 32)
@@ -400,20 +404,11 @@ impl SharedBuffer {
 
         Ok(SharedBuffer { fb, db, age: 0 })
     }
-
-    /// Get the size of this buffer.
-    pub(crate) fn size(&self) -> (NonZeroU32, NonZeroU32) {
-        let (width, height) = self.db.size();
-
-        NonZeroU32::new(width)
-            .and_then(|width| NonZeroU32::new(height).map(|height| (width, height)))
-            .expect("buffer size is zero")
-    }
 }
 
 impl Buffers {
     /// Get the size of this buffer.
-    pub(crate) fn size(&self) -> (NonZeroU32, NonZeroU32) {
-        self.buffers[0].size()
+    pub(crate) fn size(&self) -> (u32, u32) {
+        self.buffers[0].db.size()
     }
 }

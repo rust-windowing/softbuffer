@@ -6,7 +6,6 @@ mod winit_app;
 
 #[cfg(not(target_family = "wasm"))]
 pub mod ex {
-    use std::num::NonZeroU32;
     use std::sync::{mpsc, Arc, Mutex};
     use winit::event::{KeyEvent, WindowEvent};
     use winit::event_loop::{ControlFlow, EventLoop, OwnedDisplayHandle};
@@ -31,28 +30,23 @@ pub mod ex {
 
             // Perform the rendering.
             let mut surface = surface.lock().unwrap();
-            if let (Some(width), Some(height)) = {
-                let size = window.inner_size();
-                println!("got size: {size:?}");
-                (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-            } {
-                println!("resizing...");
-                surface.resize(width, height).unwrap();
+            let size = window.inner_size();
+            println!("resizing...");
+            surface.resize(size.width, size.height).unwrap();
 
-                let mut buffer = surface.buffer_mut().unwrap();
-                for y in 0..buffer.height().get() {
-                    for x in 0..buffer.width().get() {
-                        let red = x % 255;
-                        let green = y % 255;
-                        let blue = (x * y) % 255;
-                        let index = y * buffer.width().get() + x;
-                        buffer[index as usize] = blue | (green << 8) | (red << 16);
-                    }
+            let mut buffer = surface.buffer_mut().unwrap();
+            for y in 0..buffer.height() {
+                for x in 0..buffer.width() {
+                    let red = x % 255;
+                    let green = y % 255;
+                    let blue = (x * y) % 255;
+                    let index = y * buffer.width() + x;
+                    buffer[index as usize] = blue | (green << 8) | (red << 16);
                 }
-
-                println!("presenting...");
-                buffer.present().unwrap();
             }
+
+            println!("presenting...");
+            buffer.present().unwrap();
 
             // We're done, tell the main thread to keep going.
             done.send(()).ok();

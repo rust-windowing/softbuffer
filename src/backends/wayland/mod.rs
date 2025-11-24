@@ -4,10 +4,7 @@ use crate::{
     util, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
-use std::{
-    num::{NonZeroI32, NonZeroU32},
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
@@ -78,7 +75,8 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
     display: Arc<WaylandDisplayImpl<D>>,
     surface: Option<wl_surface::WlSurface>,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
-    size: Option<(NonZeroI32, NonZeroI32)>,
+    width: i32,
+    height: i32,
 
     /// The pointer to the window object.
     ///
@@ -123,8 +121,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
                         Some((
                             i32::try_from(rect.x).ok()?,
                             i32::try_from(rect.y).ok()?,
-                            i32::try_from(rect.width.get()).ok()?,
-                            i32::try_from(rect.height.get()).ok()?,
+                            i32::try_from(rect.width).ok()?,
+                            i32::try_from(rect.height).ok()?,
                         ))
                     })()
                     .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
@@ -175,7 +173,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             display: display.clone(),
             surface: Some(surface),
             buffers: Default::default(),
-            size: None,
+            width: 0,
+            height: 0,
             window_handle: window,
         })
     }
@@ -185,23 +184,17 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.size = Some(
-            (|| {
-                let width = NonZeroI32::try_from(width).ok()?;
-                let height = NonZeroI32::try_from(height).ok()?;
-                Some((width, height))
-            })()
-            .ok_or(SoftBufferError::SizeOutOfRange { width, height })?,
-        );
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        (self.width, self.height) = (|| {
+            let width = i32::try_from(width).ok()?;
+            let height = i32::try_from(height).ok()?;
+            Some((width, height))
+        })()
+        .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
         Ok(())
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        let (width, height) = self
-            .size
-            .expect("Must set size of surface before calling `buffer_mut()`");
-
         if let Some((_front, back)) = &mut self.buffers {
             // Block if back buffer not released yet
             if !back.released() {
@@ -221,22 +214,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             }
 
             // Resize, if buffer isn't large enough
-            back.resize(width.get(), height.get());
+            back.resize(self.width, self.height);
         } else {
             // Allocate front and back buffer
             self.buffers = Some((
-                WaylandBuffer::new(
-                    &self.display.shm,
-                    width.get(),
-                    height.get(),
-                    &self.display.qh,
-                ),
-                WaylandBuffer::new(
-                    &self.display.shm,
-                    width.get(),
-                    height.get(),
-                    &self.display.qh,
-                ),
+                WaylandBuffer::new(&self.display.shm, self.width, self.height, &self.display.qh),
+                WaylandBuffer::new(&self.display.shm, self.width, self.height, &self.display.qh),
             ));
         };
 
@@ -269,12 +252,12 @@ pub struct BufferImpl<'a, D: ?Sized, W> {
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
-    fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.width as u32).unwrap()
+    fn width(&self) -> u32 {
+        self.width as u32
     }
 
-    fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.height as usize as u32).unwrap()
+    fn height(&self) -> u32 {
+        self.height as usize as u32
     }
 
     #[inline]
@@ -297,15 +280,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for Buffe
 
     fn present(self) -> Result<(), SoftBufferError> {
         let imp = self.stack.into_container();
-        let (width, height) = imp
-            .size
-            .expect("Must set size of surface before calling `present()`");
         imp.present_with_damage(&[Rect {
             x: 0,
             y: 0,
             // We know width/height will be non-negative
-            width: width.try_into().unwrap(),
-            height: height.try_into().unwrap(),
+            width: imp.width.try_into().unwrap(),
+            height: imp.height.try_into().unwrap(),
         }])
     }
 }

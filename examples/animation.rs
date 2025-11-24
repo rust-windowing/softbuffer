@@ -1,7 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 use std::f64::consts::PI;
-use std::num::NonZeroU32;
 use web_time::Instant;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -45,11 +44,7 @@ fn main() {
                     return;
                 };
 
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    surface.resize(width, height).unwrap();
-                }
+                surface.resize(size.width, size.height).unwrap();
             }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
@@ -61,7 +56,7 @@ fn main() {
 
                 let mut buffer = surface.buffer_mut().unwrap();
 
-                let size = (buffer.width().get(), buffer.height().get());
+                let size = (buffer.width(), buffer.height());
                 if size != *old_size {
                     *old_size = size;
                     *frames = pre_render_frames(size.0, size.1);

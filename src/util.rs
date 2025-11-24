@@ -2,7 +2,6 @@
 #![allow(dead_code)]
 
 use std::cmp;
-use std::num::NonZeroU32;
 
 use crate::Rect;
 use crate::SoftBufferError;
@@ -64,8 +63,8 @@ pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
         .map(|rect| Region {
             left: rect.x,
             top: rect.y,
-            right: rect.x + rect.width.get(),
-            bottom: rect.y + rect.height.get(),
+            right: rect.x + rect.width,
+            bottom: rect.y + rect.height,
         })
         .reduce(|mut prev, next| {
             prev.left = cmp::min(prev.left, next.left);
@@ -78,9 +77,13 @@ pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
     Some(Rect {
         x: region.left,
         y: region.top,
-        width: NonZeroU32::new(region.right - region.left)
+        width: region
+            .right
+            .checked_sub(region.left)
             .expect("`right` must always be bigger then `left`"),
-        height: NonZeroU32::new(region.bottom - region.top)
+        height: region
+            .bottom
+            .checked_sub(region.top)
             .expect("`bottom` must always be bigger then `top`"),
     })
 }

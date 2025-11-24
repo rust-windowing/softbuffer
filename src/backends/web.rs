@@ -13,7 +13,6 @@ use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
 use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
 
 /// Display implementation for the web platform.
 ///
@@ -53,8 +52,11 @@ pub struct WebImpl<D, W> {
     /// Buffer has been presented.
     buffer_presented: bool,
 
-    /// The current canvas width/height.
-    size: Option<(NonZeroU32, NonZeroU32)>,
+    /// The current canvas width.
+    width: u32,
+
+    /// The current canvas height.
+    height: u32,
 
     /// The underlying window handle.
     window_handle: W,
@@ -84,7 +86,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
             canvas: Canvas::Canvas { canvas, ctx },
             buffer: Vec::new(),
             buffer_presented: false,
-            size: None,
+            width: 0,
+            height: 0,
             window_handle: window,
             _display: PhantomData,
         })
@@ -100,7 +103,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
             canvas: Canvas::OffscreenCanvas { canvas, ctx },
             buffer: Vec::new(),
             buffer_presented: false,
-            size: None,
+            width: 0,
+            height: 0,
             window_handle: window,
             _display: PhantomData,
         })
@@ -122,10 +126,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
     }
 
     fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let (buffer_width, _buffer_height) = self
-            .size
-            .expect("Must set size of surface before calling `present_with_damage()`");
-
         let union_damage = if let Some(rect) = util::union_damage(damage) {
             rect
         } else {
@@ -135,13 +135,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
         // Create a bitmap from the buffer.
         let bitmap: Vec<_> = self
             .buffer
-            .chunks_exact(buffer_width.get() as usize)
+            .chunks_exact(self.width as usize)
             .skip(union_damage.y as usize)
-            .take(union_damage.height.get() as usize)
+            .take(union_damage.height as usize)
             .flat_map(|row| {
                 row.iter()
                     .skip(union_damage.x as usize)
-                    .take(union_damage.width.get() as usize)
+                    .take(union_damage.width as usize)
             })
             .copied()
             .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
@@ -149,7 +149,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
         debug_assert_eq!(
             bitmap.len() as u32,
-            union_damage.width.get() * union_damage.height.get() * 4
+            union_damage.width * union_damage.height * 4
         );
 
         #[cfg(target_feature = "atomics")]
@@ -179,7 +179,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
         #[cfg(not(target_feature = "atomics"))]
         let result = ImageData::new_with_u8_clamped_array(
             wasm_bindgen::Clamped(&bitmap),
-            union_damage.width.get(),
+            union_damage.width,
         );
         // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data = result.unwrap();
@@ -193,8 +193,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
                     union_damage.y.into(),
                     (rect.x - union_damage.x).into(),
                     (rect.y - union_damage.y).into(),
-                    rect.width.get().into(),
-                    rect.height.get().into(),
+                    rect.width.into(),
+                    rect.height.into(),
                 )
                 .unwrap();
         }
@@ -249,13 +249,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
 
     /// De-duplicates the error handling between `HtmlCanvasElement` and `OffscreenCanvas`.
     /// Resize the canvas to the given dimensions.
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        if self.size != Some((width, height)) {
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        if self.width != width && self.height != height {
             self.buffer_presented = false;
-            self.buffer.resize(total_len(width.get(), height.get()), 0);
-            self.canvas.set_width(width.get());
-            self.canvas.set_height(height.get());
-            self.size = Some((width, height));
+            self.buffer.resize(total_len(width, height), 0);
+            self.canvas.set_width(width);
+            self.canvas.set_height(height);
+            self.width = width;
+            self.height = height;
         }
 
         Ok(())
@@ -266,13 +267,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
     }
 
     fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
-        let (width, height) = self
-            .size
-            .expect("Must set size of surface before calling `fetch()`");
-
         let image_data = self
             .canvas
-            .get_image_data(0., 0., width.get().into(), height.get().into())
+            .get_image_data(0., 0., self.width.into(), self.height.into())
             .ok()
             // TODO: Can also error if width or height are 0.
             .swbuf_err("`Canvas` contains pixels from a different origin")?;
@@ -378,18 +375,12 @@ pub struct BufferImpl<'a, D, W> {
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
-    fn width(&self) -> NonZeroU32 {
-        self.imp
-            .size
-            .expect("must set size of surface before calling `width()` on the buffer")
-            .0
+    fn width(&self) -> u32 {
+        self.imp.width
     }
 
-    fn height(&self) -> NonZeroU32 {
-        self.imp
-            .size
-            .expect("must set size of surface before calling `height()` on the buffer")
-            .1
+    fn height(&self) -> u32 {
+        self.imp.height
     }
 
     fn pixels(&self) -> &[u32] {
@@ -410,16 +401,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
 
     /// Push the buffer to the canvas.
     fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = self
-            .imp
-            .size
-            .expect("Must set size of surface before calling `present()`");
-        self.imp.present_with_damage(&[Rect {
+        let rect = Rect {
             x: 0,
             y: 0,
-            width,
-            height,
-        }])
+            width: self.imp.width,
+            height: self.imp.height,
+        };
+        self.imp.present_with_damage(&[rect])
     }
 
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {

@@ -22,7 +22,7 @@ use std::{
     fmt,
     fs::File,
     io, mem,
-    num::{NonZeroU16, NonZeroU32},
+    num::NonZeroU32,
     ptr::{null_mut, NonNull},
     slice,
     sync::Arc,
@@ -147,8 +147,11 @@ pub struct X11Impl<D: ?Sized, W: ?Sized> {
     /// Buffer has been presented.
     buffer_presented: bool,
 
-    /// The current buffer width/height.
-    size: Option<(NonZeroU16, NonZeroU16)>,
+    /// The current buffer width.
+    width: u16,
+
+    /// The current buffer height.
+    height: u16,
 
     /// Keep the window alive.
     window_handle: W,
@@ -296,7 +299,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             visual_id,
             buffer,
             buffer_presented: false,
-            size: None,
+            width: 0,
+            height: 0,
             window_handle: window_src,
         })
     }
@@ -306,7 +310,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         tracing::trace!(
             "resize: window={:X}, size={}x{}",
             self.window,
@@ -315,22 +319,23 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         );
 
         // Width and height should fit in u16.
-        let width: NonZeroU16 = width
+        let width: u16 = width
             .try_into()
             .or(Err(SoftBufferError::SizeOutOfRange { width, height }))?;
-        let height: NonZeroU16 = height.try_into().or(Err(SoftBufferError::SizeOutOfRange {
+        let height: u16 = height.try_into().or(Err(SoftBufferError::SizeOutOfRange {
             width: width.into(),
             height,
         }))?;
 
-        if self.size != Some((width, height)) {
+        if self.width != width && self.height != height {
             self.buffer_presented = false;
             self.buffer
-                .resize(self.display.connection(), width.get(), height.get())
+                .resize(self.display.connection(), width, height)
                 .swbuf_err("Failed to resize X11 buffer")?;
 
             // We successfully resized the buffer.
-            self.size = Some((width, height));
+            self.width = width;
+            self.height = height;
         }
 
         Ok(())
@@ -349,10 +354,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
         tracing::trace!("fetch: window={:X}", self.window);
 
-        let (width, height) = self
-            .size
-            .expect("Must set size of surface before calling `fetch()`");
-
         // TODO: Is it worth it to do SHM here? Probably not.
         let reply = self
             .display
@@ -362,8 +363,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
                 self.window,
                 0,
                 0,
-                width.get(),
-                height.get(),
+                self.width,
+                self.height,
                 u32::MAX,
             )
             .swbuf_err("Failed to send image fetching request")?
@@ -388,12 +389,12 @@ pub struct BufferImpl<'a, D: ?Sized, W: ?Sized>(&'a mut X11Impl<D, W>);
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
     for BufferImpl<'_, D, W>
 {
-    fn width(&self) -> NonZeroU32 {
-        self.0.size.unwrap().0.into()
+    fn width(&self) -> u32 {
+        self.0.width as u32
     }
 
-    fn height(&self) -> NonZeroU32 {
-        self.0.size.unwrap().1.into()
+    fn height(&self) -> u32 {
+        self.0.height as u32
     }
 
     #[inline]
@@ -420,10 +421,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         let imp = self.0;
 
-        let (surface_width, surface_height) = imp
-            .size
-            .expect("Must set size of surface before calling `present_with_damage()`");
-
         tracing::trace!("present: window={:X}", imp.window);
 
         match imp.buffer {
@@ -437,8 +434,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
                         xproto::ImageFormat::Z_PIXMAP,
                         imp.window,
                         imp.gc,
-                        surface_width.get(),
-                        surface_height.get(),
+                        imp.width,
+                        imp.height,
                         0,
                         0,
                         0,
@@ -464,8 +461,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
                                     u16::try_from(rect.y).ok()?,
                                     i16::try_from(rect.x).ok()?,
                                     i16::try_from(rect.y).ok()?,
-                                    u16::try_from(rect.width.get()).ok()?,
-                                    u16::try_from(rect.height.get()).ok()?,
+                                    u16::try_from(rect.width).ok()?,
+                                    u16::try_from(rect.height).ok()?,
                                 ))
                             })(
                             )
@@ -475,8 +472,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
                                 .shm_put_image(
                                     imp.window,
                                     imp.gc,
-                                    surface_width.get(),
-                                    surface_height.get(),
+                                    imp.width,
+                                    imp.height,
                                     src_x,
                                     src_y,
                                     width,
@@ -508,16 +505,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
     }
 
     fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = self
-            .0
-            .size
-            .expect("Must set size of surface before calling `present()`");
-        self.present_with_damage(&[Rect {
+        let rect = Rect {
             x: 0,
             y: 0,
-            width: width.into(),
-            height: height.into(),
-        }])
+            width: self.0.width.into(),
+            height: self.0.height.into(),
+        };
+        self.present_with_damage(&[rect])
     }
 }
 
