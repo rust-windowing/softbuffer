@@ -10,10 +10,10 @@ use winit::window::{Window, WindowAttributes, WindowId};
 /// Run a Winit application.
 #[allow(unused_mut)]
 pub(crate) fn run_app(event_loop: EventLoop<()>, mut app: impl ApplicationHandler<()> + 'static) {
-    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
+    #[cfg(not(target_family = "wasm"))]
     event_loop.run_app(&mut app).unwrap();
 
-    #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
+    #[cfg(target_family = "wasm")]
     winit::platform::web::EventLoopExtWebSys::spawn_app(event_loop, app);
 }
 
@@ -24,7 +24,7 @@ pub(crate) fn make_window(
     f: impl FnOnce(WindowAttributes) -> WindowAttributes,
 ) -> Rc<Window> {
     let attributes = f(WindowAttributes::default());
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(target_family = "wasm")]
     let attributes = winit::platform::web::WindowAttributesExtWebSys::with_append(attributes, true);
     let window = elwt.create_window(attributes);
     Rc::new(window.unwrap())

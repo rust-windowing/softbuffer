@@ -110,11 +110,11 @@ objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
     "CATransaction",
 ] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(target_family = "wasm")'.dependencies]
 js-sys = "0.3.63"
 wasm-bindgen = "0.2.86"
 
-[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+[target.'cfg(target_family = "wasm")'.dependencies.web-sys]
 version = "0.3.55"
 features = [
     "CanvasRenderingContext2d",
@@ -148,11 +148,11 @@ version = "0.25.0"
 default-features = false
 features = ["jpeg"]
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 # Turn rayon back on everywhere else; creating the separate entry resets the features to default.
 rayon = "1.5.1"
 
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_vendor = "apple", target_os = "redox", target_family = "wasm", target_os = "windows")))'.dev-dependencies]

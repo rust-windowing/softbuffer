@@ -25,7 +25,7 @@ pub use error::SoftBufferError;
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub use backends::web::SurfaceExtWeb;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to

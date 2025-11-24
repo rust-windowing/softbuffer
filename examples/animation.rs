@@ -1,4 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use rayon::prelude::*;
 use std::f64::consts::PI;
 use std::num::NonZeroU32;
@@ -115,9 +115,9 @@ fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<u32>> {
             .collect::<Vec<_>>()
     };
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(target_family = "wasm")]
     return (0..60).map(render).collect();
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(target_family = "wasm"))]
     (0..60).into_par_iter().map(render).collect()
 }

@@ -4,6 +4,7 @@
 - Bump MSRV to Rust 1.71.
 - Make `Context` cloneable.
 - Added `Buffer::width()` and `Buffer::height()` getters.
+- Added support for `wasm64-*` targets.
 
 # 0.4.6
 

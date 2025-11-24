@@ -29,7 +29,7 @@ pub(crate) mod orbital;
     ))
 ))]
 pub(crate) mod wayland;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub(crate) mod web;
 #[cfg(target_os = "windows")]
 pub(crate) mod win32;

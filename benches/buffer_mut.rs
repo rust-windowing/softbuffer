@@ -3,13 +3,13 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn buffer_mut(c: &mut Criterion) {
-    #[cfg(any(target_arch = "wasm32", target_arch = "wasm64"))]
+    #[cfg(target_family = "wasm")]
     {
         // Do nothing.
         let _ = c;
     }
 
-    #[cfg(not(any(target_arch = "wasm32", target_arch = "wasm64")))]
+    #[cfg(not(target_family = "wasm"))]
     {
         use criterion::black_box;
         use softbuffer::{Context, Surface};
