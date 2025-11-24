@@ -33,8 +33,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        # Android (breaks MSRV with `indexmap`, which Rust 1.71.1 doesn't allow easily pinning)
-        # - target: aarch64-linux-android
+        # Android
+        - target: aarch64-linux-android
 
         # CoreGraphics
         - target: aarch64-apple-darwin
@@ -69,6 +69,10 @@ jobs:
       with:
         rust-version: '1.71.1'
         targets: ${{ matrix.target }}
+
+    - name: Use minimal dependency versions
+      # RUSTC_BOOTSTRAP=1 is kind of a hack, but it's cumbersome and slow to install the nightly toolchain.
+      run: RUSTC_BOOTSTRAP=1 cargo -Zminimal-versions generate-lockfile
 
     - name: Check that crate compiles
       run: cargo check --verbose --target ${{ matrix.target }} ${{ matrix.features && '--no-default-features --features' }} ${{ matrix.features }}
