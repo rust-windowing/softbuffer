@@ -1,5 +1,6 @@
 # Unreleased
 
+- Improved performance when presenting on macOS.
 - Update to `objc2` 0.6.0.
 - Bump MSRV to Rust 1.71.
 - Make `Context` cloneable.
