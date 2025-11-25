@@ -3,6 +3,7 @@
 use crate::{backend_interface::*, backends, InitError, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use std::fmt;
 use std::num::NonZeroU32;
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
@@ -51,6 +52,17 @@ macro_rules! make_dispatch {
                 )*
 
                 Err(InitError::Unsupported(display))
+            }
+        }
+
+        impl<D: fmt::Debug> fmt::Debug for ContextDispatch<D> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.fmt(f),
+                    )*
+                }
             }
         }
 
@@ -110,6 +122,17 @@ macro_rules! make_dispatch {
                     $(
                         $(#[$attr])*
                         Self::$name(inner) => inner.fetch(),
+                    )*
+                }
+            }
+        }
+
+        impl<D: fmt::Debug, W: fmt::Debug> fmt::Debug for SurfaceDispatch<D, W> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.fmt(f),
                     )*
                 }
             }
@@ -186,6 +209,17 @@ macro_rules! make_dispatch {
                     $(
                         $(#[$attr])*
                         Self::$name(inner) => inner.present_with_damage(damage),
+                    )*
+                }
+            }
+        }
+
+        impl<D: fmt::Debug, W: fmt::Debug> fmt::Debug for BufferDispatch<'_, D, W> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.fmt(f),
                     )*
                 }
             }

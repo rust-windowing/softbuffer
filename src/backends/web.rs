@@ -18,7 +18,7 @@ use std::num::NonZeroU32;
 /// Display implementation for the web platform.
 ///
 /// This just caches the document to prevent having to query it every time.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WebDisplayImpl<D> {
     document: web_sys::Document,
     _display: D,
@@ -43,12 +43,13 @@ impl<D: HasDisplayHandle> ContextInterface<D> for WebDisplayImpl<D> {
     }
 }
 
+#[derive(Debug)]
 pub struct WebImpl<D, W> {
     /// The handle and context to the canvas that we're drawing to.
     canvas: Canvas,
 
     /// The buffer that we're drawing to.
-    buffer: Vec<u32>,
+    buffer: util::PixelBuffer,
 
     /// Buffer has been presented.
     buffer_presented: bool,
@@ -65,6 +66,7 @@ pub struct WebImpl<D, W> {
 
 /// Holding canvas and context for [`HtmlCanvasElement`] or [`OffscreenCanvas`],
 /// since they have different types.
+#[derive(Debug)]
 enum Canvas {
     Canvas {
         canvas: HtmlCanvasElement,
@@ -82,7 +84,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
         Ok(Self {
             canvas: Canvas::Canvas { canvas, ctx },
-            buffer: Vec::new(),
+            buffer: util::PixelBuffer(Vec::new()),
             buffer_presented: false,
             size: None,
             window_handle: window,
@@ -98,7 +100,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
         Ok(Self {
             canvas: Canvas::OffscreenCanvas { canvas, ctx },
-            buffer: Vec::new(),
+            buffer: util::PixelBuffer(Vec::new()),
             buffer_presented: false,
             size: None,
             window_handle: window,
@@ -373,6 +375,7 @@ impl Canvas {
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D, W> {
     imp: &'a mut WebImpl<D, W>,
 }
