@@ -18,41 +18,34 @@ pub mod ex {
     type Surface = softbuffer::Surface<OwnedDisplayHandle, Arc<Window>>;
 
     fn render_thread(
-        window: Arc<Window>,
-        do_render: mpsc::Receiver<Arc<Mutex<Surface>>>,
+        do_render: mpsc::Receiver<(Arc<Mutex<Surface>>, NonZeroU32, NonZeroU32)>,
         done: mpsc::Sender<()>,
     ) {
         loop {
             println!("waiting for render...");
-            let Ok(surface) = do_render.recv() else {
+            let Ok((surface, width, height)) = do_render.recv() else {
                 println!("main thread destroyed");
                 break;
             };
 
             // Perform the rendering.
             let mut surface = surface.lock().unwrap();
-            if let (Some(width), Some(height)) = {
-                let size = window.inner_size();
-                println!("got size: {size:?}");
-                (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-            } {
-                println!("resizing...");
-                surface.resize(width, height).unwrap();
+            println!("resizing...");
+            surface.resize(width, height).unwrap();
 
-                let mut buffer = surface.buffer_mut().unwrap();
-                for y in 0..buffer.height().get() {
-                    for x in 0..buffer.width().get() {
-                        let red = x % 255;
-                        let green = y % 255;
-                        let blue = (x * y) % 255;
-                        let index = y * buffer.width().get() + x;
-                        buffer[index as usize] = blue | (green << 8) | (red << 16);
-                    }
+            let mut buffer = surface.buffer_mut().unwrap();
+            for y in 0..buffer.height().get() {
+                for x in 0..buffer.width().get() {
+                    let red = x % 255;
+                    let green = y % 255;
+                    let blue = (x * y) % 255;
+                    let index = y * buffer.width().get() + x;
+                    buffer[index as usize] = blue | (green << 8) | (red << 16);
                 }
-
-                println!("presenting...");
-                buffer.present().unwrap();
             }
+
+            println!("presenting...");
+            buffer.present().unwrap();
 
             // We're done, tell the main thread to keep going.
             done.send(()).ok();
@@ -77,10 +70,7 @@ pub mod ex {
                 let (start_render, do_render) = mpsc::channel();
                 let (render_done, finish_render) = mpsc::channel();
                 println!("starting thread...");
-                std::thread::spawn({
-                    let window = window.clone();
-                    move || render_thread(window, do_render, render_done)
-                });
+                std::thread::spawn(move || render_thread(do_render, render_done));
 
                 (window, start_render, finish_render)
             },
@@ -105,9 +95,16 @@ pub mod ex {
                         eprintln!("RedrawRequested fired before Resumed or after Suspended");
                         return;
                     };
-                    // Start the render and then finish it.
-                    start_render.send(surface.clone()).unwrap();
-                    finish_render.recv().unwrap();
+
+                    let size = window.inner_size();
+                    println!("got size: {size:?}");
+                    if let (Some(width), Some(height)) =
+                        (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                    {
+                        // Start the render and then finish it.
+                        start_render.send((surface.clone(), width, height)).unwrap();
+                        finish_render.recv().unwrap();
+                    }
                 }
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
