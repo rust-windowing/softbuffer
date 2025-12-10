@@ -236,7 +236,7 @@ make_dispatch! {
     Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'a, D, W>),
     #[cfg(target_vendor = "apple")]
     CoreGraphics(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'a, D, W>),
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(target_family = "wasm")]
     Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'a, D, W>),
     #[cfg(target_os = "redox")]
     Orbital(D, backends::orbital::OrbitalImpl<D, W>, backends::orbital::BufferImpl<'a, D, W>),
