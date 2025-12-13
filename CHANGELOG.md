@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix documentation building on `docs.rs`.
+
 # 0.4.7
 
 - Added support for Android using the `ndk` crate.
