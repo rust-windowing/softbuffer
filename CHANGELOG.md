@@ -1,11 +1,17 @@
 # Unreleased
 
-- Update to `objc2` 0.6.0.
-- Bump MSRV to Rust 1.71.
-- Make `Context` cloneable.
-- Added `Buffer::width()` and `Buffer::height()` getters.
+# 0.4.7
+
+- Added support for Android using the `ndk` crate.
 - Added support for `wasm64-*` targets.
+- Improved examples.
+- Added `Buffer::width()` and `Buffer::height()` getters.
+- `Context` now implements `Clone`.
 - `Context`, `Surface` and `Buffer` now implement `Debug`.
+- Bump MSRV to Rust 1.71.
+- Replace `log` with `tracing`.
+- Remove `cfg_aliases` dependency.
+- Update to `objc2` 0.6, `objc2-*` 0.3, `drm` 0.14, `rustix` 1.0 and `windows-sys` 0.61.
 
 # 0.4.6
 
