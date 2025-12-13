@@ -1,5 +1,7 @@
 # Unreleased
 
+# 0.4.7
+
 - Fix documentation building on `docs.rs`.
 
 # 0.4.7
