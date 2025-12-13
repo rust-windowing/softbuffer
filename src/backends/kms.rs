@@ -12,6 +12,7 @@ use drm::Device;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 use std::collections::HashSet;
+use std::fmt;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
@@ -116,6 +117,13 @@ pub(crate) struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
 
     /// Window reference.
     _window: PhantomData<&'a mut W>,
+}
+
+impl<D: ?Sized + fmt::Debug, W: ?Sized + fmt::Debug> fmt::Debug for BufferImpl<'_, D, W> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // FIXME: Derive instead once `DumbMapping` impls `Debug`.
+        f.debug_struct("BufferImpl").finish_non_exhaustive()
+    }
 }
 
 /// The combined frame buffer and dumb buffer.

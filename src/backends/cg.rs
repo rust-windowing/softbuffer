@@ -1,7 +1,7 @@
 //! Softbuffer implementation using CoreGraphics.
 use crate::backend_interface::*;
 use crate::error::InitError;
-use crate::{Rect, SoftBufferError};
+use crate::{util, Rect, SoftBufferError};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
@@ -29,6 +29,7 @@ define_class!(
     #[unsafe(super(NSObject))]
     #[name = "SoftbufferObserver"]
     #[ivars = SendCALayer]
+    #[derive(Debug)]
     struct Observer;
 
     /// NSKeyValueObserving
@@ -93,6 +94,7 @@ impl Observer {
     }
 }
 
+#[derive(Debug)]
 pub struct CGImpl<D, W> {
     /// Our layer.
     layer: SendCALayer,
@@ -258,15 +260,16 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         Ok(BufferImpl {
-            buffer: vec![0; self.width * self.height].into(),
+            buffer: util::PixelBuffer(vec![0; self.width * self.height]),
             imp: self,
         })
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D, W> {
     imp: &'a mut CGImpl<D, W>,
-    buffer: Box<[u32]>,
+    buffer: util::PixelBuffer,
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
@@ -306,7 +309,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
 
         let data_provider = {
             let len = self.buffer.len() * size_of::<u32>();
-            let buffer: *mut [u32] = Box::into_raw(self.buffer);
+            let buffer: *mut [u32] = Box::into_raw(self.buffer.0.into_boxed_slice());
             // Convert slice pointer to thin pointer.
             let data_ptr = buffer.cast::<c_void>();
 
@@ -363,6 +366,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     }
 }
 
+#[derive(Debug)]
 struct SendCALayer(Retained<CALayer>);
 
 // SAFETY: CALayer is dubiously thread safe, like most things in Core Animation.

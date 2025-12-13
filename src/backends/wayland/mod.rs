@@ -20,6 +20,7 @@ use buffer::WaylandBuffer;
 
 struct State;
 
+#[derive(Debug)]
 pub struct WaylandDisplayImpl<D: ?Sized> {
     conn: Option<Connection>,
     event_queue: Mutex<EventQueue<State>>,
@@ -74,6 +75,7 @@ impl<D: ?Sized> Drop for WaylandDisplayImpl<D> {
     }
 }
 
+#[derive(Debug)]
 pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
     display: Arc<WaylandDisplayImpl<D>>,
     surface: Option<wl_surface::WlSurface>,
@@ -261,6 +263,7 @@ impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D: ?Sized, W> {
     stack: util::BorrowStack<'a, WaylandImpl<D, W>, [u32]>,
     width: i32,

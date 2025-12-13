@@ -2,7 +2,9 @@
 #![allow(dead_code)]
 
 use std::cmp;
+use std::fmt;
 use std::num::NonZeroU32;
+use std::ops;
 
 use crate::Rect;
 use crate::SoftBufferError;
@@ -50,6 +52,14 @@ impl<'a, T: 'a + ?Sized, U: 'a + ?Sized> BorrowStack<'a, T, U> {
     }
 }
 
+impl<'a, T: 'a + ?Sized, U: 'a + ?Sized + fmt::Debug> fmt::Debug for BorrowStack<'a, T, U> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BorrowStack")
+            .field("member", &self.member())
+            .finish_non_exhaustive()
+    }
+}
+
 /// Calculates the smallest `Rect` necessary to represent all damaged `Rect`s.
 pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
     struct Region {
@@ -83,6 +93,29 @@ pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
         height: NonZeroU32::new(region.bottom - region.top)
             .expect("`bottom` must always be bigger then `top`"),
     })
+}
+
+/// A wrapper around a `Vec` of pixels that doesn't print the whole buffer on `Debug`.
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub(crate) struct PixelBuffer(pub Vec<u32>);
+
+impl fmt::Debug for PixelBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PixelBuffer").finish_non_exhaustive()
+    }
+}
+
+impl ops::Deref for PixelBuffer {
+    type Target = Vec<u32>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl ops::DerefMut for PixelBuffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 #[cfg(test)]

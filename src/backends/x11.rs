@@ -7,7 +7,7 @@
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{Rect, SoftBufferError};
+use crate::{util, Rect, SoftBufferError};
 use raw_window_handle::{
     HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, XcbDisplayHandle,
     XcbWindowHandle,
@@ -36,6 +36,7 @@ use x11rb::protocol::shm::{self, ConnectionExt as _};
 use x11rb::protocol::xproto::{self, ConnectionExt as _, ImageOrder, VisualClass, Visualid};
 use x11rb::xcb_ffi::XCBConnection;
 
+#[derive(Debug)]
 pub struct X11DisplayImpl<D: ?Sized> {
     /// The handle to the XCB connection.
     connection: Option<XCBConnection>,
@@ -125,6 +126,7 @@ impl<D: ?Sized> X11DisplayImpl<D> {
 }
 
 /// The handle to an X11 drawing context.
+#[derive(Debug)]
 pub struct X11Impl<D: ?Sized, W: ?Sized> {
     /// X display this window belongs to.
     display: Arc<X11DisplayImpl<D>>,
@@ -155,14 +157,16 @@ pub struct X11Impl<D: ?Sized, W: ?Sized> {
 }
 
 /// The buffer that is being drawn to.
+#[derive(Debug)]
 enum Buffer {
     /// A buffer implemented using shared memory to prevent unnecessary copying.
     Shm(ShmBuffer),
 
     /// A normal buffer that we send over the wire.
-    Wire(Vec<u32>),
+    Wire(util::PixelBuffer),
 }
 
+#[derive(Debug)]
 struct ShmBuffer {
     /// The shared memory segment, paired with its ID.
     seg: Option<(ShmSegment, shm::Seg)>,
@@ -285,7 +289,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             })
         } else {
             // SHM is not available.
-            Buffer::Wire(Vec::new())
+            Buffer::Wire(util::PixelBuffer(Vec::new()))
         };
 
         Ok(Self {
@@ -383,6 +387,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
 }
 
+#[derive(Debug)]
 pub struct BufferImpl<'a, D: ?Sized, W: ?Sized>(&'a mut X11Impl<D, W>);
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
@@ -689,6 +694,7 @@ impl ShmBuffer {
     }
 }
 
+#[derive(Debug)]
 struct ShmSegment {
     id: File,
     ptr: NonNull<i8>,
@@ -795,7 +801,10 @@ impl<D: ?Sized> Drop for X11DisplayImpl<D> {
 impl<D: ?Sized, W: ?Sized> Drop for X11Impl<D, W> {
     fn drop(&mut self) {
         // If we used SHM, make sure it's detached from the server.
-        if let Buffer::Shm(mut shm) = mem::replace(&mut self.buffer, Buffer::Wire(Vec::new())) {
+        if let Buffer::Shm(mut shm) = mem::replace(
+            &mut self.buffer,
+            Buffer::Wire(util::PixelBuffer(Vec::new())),
+        ) {
             // If we were in the middle of processing a buffer, wait for it to finish.
             shm.finish_wait(self.display.connection()).ok();
 
