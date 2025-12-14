@@ -16,7 +16,6 @@ mod util;
 
 use std::cell::Cell;
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
 use std::ops;
 use std::sync::Arc;
 
@@ -67,9 +66,9 @@ pub struct Rect {
     /// y coordinate of top left corner
     pub y: u32,
     /// width
-    pub width: NonZeroU32,
+    pub width: u32,
     /// height
-    pub height: NonZeroU32,
+    pub height: u32,
 }
 
 /// A surface for drawing to a window with software buffers.
@@ -111,7 +110,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// in the upper-left corner of the window. It is recommended in most production use cases
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         self.surface_impl.resize(width, height)
     }
 
@@ -127,9 +126,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.fetch()
     }
 
-    /// Return a [`Buffer`] that the next frame should be rendered into. The size must
-    /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
-    /// may contain a previous frame. Call [`Buffer::age`] to determine this.
+    /// Return a [`Buffer`] that the next frame should be rendered into.
+    ///
+    /// The buffer is initially empty, you'll want to set an appropriate size for it with
+    /// [`Surface::resize`].
+    ///
+    /// The initial contents of the buffer may be zeroed, or may contain a previous frame. Call
+    /// [`Buffer::age`] to determine this.
     ///
     /// ## Platform Dependent Behavior
     ///

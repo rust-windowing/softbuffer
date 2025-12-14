@@ -1,7 +1,6 @@
 use raw_window_handle::{HandleError, RawDisplayHandle, RawWindowHandle};
 use std::error::Error;
 use std::fmt;
-use std::num::NonZeroU32;
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -80,10 +79,10 @@ pub enum SoftBufferError {
     /// The provided size is outside of the range supported by the backend.
     SizeOutOfRange {
         /// The width that was out of range.
-        width: NonZeroU32,
+        width: u32,
 
         /// The height that was out of range.
-        height: NonZeroU32,
+        height: u32,
     },
 
     /// The provided damage rect is outside of the range supported by the backend.

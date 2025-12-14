@@ -1,7 +1,7 @@
 //! Implementation of software buffering for Android.
 
 use std::marker::PhantomData;
-use std::num::{NonZeroI32, NonZeroU32};
+use std::mem::MaybeUninit;
 
 use ndk::{
     hardware_buffer_format::HardwareBufferFormat,
@@ -18,6 +18,8 @@ use crate::{util, BufferInterface, Rect, SoftBufferError, SurfaceInterface};
 #[derive(Debug)]
 pub struct AndroidImpl<D, W> {
     native_window: NativeWindow,
+    width: u32,
+    height: u32,
     window: W,
     _display: PhantomData<D>,
 }
@@ -42,6 +44,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 
         Ok(Self {
             native_window,
+            width: 0,
+            height: 0,
             _display: PhantomData,
             window,
         })
@@ -53,18 +57,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
     }
 
     /// Also changes the pixel format to [`HardwareBufferFormat::R8G8B8A8_UNORM`].
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        let (width, height) = (|| {
-            let width = NonZeroI32::try_from(width).ok()?;
-            let height = NonZeroI32::try_from(height).ok()?;
-            Some((width, height))
-        })()
-        .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        let (width_i32, height_i32) = util::convert_size::<i32>(width, height)
+            .map_err(|_| SoftBufferError::SizeOutOfRange { width, height })?;
 
+        // Make the Window's buffer be at least 1 pixel wide/high.
         self.native_window
             .set_buffers_geometry(
-                width.into(),
-                height.into(),
+                width_i32.max(1),
+                height_i32.max(1),
                 // Default is typically R5G6B5 16bpp, switch to 32bpp
                 Some(HardwareBufferFormat::R8G8B8X8_UNORM),
             )
@@ -73,7 +74,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
                     Some("Failed to set buffer geometry on ANativeWindow".to_owned()),
                     Some(Box::new(err)),
                 )
-            })
+            })?;
+        self.width = width;
+        self.height = height;
+
+        Ok(())
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
@@ -99,10 +104,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
             ));
         }
 
-        let buffer = vec![0; native_window_buffer.width() * native_window_buffer.height()];
+        let buffer = vec![0; self.width as usize * self.height as usize];
 
         Ok(BufferImpl {
             native_window_buffer,
+            width: self.width,
+            height: self.height,
             buffer: util::PixelBuffer(buffer),
         })
     }
@@ -116,6 +123,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 #[derive(Debug)]
 pub struct BufferImpl<'a> {
     native_window_buffer: NativeWindowBufferLockGuard<'a>,
+    width: u32,
+    height: u32,
     buffer: util::PixelBuffer,
 }
 
@@ -124,11 +133,11 @@ unsafe impl Send for BufferImpl<'_> {}
 
 impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> u32 {
-        self.native_window_buffer.width() as u32
+        self.width
     }
 
     fn height(&self) -> u32 {
-        self.native_window_buffer.height() as u32
+        self.height
     }
 
     #[inline]
@@ -148,7 +157,14 @@ impl BufferInterface for BufferImpl<'_> {
 
     // TODO: This function is pretty slow this way
     fn present(mut self) -> Result<(), SoftBufferError> {
-        let input_lines = self.buffer.chunks(self.native_window_buffer.width());
+        if self.width == 0 || self.height == 0 {
+            for line in self.native_window_buffer.lines().unwrap() {
+                line.fill(MaybeUninit::new(0x00000000));
+            }
+            return Ok(());
+        }
+
+        let input_lines = self.buffer.chunks(self.width as usize);
         for (output, input) in self
             .native_window_buffer
             .lines()

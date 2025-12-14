@@ -117,12 +117,7 @@ mod example {
             match event {
                 Event::Expose(_) => {
                     // Draw a width x height red rectangle.
-                    surface
-                        .resize(
-                            NonZeroU32::new(width.into()).unwrap(),
-                            NonZeroU32::new(height.into()).unwrap(),
-                        )
-                        .unwrap();
+                    surface.resize(width.into(), height.into()).unwrap();
                     let mut buffer = surface.buffer_mut().unwrap();
                     buffer.fill(RED);
                     buffer.present().unwrap();

@@ -4,7 +4,6 @@ use crate::{backend_interface::*, backends, InitError, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::fmt;
-use std::num::NonZeroU32;
 
 /// A macro for creating the enum used to statically dispatch to the platform-specific implementation.
 macro_rules! make_dispatch {
@@ -99,7 +98,7 @@ macro_rules! make_dispatch {
                 }
             }
 
-            fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+            fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*

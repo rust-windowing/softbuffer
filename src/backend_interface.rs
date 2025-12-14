@@ -3,7 +3,6 @@
 use crate::{InitError, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use std::num::NonZeroU32;
 
 pub(crate) trait ContextInterface<D: HasDisplayHandle + ?Sized> {
     fn new(display: D) -> Result<Self, InitError<D>>
@@ -25,7 +24,7 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
     /// Get the inner window handle.
     fn window(&self) -> &W;
     /// Resize the internal buffer to the given width and height.
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError>;
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError>;
     /// Get a mutable reference to the buffer.
     fn buffer_mut(&mut self) -> Result<Self::Buffer<'_>, SoftBufferError>;
     /// Fetch the buffer from the window.

@@ -1,5 +1,4 @@
 use image::GenericImageView;
-use std::num::NonZeroU32;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -27,12 +26,7 @@ fn main() {
             // Intentionally only set the size of the surface once, at creation.
             // This is needed if the window chooses to ignore the size we passed in above, and for the
             // platforms softbuffer supports that don't yet extract the size from the window.
-            surface
-                .resize(
-                    NonZeroU32::new(width).unwrap(),
-                    NonZeroU32::new(height).unwrap(),
-                )
-                .unwrap();
+            surface.resize(width, height).unwrap();
             surface
         },
     )

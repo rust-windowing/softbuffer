@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -33,11 +32,7 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
                     return;
                 };
 
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    surface.resize(width, height).unwrap();
-                }
+                surface.resize(size.width, size.height).unwrap();
             }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {

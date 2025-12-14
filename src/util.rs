@@ -3,7 +3,6 @@
 
 use std::cmp;
 use std::fmt;
-use std::num::NonZeroU32;
 use std::ops;
 
 use crate::Rect;
@@ -73,8 +72,8 @@ pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
         .map(|rect| Region {
             left: rect.x,
             top: rect.y,
-            right: rect.x + rect.width.get(),
-            bottom: rect.y + rect.height.get(),
+            right: rect.x + rect.width,
+            bottom: rect.y + rect.height,
         })
         .reduce(|mut prev, next| {
             prev.left = cmp::min(prev.left, next.left);
@@ -87,9 +86,13 @@ pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
     Some(Rect {
         x: region.left,
         y: region.top,
-        width: NonZeroU32::new(region.right - region.left)
+        width: region
+            .right
+            .checked_sub(region.left)
             .expect("`right` must always be bigger then `left`"),
-        height: NonZeroU32::new(region.bottom - region.top)
+        height: region
+            .bottom
+            .checked_sub(region.top)
             .expect("`bottom` must always be bigger then `top`"),
     })
 }
@@ -115,6 +118,12 @@ impl ops::DerefMut for PixelBuffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
+}
+
+pub(crate) fn convert_size<T: TryFrom<u32>>(width: u32, height: u32) -> Result<(T, T), T::Error> {
+    let width = T::try_from(width)?;
+    let height = T::try_from(height)?;
+    Ok((width, height))
 }
 
 #[cfg(test)]
