@@ -128,7 +128,7 @@ features = [
 ]
 
 [target.'cfg(target_os = "redox")'.dependencies]
-redox_syscall = "0.5"
+redox_syscall = "0.6"
 
 [dev-dependencies]
 colorous = "1.0.12"
