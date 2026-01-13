@@ -3,15 +3,14 @@ use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
-#[path = "utils/winit_app.rs"]
-mod winit_app;
+mod util;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
-    let app = winit_app::WinitAppBuilder::with_init(
-        |elwt| winit_app::make_window(elwt, |w| w),
+    let app = util::WinitAppBuilder::with_init(
+        |elwt| util::make_window(elwt, |w| w),
         move |_elwt, window| {
             let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
             // Intentionally set the size of the surface to something different than the size of the window.
@@ -64,5 +63,5 @@ fn main() {
         }
     });
 
-    winit_app::run_app(event_loop, app);
+    util::run_app(event_loop, app);
 }

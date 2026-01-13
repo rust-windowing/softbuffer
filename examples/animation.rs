@@ -7,8 +7,7 @@ use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
-#[path = "utils/winit_app.rs"]
-mod winit_app;
+mod util;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -16,9 +15,9 @@ fn main() {
 
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
-    let app = winit_app::WinitAppBuilder::with_init(
+    let app = util::WinitAppBuilder::with_init(
         |event_loop| {
-            let window = winit_app::make_window(event_loop, |w| w);
+            let window = util::make_window(event_loop, |w| w);
 
             let old_size = (0, 0);
             let frames = pre_render_frames(0, 0);
@@ -91,7 +90,7 @@ fn main() {
         window.request_redraw();
     });
 
-    winit_app::run_app(event_loop, app);
+    util::run_app(event_loop, app);
 }
 
 fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<u32>> {

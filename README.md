@@ -74,14 +74,14 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
 
-#[path = "../examples/utils/winit_app.rs"]
-mod winit_app;
+#[path = "../examples/util/mod.rs"]
+mod util;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
-    let mut app = winit_app::WinitAppBuilder::with_init(
+    let mut app = util::WinitAppBuilder::with_init(
         |elwt| {
             let window = elwt.create_window(Window::default_attributes());
             Rc::new(window.unwrap())
