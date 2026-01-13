@@ -1,5 +1,7 @@
 //! Example of using softbuffer with drm-rs.
 
+mod util;
+
 #[cfg(all(
     feature = "kms",
     not(any(
@@ -237,5 +239,7 @@ mod imple {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    util::setup();
+
     imple::entry()
 }

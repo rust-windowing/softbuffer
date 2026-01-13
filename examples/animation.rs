@@ -10,6 +10,8 @@ use winit::keyboard::{Key, NamedKey};
 mod util;
 
 fn main() {
+    util::setup();
+
     let event_loop = EventLoop::new().unwrap();
     let start = Instant::now();
 

@@ -1,6 +1,5 @@
 //! `Surface` implements `Send`. This makes sure that multithreading can work here.
 
-#[cfg(not(target_family = "wasm"))]
 mod util;
 
 #[cfg(not(target_family = "wasm"))]
@@ -134,6 +133,8 @@ mod ex {
 
 #[cfg(not(target_os = "android"))]
 fn main() {
+    util::setup();
+
     use winit::event_loop::EventLoop;
     ex::entry(EventLoop::new().unwrap())
 }

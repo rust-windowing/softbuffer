@@ -6,6 +6,8 @@ use winit::keyboard::{Key, NamedKey};
 mod util;
 
 fn main() {
+    util::setup();
+
     let event_loop = EventLoop::new().unwrap();
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
