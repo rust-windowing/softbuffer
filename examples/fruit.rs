@@ -4,8 +4,7 @@ use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
-#[path = "utils/winit_app.rs"]
-mod winit_app;
+mod util;
 
 fn main() {
     //see fruit.jpg.license for the license of fruit.jpg
@@ -15,9 +14,9 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
-    let app = winit_app::WinitAppBuilder::with_init(
+    let app = util::WinitAppBuilder::with_init(
         move |elwt| {
-            winit_app::make_window(elwt, |w| {
+            util::make_window(elwt, |w| {
                 w.with_inner_size(winit::dpi::PhysicalSize::new(width, height))
             })
         },
@@ -77,5 +76,5 @@ fn main() {
         }
     });
 
-    winit_app::run_app(event_loop, app);
+    util::run_app(event_loop, app);
 }

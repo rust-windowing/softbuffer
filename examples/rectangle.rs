@@ -5,8 +5,7 @@ use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
-#[path = "utils/winit_app.rs"]
-mod winit_app;
+mod util;
 
 fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, flag: bool) {
     let width = buffer.width().get();
@@ -30,9 +29,9 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
-    let app = winit_app::WinitAppBuilder::with_init(
+    let app = util::WinitAppBuilder::with_init(
         |elwt| {
-            let window = winit_app::make_window(elwt, |w| {
+            let window = util::make_window(elwt, |w| {
                 w.with_title("Press space to show/hide a rectangle")
             });
 
@@ -106,5 +105,5 @@ fn main() {
         }
     });
 
-    winit_app::run_app(event_loop, app);
+    util::run_app(event_loop, app);
 }

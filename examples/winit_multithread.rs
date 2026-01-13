@@ -1,8 +1,7 @@
 //! `Surface` implements `Send`. This makes sure that multithreading can work here.
 
 #[cfg(not(target_family = "wasm"))]
-#[path = "utils/winit_app.rs"]
-mod winit_app;
+mod util;
 
 #[cfg(not(target_family = "wasm"))]
 pub mod ex {
@@ -13,7 +12,7 @@ pub mod ex {
     use winit::keyboard::{Key, NamedKey};
     use winit::window::Window;
 
-    use super::winit_app;
+    use super::util;
 
     type Surface = softbuffer::Surface<OwnedDisplayHandle, Arc<Window>>;
 
@@ -55,7 +54,7 @@ pub mod ex {
     pub fn entry(event_loop: EventLoop<()>) {
         let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
-        let app = winit_app::WinitAppBuilder::with_init(
+        let app = util::WinitAppBuilder::with_init(
             |elwt| {
                 let attributes = Window::default_attributes();
                 #[cfg(target_family = "wasm")]
@@ -121,7 +120,7 @@ pub mod ex {
             }
         });
 
-        winit_app::run_app(event_loop, app);
+        util::run_app(event_loop, app);
     }
 }
 

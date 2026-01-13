@@ -3,8 +3,7 @@ use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 
-#[path = "utils/winit_app.rs"]
-mod winit_app;
+mod util;
 
 #[cfg(not(target_os = "android"))]
 fn main() {
@@ -14,8 +13,8 @@ fn main() {
 pub(crate) fn entry(event_loop: EventLoop<()>) {
     let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
 
-    let app = winit_app::WinitAppBuilder::with_init(
-        |elwt| winit_app::make_window(elwt, |w| w),
+    let app = util::WinitAppBuilder::with_init(
+        |elwt| util::make_window(elwt, |w| w),
         move |_elwt, window| softbuffer::Surface::new(&context, window.clone()).unwrap(),
     )
     .with_event_handler(|window, surface, window_id, event, elwt| {
@@ -72,5 +71,5 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
         }
     });
 
-    winit_app::run_app(event_loop, app);
+    util::run_app(event_loop, app);
 }
