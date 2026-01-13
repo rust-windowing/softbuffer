@@ -132,9 +132,6 @@ redox_syscall = "0.7"
 
 [dev-dependencies]
 colorous = "1.0.12"
-criterion = { version = "0.8.1", default-features = false, features = [
-    "cargo_bench_support",
-] }
 web-time = "1.0.0"
 winit = "0.30.0"
 
@@ -151,6 +148,9 @@ features = ["jpeg"]
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 # Turn rayon back on everywhere else; creating the separate entry resets the features to default.
 rayon = "1.5.1"
+criterion = { version = "0.8.1", default-features = false, features = [
+    "cargo_bench_support",
+] }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
