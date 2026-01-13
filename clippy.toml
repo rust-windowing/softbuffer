@@ -1,0 +1,6 @@
+disallowed-macros = [
+    { path = "std::print", reason = "use tracing in examples instead, that works on WASM too" },
+    { path = "std::eprint", reason = "use tracing in examples instead, that works on WASM too" },
+    { path = "std::println", reason = "use tracing in examples instead, that works on WASM too" },
+    { path = "std::eprintln", reason = "use tracing in examples instead, that works on WASM too" },
+]

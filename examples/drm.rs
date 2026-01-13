@@ -124,7 +124,7 @@ mod imple {
         let mut tick = 0;
         while Instant::now().duration_since(start) < Duration::from_secs(2) {
             tick += 1;
-            println!("Drawing tick {tick}");
+            tracing::info!("Drawing tick {tick}");
 
             // Start drawing.
             let mut buffer = surface.buffer_mut()?;
@@ -142,17 +142,17 @@ mod imple {
 
             // Receive the events.
             let events = device.receive_events()?;
-            println!("Got some events...");
+            tracing::info!("Got some events...");
             for event in events {
                 match event {
                     Event::PageFlip(_) => {
-                        println!("Page flip event.");
+                        tracing::info!("Page flip event.");
                     }
                     Event::Vblank(_) => {
-                        println!("Vblank event.");
+                        tracing::info!("Vblank event.");
                     }
                     _ => {
-                        println!("Unknown event.");
+                        tracing::info!("Unknown event.");
                     }
                 }
             }
@@ -233,8 +233,7 @@ mod imple {
 )))]
 mod imple {
     pub(super) fn entry() -> Result<(), Box<dyn std::error::Error>> {
-        eprintln!("This example requires the `kms` feature.");
-        Ok(())
+        panic!("This example requires the `kms` feature.")
     }
 }
 

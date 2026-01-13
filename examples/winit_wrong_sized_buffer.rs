@@ -32,7 +32,7 @@ fn main() {
         match event {
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
-                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    tracing::warn!("RedrawRequested fired before Resumed or after Suspended");
                     return;
                 };
 
