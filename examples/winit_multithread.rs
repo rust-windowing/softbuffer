@@ -20,15 +20,15 @@ pub mod ex {
         done: mpsc::Sender<()>,
     ) {
         loop {
-            println!("waiting for render...");
+            tracing::info!("waiting for render...");
             let Ok((surface, width, height)) = do_render.recv() else {
-                println!("main thread destroyed");
+                tracing::info!("main thread destroyed");
                 break;
             };
 
             // Perform the rendering.
             let mut surface = surface.lock().unwrap();
-            println!("resizing...");
+            tracing::info!("resizing...");
             surface.resize(width, height).unwrap();
 
             let mut buffer = surface.buffer_mut().unwrap();
@@ -42,7 +42,7 @@ pub mod ex {
                 }
             }
 
-            println!("presenting...");
+            tracing::info!("presenting...");
             buffer.present().unwrap();
 
             // We're done, tell the main thread to keep going.
@@ -67,13 +67,13 @@ pub mod ex {
                 // when a new surface is created.
                 let (start_render, do_render) = mpsc::channel();
                 let (render_done, finish_render) = mpsc::channel();
-                println!("starting thread...");
+                tracing::info!("starting thread...");
                 std::thread::spawn(move || render_thread(do_render, render_done));
 
                 (window, start_render, finish_render)
             },
             move |_elwt, (window, _start_render, _finish_render)| {
-                println!("making surface...");
+                tracing::info!("making surface...");
                 Arc::new(Mutex::new(
                     softbuffer::Surface::new(&context, window.clone()).unwrap(),
                 ))
@@ -90,12 +90,12 @@ pub mod ex {
             match event {
                 WindowEvent::RedrawRequested => {
                     let Some(surface) = surface else {
-                        eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                        tracing::error!("RedrawRequested fired before Resumed or after Suspended");
                         return;
                     };
 
                     let size = window.inner_size();
-                    println!("got size: {size:?}");
+                    tracing::info!("got size: {size:?}");
                     if let (Some(width), Some(height)) =
                         (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
                     {
@@ -127,7 +127,7 @@ pub mod ex {
 mod ex {
     use winit::event_loop::EventLoop;
     pub(crate) fn entry(_event_loop: EventLoop<()>) {
-        eprintln!("winit_multithreaded doesn't work on WASM");
+        panic!("winit_multithreaded doesn't work on WASM")
     }
 }
 

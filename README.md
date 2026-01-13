@@ -98,7 +98,7 @@ fn main() {
         match event {
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
-                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    tracing::error!("RedrawRequested fired before Resumed or after Suspended");
                     return;
                 };
                 let size = window.inner_size();

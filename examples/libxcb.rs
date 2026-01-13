@@ -175,5 +175,5 @@ fn main() {
 fn main() {
     util::setup();
 
-    eprintln!("This example requires the `x11` feature to be enabled on a supported platform.");
+    panic!("This example requires the `x11` feature to be enabled on a supported platform.")
 }

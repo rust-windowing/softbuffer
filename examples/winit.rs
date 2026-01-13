@@ -29,7 +29,7 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
         match event {
             WindowEvent::Resized(size) => {
                 let Some(surface) = surface else {
-                    eprintln!("Resized fired before Resumed or after Suspended");
+                    tracing::error!("Resized fired before Resumed or after Suspended");
                     return;
                 };
 
@@ -41,7 +41,7 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
             }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
-                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    tracing::error!("RedrawRequested fired before Resumed or after Suspended");
                     return;
                 };
 

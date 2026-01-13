@@ -55,7 +55,7 @@ fn main() {
         match event {
             WindowEvent::Resized(size) => {
                 let Some(surface) = surface else {
-                    eprintln!("Resized fired before Resumed or after Suspended");
+                    tracing::error!("Resized fired before Resumed or after Suspended");
                     return;
                 };
 
@@ -68,7 +68,7 @@ fn main() {
             }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
-                    eprintln!("RedrawRequested fired before Resumed or after Suspended");
+                    tracing::error!("RedrawRequested fired before Resumed or after Suspended");
                     return;
                 };
                 // Draw something in the window
