@@ -7,6 +7,8 @@ mod util;
 
 #[cfg(not(target_os = "android"))]
 fn main() {
+    util::setup();
+
     entry(EventLoop::new().unwrap())
 }
 

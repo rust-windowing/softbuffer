@@ -1,5 +1,7 @@
 //! Example of using `softbuffer` with `libxcb`.
 
+mod util;
+
 #[cfg(all(
     feature = "x11",
     not(any(
@@ -155,6 +157,8 @@ mod example {
     ))
 ))]
 fn main() {
+    util::setup();
+
     example::run();
 }
 
@@ -169,5 +173,7 @@ fn main() {
     ))
 )))]
 fn main() {
+    util::setup();
+
     eprintln!("This example requires the `x11` feature to be enabled on a supported platform.");
 }

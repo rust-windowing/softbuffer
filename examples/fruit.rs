@@ -7,6 +7,8 @@ use winit::keyboard::{Key, NamedKey};
 mod util;
 
 fn main() {
+    util::setup();
+
     //see fruit.jpg.license for the license of fruit.jpg
     let fruit = image::load_from_memory(include_bytes!("fruit.jpg")).unwrap();
     let (width, height) = (fruit.width(), fruit.height());
