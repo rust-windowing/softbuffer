@@ -7,7 +7,6 @@ use std::num::NonZeroU32;
 use std::ops;
 
 use crate::Rect;
-use crate::SoftBufferError;
 
 /// Takes a mutable reference to a container and a function deriving a
 /// reference into it, and stores both, making it possible to get back the
@@ -24,17 +23,17 @@ pub struct BorrowStack<'a, T: 'a + ?Sized, U: 'a + ?Sized> {
 unsafe impl<'a, T: 'a + Send + ?Sized, U: 'a + Send + ?Sized> Send for BorrowStack<'a, T, U> {}
 
 impl<'a, T: 'a + ?Sized, U: 'a + ?Sized> BorrowStack<'a, T, U> {
-    pub fn new<F>(container: &'a mut T, f: F) -> Result<Self, SoftBufferError>
+    pub fn new<F>(container: &'a mut T, f: F) -> Self
     where
-        F: for<'b> FnOnce(&'b mut T) -> Result<&'b mut U, SoftBufferError>,
+        F: for<'b> FnOnce(&'b mut T) -> &'b mut U,
     {
         let container = container as *mut T;
-        let member = f(unsafe { &mut *container })? as *mut U;
-        Ok(Self {
+        let member = f(unsafe { &mut *container }) as *mut U;
+        Self {
             container,
             member,
             _phantom: std::marker::PhantomData,
-        })
+        }
     }
 
     pub fn member(&self) -> &U {
@@ -131,7 +130,7 @@ mod tests {
         }
 
         let mut v = vec![1, 2, 3, 4, 5];
-        f(BorrowStack::new(v.as_mut(), |v: &mut [u32]| Ok(&mut v[2])).unwrap());
+        f(BorrowStack::new(v.as_mut(), |v: &mut [u32]| &mut v[2]));
         assert_eq!(&v, &[1, 2, 42, 4, 5]);
     }
 }

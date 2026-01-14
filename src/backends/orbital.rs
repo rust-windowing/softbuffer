@@ -75,58 +75,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
     fn window_fd(&self) -> usize {
         self.handle.0.window.as_ptr() as usize
     }
-
-    // Read the current width and size
-    fn window_size(&self) -> (usize, usize) {
-        let mut window_width = 0;
-        let mut window_height = 0;
-
-        let mut buf: [u8; 4096] = [0; 4096];
-        let count = syscall::fpath(self.window_fd(), &mut buf).unwrap();
-        let path = str::from_utf8(&buf[..count]).unwrap();
-        // orbital:/x/y/w/h/t
-        let mut parts = path.split('/').skip(3);
-        if let Some(w) = parts.next() {
-            window_width = w.parse::<usize>().unwrap_or(0);
-        }
-        if let Some(h) = parts.next() {
-            window_height = h.parse::<usize>().unwrap_or(0);
-        }
-
-        (window_width, window_height)
-    }
-
-    fn set_buffer(&self, buffer: &[u32], width_u32: u32, height_u32: u32) {
-        // Read the current width and size
-        let (window_width, window_height) = self.window_size();
-
-        {
-            // Map window buffer
-            let mut window_map =
-                unsafe { OrbitalMap::new(self.window_fd(), window_width * window_height * 4) }
-                    .expect("failed to map orbital window");
-
-            // Window buffer is u32 color data in 0xAABBGGRR format
-            let window_data = unsafe { window_map.data_mut() };
-
-            // Copy each line, cropping to fit
-            let width = width_u32 as usize;
-            let height = height_u32 as usize;
-            let min_width = cmp::min(width, window_width);
-            let min_height = cmp::min(height, window_height);
-            for y in 0..min_height {
-                let offset_buffer = y * width;
-                let offset_data = y * window_width;
-                window_data[offset_data..offset_data + min_width]
-                    .copy_from_slice(&buffer[offset_buffer..offset_buffer + min_width]);
-            }
-
-            // Window buffer map is dropped here
-        }
-
-        // Tell orbital to show the latest window data
-        syscall::fsync(self.window_fd()).expect("failed to sync orbital window");
-    }
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for OrbitalImpl<D, W> {
@@ -169,7 +117,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        let (window_width, window_height) = self.window_size();
+        let (window_width, window_height) = window_size(self.window_fd());
         let pixels = if self.width as usize == window_width && self.height as usize == window_height
         {
             Pixels::Mapping(
@@ -183,7 +131,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
                     * self.height as usize
             ]))
         };
-        Ok(BufferImpl { imp: self, pixels })
+        Ok(BufferImpl {
+            window_fd: self.window_fd(),
+            width: self.width,
+            height: self.height,
+            presented: &mut self.presented,
+            pixels,
+            _phantom: PhantomData,
+        })
     }
 }
 
@@ -195,17 +150,21 @@ enum Pixels {
 
 #[derive(Debug)]
 pub struct BufferImpl<'a, D, W> {
-    imp: &'a mut OrbitalImpl<D, W>,
+    window_fd: usize,
+    width: u32,
+    height: u32,
+    presented: &'a mut bool,
     pixels: Pixels,
+    _phantom: PhantomData<(D, W)>,
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.width as u32).unwrap()
+        NonZeroU32::new(self.width as u32).unwrap()
     }
 
     fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.height as u32).unwrap()
+        NonZeroU32::new(self.height as u32).unwrap()
     }
 
     #[inline]
@@ -226,7 +185,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
 
     fn age(&self) -> u8 {
         match self.pixels {
-            Pixels::Mapping(_) if self.imp.presented => 1,
+            Pixels::Mapping(_) if *self.presented => 1,
             _ => 0,
         }
     }
@@ -235,12 +194,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
         match self.pixels {
             Pixels::Mapping(mapping) => {
                 drop(mapping);
-                syscall::fsync(self.imp.window_fd()).expect("failed to sync orbital window");
-                self.imp.presented = true;
+                syscall::fsync(self.window_fd).expect("failed to sync orbital window");
+                *self.presented = true;
             }
             Pixels::Buffer(buffer) => {
-                self.imp
-                    .set_buffer(&buffer, self.imp.width, self.imp.height);
+                set_buffer(self.window_fd, &buffer, self.width, self.height);
             }
         }
 
@@ -250,4 +208,56 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
     fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
         self.present()
     }
+}
+
+// Read the current width and size
+fn window_size(window_fd: usize) -> (usize, usize) {
+    let mut window_width = 0;
+    let mut window_height = 0;
+
+    let mut buf: [u8; 4096] = [0; 4096];
+    let count = syscall::fpath(window_fd, &mut buf).unwrap();
+    let path = str::from_utf8(&buf[..count]).unwrap();
+    // orbital:/x/y/w/h/t
+    let mut parts = path.split('/').skip(3);
+    if let Some(w) = parts.next() {
+        window_width = w.parse::<usize>().unwrap_or(0);
+    }
+    if let Some(h) = parts.next() {
+        window_height = h.parse::<usize>().unwrap_or(0);
+    }
+
+    (window_width, window_height)
+}
+
+fn set_buffer(window_fd: usize, buffer: &[u32], width_u32: u32, height_u32: u32) {
+    // Read the current width and size
+    let (window_width, window_height) = window_size(window_fd);
+
+    {
+        // Map window buffer
+        let mut window_map =
+            unsafe { OrbitalMap::new(window_fd, window_width * window_height * 4) }
+                .expect("failed to map orbital window");
+
+        // Window buffer is u32 color data in 0xAABBGGRR format
+        let window_data = unsafe { window_map.data_mut() };
+
+        // Copy each line, cropping to fit
+        let width = width_u32 as usize;
+        let height = height_u32 as usize;
+        let min_width = cmp::min(width, window_width);
+        let min_height = cmp::min(height, window_height);
+        for y in 0..min_height {
+            let offset_buffer = y * width;
+            let offset_data = y * window_width;
+            window_data[offset_data..offset_data + min_width]
+                .copy_from_slice(&buffer[offset_buffer..offset_buffer + min_width]);
+        }
+
+        // Window buffer map is dropped here
+    }
+
+    // Tell orbital to show the latest window data
+    syscall::fsync(window_fd).expect("failed to sync orbital window");
 }

@@ -172,42 +172,6 @@ struct BitmapInfo {
     bmi_colors: [Gdi::RGBQUAD; 3],
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> Win32Impl<D, W> {
-    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let buffer = self.buffer.as_mut().unwrap();
-        unsafe {
-            for rect in damage.iter().copied() {
-                let (x, y, width, height) = (|| {
-                    Some((
-                        i32::try_from(rect.x).ok()?,
-                        i32::try_from(rect.y).ok()?,
-                        i32::try_from(rect.width.get()).ok()?,
-                        i32::try_from(rect.height.get()).ok()?,
-                    ))
-                })()
-                .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
-                Gdi::BitBlt(
-                    self.dc.0,
-                    x,
-                    y,
-                    width,
-                    height,
-                    buffer.dc,
-                    x,
-                    y,
-                    Gdi::SRCCOPY,
-                );
-            }
-
-            // Validate the window.
-            Gdi::ValidateRect(self.window.0, ptr::null_mut());
-        }
-        buffer.presented = true;
-
-        Ok(())
-    }
-}
-
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Impl<D, W> {
     type Context = D;
     type Buffer<'a>
@@ -270,11 +234,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
-        if self.buffer.is_none() {
-            panic!("Must set size of surface before calling `buffer_mut()`");
-        }
+        let buffer = self
+            .buffer
+            .as_mut()
+            .expect("Must set size of surface before calling `buffer_mut()`");
 
-        Ok(BufferImpl(self))
+        Ok(BufferImpl {
+            window: &self.window,
+            dc: &self.dc,
+            buffer,
+            _phantom: PhantomData,
+        })
     }
 
     /// Fetch the buffer from the window.
@@ -284,49 +254,82 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D, W>(&'a mut Win32Impl<D, W>);
+pub struct BufferImpl<'a, D, W> {
+    window: &'a OnlyUsedFromOrigin<HWND>,
+    dc: &'a OnlyUsedFromOrigin<Gdi::HDC>,
+    buffer: &'a mut Buffer,
+    _phantom: PhantomData<(D, W)>,
+}
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     fn width(&self) -> NonZeroU32 {
-        self.0.buffer.as_ref().unwrap().width.try_into().unwrap()
+        self.buffer.width.try_into().unwrap()
     }
 
     fn height(&self) -> NonZeroU32 {
-        self.0.buffer.as_ref().unwrap().height.try_into().unwrap()
+        self.buffer.height.try_into().unwrap()
     }
 
     #[inline]
     fn pixels(&self) -> &[u32] {
-        self.0.buffer.as_ref().unwrap().pixels()
+        self.buffer.pixels()
     }
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
-        self.0.buffer.as_mut().unwrap().pixels_mut()
+        self.buffer.pixels_mut()
     }
 
     fn age(&self) -> u8 {
-        match self.0.buffer.as_ref() {
-            Some(buffer) if buffer.presented => 1,
-            _ => 0,
+        if self.buffer.presented {
+            1
+        } else {
+            0
         }
     }
 
     fn present(self) -> Result<(), SoftBufferError> {
-        let imp = self.0;
-        let buffer = imp.buffer.as_ref().unwrap();
-        imp.present_with_damage(&[Rect {
+        let (width, height) = (self.buffer.width, self.buffer.height);
+        self.present_with_damage(&[Rect {
             x: 0,
             y: 0,
             // We know width/height will be non-negative
-            width: buffer.width.try_into().unwrap(),
-            height: buffer.height.try_into().unwrap(),
+            width: width.try_into().unwrap(),
+            height: height.try_into().unwrap(),
         }])
     }
 
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let imp = self.0;
-        imp.present_with_damage(damage)
+        unsafe {
+            for rect in damage.iter().copied() {
+                let (x, y, width, height) = (|| {
+                    Some((
+                        i32::try_from(rect.x).ok()?,
+                        i32::try_from(rect.y).ok()?,
+                        i32::try_from(rect.width.get()).ok()?,
+                        i32::try_from(rect.height.get()).ok()?,
+                    ))
+                })()
+                .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
+                Gdi::BitBlt(
+                    self.dc.0,
+                    x,
+                    y,
+                    width,
+                    height,
+                    self.buffer.dc,
+                    x,
+                    y,
+                    Gdi::SRCCOPY,
+                );
+            }
+
+            // Validate the window.
+            Gdi::ValidateRect(self.window.0, ptr::null_mut());
+        }
+        self.buffer.presented = true;
+
+        Ok(())
     }
 }
 
@@ -474,6 +477,7 @@ impl Command {
 #[derive(Debug)]
 struct OnlyUsedFromOrigin<T>(T);
 unsafe impl<T> Send for OnlyUsedFromOrigin<T> {}
+unsafe impl<T> Sync for OnlyUsedFromOrigin<T> {}
 
 impl<T> From<T> for OnlyUsedFromOrigin<T> {
     fn from(t: T) -> Self {

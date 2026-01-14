@@ -17,6 +17,7 @@ use rustix::{
     mm, shm as posix_shm,
 };
 
+use std::marker::PhantomData;
 use std::{
     collections::HashSet,
     fmt,
@@ -347,7 +348,16 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         self.buffer.finish_wait(self.display.connection())?;
 
         // We can now safely call `buffer_mut` on the buffer.
-        Ok(BufferImpl(self))
+        Ok(BufferImpl {
+            connection: self.display.connection(),
+            window: self.window,
+            gc: self.gc,
+            depth: self.depth,
+            buffer: &mut self.buffer,
+            buffer_presented: &mut self.buffer_presented,
+            size: self.size,
+            _phantom: PhantomData,
+        })
     }
 
     fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
@@ -388,33 +398,43 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D: ?Sized, W: ?Sized>(&'a mut X11Impl<D, W>);
+pub struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
+    // Various fields that reference data in `X11Impl`.
+    connection: &'a XCBConnection,
+    window: xproto::Window,
+    gc: xproto::Gcontext,
+    depth: u8,
+    buffer: &'a mut Buffer,
+    buffer_presented: &'a mut bool,
+    size: Option<(NonZeroU16, NonZeroU16)>,
+    _phantom: PhantomData<(&'a D, &'a W)>,
+}
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
     for BufferImpl<'_, D, W>
 {
     fn width(&self) -> NonZeroU32 {
-        self.0.size.unwrap().0.into()
+        self.size.unwrap().0.into()
     }
 
     fn height(&self) -> NonZeroU32 {
-        self.0.size.unwrap().1.into()
+        self.size.unwrap().1.into()
     }
 
     #[inline]
     fn pixels(&self) -> &[u32] {
         // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer()`.
-        unsafe { self.0.buffer.buffer() }
+        unsafe { self.buffer.buffer() }
     }
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
         // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer_mut`.
-        unsafe { self.0.buffer.buffer_mut() }
+        unsafe { self.buffer.buffer_mut() }
     }
 
     fn age(&self) -> u8 {
-        if self.0.buffer_presented {
+        if *self.buffer_presented {
             1
         } else {
             0
@@ -423,31 +443,28 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
 
     /// Push the buffer to the window.
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let imp = self.0;
-
-        let (surface_width, surface_height) = imp
+        let (surface_width, surface_height) = self
             .size
             .expect("Must set size of surface before calling `present_with_damage()`");
 
-        tracing::trace!("present: window={:X}", imp.window);
+        tracing::trace!("present: window={:X}", self.window);
 
-        match imp.buffer {
+        match self.buffer {
             Buffer::Wire(ref wire) => {
                 // This is a suboptimal strategy, raise a stink in the debug logs.
                 tracing::debug!("Falling back to non-SHM method for window drawing.");
 
-                imp.display
-                    .connection()
+                self.connection
                     .put_image(
                         xproto::ImageFormat::Z_PIXMAP,
-                        imp.window,
-                        imp.gc,
+                        self.window,
+                        self.gc,
                         surface_width.get(),
                         surface_height.get(),
                         0,
                         0,
                         0,
-                        imp.depth,
+                        self.depth,
                         bytemuck::cast_slice(wire),
                     )
                     .map(|c| c.ignore_error())
@@ -475,11 +492,10 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
                             })(
                             )
                             .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
-                            imp.display
-                                .connection()
+                            self.connection
                                 .shm_put_image(
-                                    imp.window,
-                                    imp.gc,
+                                    self.window,
+                                    self.gc,
                                     surface_width.get(),
                                     surface_height.get(),
                                     src_x,
@@ -488,7 +504,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
                                     height,
                                     dst_x,
                                     dst_y,
-                                    imp.depth,
+                                    self.depth,
                                     xproto::ImageFormat::Z_PIXMAP.into(),
                                     false,
                                     segment_id,
@@ -500,21 +516,20 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
                         })
                         .and_then(|()| {
                             // Send a short request to act as a notification for when the X server is done processing the image.
-                            shm.begin_wait(imp.display.connection())
+                            shm.begin_wait(self.connection)
                                 .swbuf_err("Failed to draw image to window")
                         })?;
                 }
             }
         }
 
-        imp.buffer_presented = true;
+        *self.buffer_presented = true;
 
         Ok(())
     }
 
     fn present(self) -> Result<(), SoftBufferError> {
         let (width, height) = self
-            .0
             .size
             .expect("Must set size of surface before calling `present()`");
         self.present_with_damage(&[Rect {

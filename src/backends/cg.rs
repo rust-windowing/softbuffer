@@ -261,24 +261,32 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
         Ok(BufferImpl {
             buffer: util::PixelBuffer(vec![0; self.width * self.height]),
-            imp: self,
+            width: self.width,
+            height: self.height,
+            color_space: &self.color_space,
+            layer: &mut self.layer,
+            _phantom: PhantomData,
         })
     }
 }
 
 #[derive(Debug)]
 pub struct BufferImpl<'a, D, W> {
-    imp: &'a mut CGImpl<D, W>,
+    width: usize,
+    height: usize,
+    color_space: &'a CGColorSpace,
     buffer: util::PixelBuffer,
+    layer: &'a mut SendCALayer,
+    _phantom: PhantomData<(D, W)>,
 }
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
     fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.width as u32).unwrap()
+        NonZeroU32::new(self.width as u32).unwrap()
     }
 
     fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.imp.height as u32).unwrap()
+        NonZeroU32::new(self.height as u32).unwrap()
     }
 
     #[inline]
@@ -333,12 +341,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
 
         let image = unsafe {
             CGImage::new(
-                self.imp.width,
-                self.imp.height,
+                self.width,
+                self.height,
                 8,
                 32,
-                self.imp.width * 4,
-                Some(&self.imp.color_space),
+                self.width * 4,
+                Some(self.color_space),
                 bitmap_info,
                 Some(&data_provider),
                 ptr::null(),
@@ -355,7 +363,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_,
         CATransaction::setDisableActions(true);
 
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
-        unsafe { self.imp.layer.setContents(Some(image.as_ref())) };
+        unsafe { self.layer.setContents(Some(image.as_ref())) };
 
         CATransaction::commit();
         Ok(())
