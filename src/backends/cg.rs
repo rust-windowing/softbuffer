@@ -127,7 +127,7 @@ impl<D, W> Drop for CGImpl<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<D, W> {
     type Context = D;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -258,29 +258,27 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         Ok(BufferImpl {
             buffer: util::PixelBuffer(vec![0; self.width * self.height]),
             width: self.width,
             height: self.height,
             color_space: &self.color_space,
             layer: &mut self.layer,
-            _phantom: PhantomData,
         })
     }
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D, W> {
+pub struct BufferImpl<'a> {
     width: usize,
     height: usize,
     color_space: &'a CGColorSpace,
     buffer: util::PixelBuffer,
     layer: &'a mut SendCALayer,
-    _phantom: PhantomData<(D, W)>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         NonZeroU32::new(self.width as u32).unwrap()
     }

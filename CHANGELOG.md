@@ -1,5 +1,7 @@
 # Unreleased
 
+- **Breaking:** Remove generic type parameters `D` and `W` from `Buffer<'_>` struct.
+
 # 0.4.7
 
 - Fix documentation building on `docs.rs`.

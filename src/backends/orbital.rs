@@ -80,7 +80,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for OrbitalImpl<D, W> {
     type Context = D;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -116,7 +116,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let (window_width, window_height) = window_size(self.window_fd());
         let pixels = if self.width as usize == window_width && self.height as usize == window_height
         {
@@ -137,7 +137,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
             height: self.height,
             presented: &mut self.presented,
             pixels,
-            _phantom: PhantomData,
         })
     }
 }
@@ -149,16 +148,15 @@ enum Pixels {
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D, W> {
+pub struct BufferImpl<'a> {
     window_fd: usize,
     width: u32,
     height: u32,
     presented: &'a mut bool,
     pixels: Pixels,
-    _phantom: PhantomData<(D, W)>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         NonZeroU32::new(self.width as u32).unwrap()
     }

@@ -13,7 +13,6 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, Raw
 
 use std::collections::HashSet;
 use std::fmt;
-use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
 use std::sync::Arc;
@@ -95,7 +94,7 @@ struct Buffers {
 }
 
 /// The buffer implementation.
-pub(crate) struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
+pub(crate) struct BufferImpl<'a> {
     /// The mapping of the dump buffer.
     mapping: DumbMapping<'a>,
 
@@ -119,11 +118,9 @@ pub(crate) struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
 
     /// Age of the back buffer.
     back_age: &'a mut u8,
-
-    _phantom: PhantomData<(&'a D, &'a W)>,
 }
 
-impl<D: ?Sized + fmt::Debug, W: ?Sized + fmt::Debug> fmt::Debug for BufferImpl<'_, D, W> {
+impl fmt::Debug for BufferImpl<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // FIXME: Derive instead once `DumbMapping` impls `Debug`.
         f.debug_struct("BufferImpl").finish_non_exhaustive()
@@ -146,7 +143,7 @@ struct SharedBuffer {
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for KmsImpl<D, W> {
     type Context = Arc<KmsDisplayImpl<D>>;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -252,7 +249,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
     */
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         // Map the dumb buffer.
         let set = self
             .buffer
@@ -287,7 +284,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             device: self.display.device.clone(),
             front_age,
             back_age,
-            _phantom: PhantomData,
         })
     }
 }
@@ -308,7 +304,7 @@ impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
     }
 }
 
-impl<D: ?Sized, W: ?Sized> BufferInterface for BufferImpl<'_, D, W> {
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         self.size.0
     }

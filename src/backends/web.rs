@@ -127,7 +127,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl<D, W> {
     type Context = WebDisplayImpl<D>;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -180,13 +180,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         Ok(BufferImpl {
             canvas: &self.canvas,
             buffer: &mut self.buffer,
             buffer_presented: &mut self.buffer_presented,
             size: self.size,
-            _phantom: PhantomData,
         })
     }
 
@@ -299,15 +298,14 @@ impl Canvas {
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D, W> {
+pub struct BufferImpl<'a> {
     canvas: &'a Canvas,
     buffer: &'a mut util::PixelBuffer,
     buffer_presented: &'a mut bool,
     size: Option<(NonZeroU32, NonZeroU32)>,
-    _phantom: PhantomData<(D, W)>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         self.size
             .expect("must set size of surface before calling `width()` on the buffer")
