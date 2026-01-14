@@ -25,7 +25,7 @@ pub struct AndroidImpl<D, W> {
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for AndroidImpl<D, W> {
     type Context = D;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -76,7 +76,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
             })
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let native_window_buffer = self.native_window.lock(None).map_err(|err| {
             SoftBufferError::PlatformError(
                 Some("Failed to lock ANativeWindow".to_owned()),
@@ -104,7 +104,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         Ok(BufferImpl {
             native_window_buffer,
             buffer: util::PixelBuffer(buffer),
-            marker: PhantomData,
         })
     }
 
@@ -115,16 +114,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D: ?Sized, W> {
+pub struct BufferImpl<'a> {
     native_window_buffer: NativeWindowBufferLockGuard<'a>,
     buffer: util::PixelBuffer,
-    marker: PhantomData<(&'a D, &'a W)>,
 }
 
 // TODO: Move to NativeWindowBufferLockGuard?
-unsafe impl<'a, D, W> Send for BufferImpl<'a, D, W> {}
+unsafe impl Send for BufferImpl<'_> {}
 
-impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'a, D, W> {
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         NonZeroU32::new(self.native_window_buffer.width() as u32).unwrap()
     }

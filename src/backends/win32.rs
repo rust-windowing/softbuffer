@@ -175,7 +175,7 @@ struct BitmapInfo {
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Impl<D, W> {
     type Context = D;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -233,7 +233,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer = self
             .buffer
             .as_mut()
@@ -243,7 +243,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             window: &self.window,
             dc: &self.dc,
             buffer,
-            _phantom: PhantomData,
         })
     }
 
@@ -254,14 +253,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D, W> {
+pub struct BufferImpl<'a> {
     window: &'a OnlyUsedFromOrigin<HWND>,
     dc: &'a OnlyUsedFromOrigin<Gdi::HDC>,
     buffer: &'a mut Buffer,
-    _phantom: PhantomData<(D, W)>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         self.buffer.width.try_into().unwrap()
     }

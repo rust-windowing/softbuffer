@@ -17,7 +17,6 @@ use rustix::{
     mm, shm as posix_shm,
 };
 
-use std::marker::PhantomData;
 use std::{
     collections::HashSet,
     fmt,
@@ -190,7 +189,7 @@ struct ShmBuffer {
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for X11Impl<D, W> {
     type Context = Arc<X11DisplayImpl<D>>;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -341,7 +340,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         tracing::trace!("buffer_mut: window={:X}", self.window);
 
         // Finish waiting on the previous `shm::PutImage` request, if any.
@@ -356,7 +355,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             buffer: &mut self.buffer,
             buffer_presented: &mut self.buffer_presented,
             size: self.size,
-            _phantom: PhantomData,
         })
     }
 
@@ -398,7 +396,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
+pub struct BufferImpl<'a> {
     // Various fields that reference data in `X11Impl`.
     connection: &'a XCBConnection,
     window: xproto::Window,
@@ -407,12 +405,9 @@ pub struct BufferImpl<'a, D: ?Sized, W: ?Sized> {
     buffer: &'a mut Buffer,
     buffer_presented: &'a mut bool,
     size: Option<(NonZeroU16, NonZeroU16)>,
-    _phantom: PhantomData<(&'a D, &'a W)>,
 }
 
-impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> BufferInterface
-    for BufferImpl<'_, D, W>
-{
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         self.size.unwrap().0.into()
     }

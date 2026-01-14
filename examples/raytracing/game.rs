@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use softbuffer::Buffer;
 
 use crate::camera::Camera;
@@ -44,21 +43,13 @@ impl Game {
         }
     }
 
-    pub fn draw(
-        &self,
-        buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>,
-        scale_factor: f32,
-    ) {
+    pub fn draw(&self, buffer: &mut Buffer<'_>, scale_factor: f32) {
         self.draw_scene(buffer, scale_factor);
         self.draw_ui(buffer, scale_factor);
     }
 
     /// Draw the 3D scene.
-    fn draw_scene(
-        &self,
-        buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>,
-        scale_factor: f32,
-    ) {
+    fn draw_scene(&self, buffer: &mut Buffer<'_>, scale_factor: f32) {
         // Raytracing is expensive, so we only do it once every 4x4 pixel.
         //
         // FIXME(madsmtm): Avoid the need for this once we can do hardware scaling.
@@ -130,11 +121,7 @@ impl Game {
     }
 
     /// Draw a simple example UI on top of the scene.
-    fn draw_ui(
-        &self,
-        buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>,
-        scale_factor: f32,
-    ) {
+    fn draw_ui(&self, buffer: &mut Buffer<'_>, scale_factor: f32) {
         struct Rect {
             left: f32,
             right: f32,

@@ -1,4 +1,3 @@
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use softbuffer::Buffer;
 use std::num::NonZeroU32;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -7,7 +6,7 @@ use winit::keyboard::{Key, NamedKey};
 
 mod util;
 
-fn redraw(buffer: &mut Buffer<'_, impl HasDisplayHandle, impl HasWindowHandle>, flag: bool) {
+fn redraw(buffer: &mut Buffer<'_>, flag: bool) {
     let width = buffer.width().get();
     let height = buffer.height().get();
     for y in 0..height {

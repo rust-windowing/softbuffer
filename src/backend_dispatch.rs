@@ -76,7 +76,7 @@ macro_rules! make_dispatch {
 
         impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for SurfaceDispatch<D, W> {
             type Context = ContextDispatch<D>;
-            type Buffer<'a> = BufferDispatch<'a, D, W> where Self: 'a;
+            type Buffer<'a> = BufferDispatch<'a> where Self: 'a;
 
             fn new(window: W, display: &Self::Context) -> Result<Self, InitError<W>>
             where
@@ -108,7 +108,7 @@ macro_rules! make_dispatch {
                 }
             }
 
-            fn buffer_mut(&mut self) -> Result<BufferDispatch<'_, D, W>, SoftBufferError> {
+            fn buffer_mut(&mut self) -> Result<BufferDispatch<'_>, SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
@@ -138,14 +138,14 @@ macro_rules! make_dispatch {
             }
         }
 
-        pub(crate) enum BufferDispatch<'a, $dgen, $wgen> {
+        pub(crate) enum BufferDispatch<'a> {
             $(
                 $(#[$attr])*
                 $name($buffer_inner),
             )*
         }
 
-        impl<'a, D: HasDisplayHandle, W: HasWindowHandle> BufferInterface for BufferDispatch<'a, D, W> {
+        impl BufferInterface for BufferDispatch<'_> {
             #[inline]
             fn width(&self) -> NonZeroU32 {
                 match self {
@@ -214,7 +214,7 @@ macro_rules! make_dispatch {
             }
         }
 
-        impl<D: fmt::Debug, W: fmt::Debug> fmt::Debug for BufferDispatch<'_, D, W> {
+        impl fmt::Debug for BufferDispatch<'_> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self {
                     $(
@@ -232,7 +232,7 @@ macro_rules! make_dispatch {
 make_dispatch! {
     <D, W> =>
     #[cfg(target_os = "android")]
-    Android(D, backends::android::AndroidImpl<D, W>, backends::android::BufferImpl<'a, D, W>),
+    Android(D, backends::android::AndroidImpl<D, W>, backends::android::BufferImpl<'a>),
     #[cfg(all(
         feature = "x11",
         not(any(
@@ -243,7 +243,7 @@ make_dispatch! {
             target_os = "windows"
         ))
     ))]
-    X11(std::sync::Arc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'a, D, W>),
+    X11(std::sync::Arc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'a>),
     #[cfg(all(
         feature = "wayland",
         not(any(
@@ -254,7 +254,7 @@ make_dispatch! {
             target_os = "windows"
         ))
     ))]
-    Wayland(std::sync::Arc<backends::wayland::WaylandDisplayImpl<D>>, backends::wayland::WaylandImpl<D, W>, backends::wayland::BufferImpl<'a, D, W>),
+    Wayland(std::sync::Arc<backends::wayland::WaylandDisplayImpl<D>>, backends::wayland::WaylandImpl<D, W>, backends::wayland::BufferImpl<'a>),
     #[cfg(all(
         feature = "kms",
         not(any(
@@ -265,13 +265,13 @@ make_dispatch! {
             target_os = "windows"
         ))
     ))]
-    Kms(std::sync::Arc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'a, D, W>),
+    Kms(std::sync::Arc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'a>),
     #[cfg(target_os = "windows")]
-    Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'a, D, W>),
+    Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'a>),
     #[cfg(target_vendor = "apple")]
-    CoreGraphics(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'a, D, W>),
+    CoreGraphics(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'a>),
     #[cfg(target_family = "wasm")]
-    Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'a, D, W>),
+    Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'a>),
     #[cfg(target_os = "redox")]
-    Orbital(D, backends::orbital::OrbitalImpl<D, W>, backends::orbital::BufferImpl<'a, D, W>),
+    Orbital(D, backends::orbital::OrbitalImpl<D, W>, backends::orbital::BufferImpl<'a>),
 }

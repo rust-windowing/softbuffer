@@ -136,7 +136,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// - On DRM/KMS, there is no reliable and sound way to wait for the page flip to happen from within
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
-    pub fn buffer_mut(&mut self) -> Result<Buffer<'_, D, W>, SoftBufferError> {
+    pub fn buffer_mut(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
         Ok(Buffer {
             buffer_impl: self.surface_impl.buffer_mut()?,
             _marker: PhantomData,
@@ -202,12 +202,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// Buffer copies an channel swizzling happen on:
 /// - Android
 #[derive(Debug)]
-pub struct Buffer<'a, D, W> {
-    buffer_impl: BufferDispatch<'a, D, W>,
-    _marker: PhantomData<(Arc<D>, Cell<()>)>,
+pub struct Buffer<'a> {
+    buffer_impl: BufferDispatch<'a>,
+    _marker: PhantomData<Cell<()>>,
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> Buffer<'_, D, W> {
+impl Buffer<'_> {
     /// The amount of pixels wide the buffer is.
     pub fn width(&self) -> NonZeroU32 {
         let width = self.buffer_impl.width();
@@ -272,7 +272,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Buffer<'_, D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'_, D, W> {
+impl ops::Deref for Buffer<'_> {
     type Target = [u32];
 
     #[inline]
@@ -281,7 +281,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> ops::Deref for Buffer<'_, D, W> {
     }
 }
 
-impl<D: HasDisplayHandle, W: HasWindowHandle> ops::DerefMut for Buffer<'_, D, W> {
+impl ops::DerefMut for Buffer<'_> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [u32] {
         self.buffer_impl.pixels_mut()
@@ -358,7 +358,7 @@ fn __assert_send() {
     is_send::<Context<()>>();
     is_sync::<Context<()>>();
     is_send::<Surface<(), ()>>();
-    is_send::<Buffer<'static, (), ()>>();
+    is_send::<Buffer<'static>>();
 
     /// ```compile_fail
     /// use softbuffer::Surface;
@@ -371,7 +371,7 @@ fn __assert_send() {
     /// use softbuffer::Buffer;
     ///
     /// fn __is_sync<T: Sync>() {}
-    /// __is_sync::<Buffer<'static, (), ()>>();
+    /// __is_sync::<Buffer<'static>>();
     /// ```
     fn __buffer_not_sync() {}
 }

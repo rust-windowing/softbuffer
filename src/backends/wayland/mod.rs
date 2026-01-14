@@ -6,7 +6,6 @@ use crate::{
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
-    marker::PhantomData,
     num::{NonZeroI32, NonZeroU32},
     sync::{Arc, Mutex},
 };
@@ -96,7 +95,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
 {
     type Context = Arc<WaylandDisplayImpl<D>>;
     type Buffer<'a>
-        = BufferImpl<'a, D, W>
+        = BufferImpl<'a>
     where
         Self: 'a;
 
@@ -142,7 +141,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_, D, W>, SoftBufferError> {
+    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `buffer_mut()`");
@@ -198,7 +197,6 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             width,
             height,
             age,
-            _phantom: PhantomData,
         })
     }
 }
@@ -211,7 +209,7 @@ impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a, D: ?Sized, W> {
+pub struct BufferImpl<'a> {
     event_queue: &'a Mutex<EventQueue<State>>,
     surface: &'a wl_surface::WlSurface,
     front: &'a mut WaylandBuffer,
@@ -219,10 +217,9 @@ pub struct BufferImpl<'a, D: ?Sized, W> {
     width: i32,
     height: i32,
     age: u8,
-    _phantom: PhantomData<(&'a D, W)>,
 }
 
-impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
+impl BufferInterface for BufferImpl<'_> {
     fn width(&self) -> NonZeroU32 {
         NonZeroU32::new(self.width as u32).unwrap()
     }
