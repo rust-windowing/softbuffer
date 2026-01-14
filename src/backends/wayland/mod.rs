@@ -1,10 +1,12 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    util, Rect, SoftBufferError,
+    util::BorrowStack,
+    Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
+    marker::PhantomData,
     num::{NonZeroI32, NonZeroU32},
     sync::{Arc, Mutex},
 };
@@ -87,65 +89,6 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
     /// This has to be dropped *after* the `surface` field, because the `surface` field implicitly
     /// borrows this.
     window_handle: W,
-}
-
-impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> WaylandImpl<D, W> {
-    fn surface(&self) -> &wl_surface::WlSurface {
-        self.surface.as_ref().unwrap()
-    }
-
-    fn present_with_damage(&mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        let _ = self
-            .display
-            .event_queue
-            .lock()
-            .unwrap_or_else(|x| x.into_inner())
-            .dispatch_pending(&mut State);
-
-        if let Some((front, back)) = &mut self.buffers {
-            // Swap front and back buffer
-            std::mem::swap(front, back);
-
-            front.age = 1;
-            if back.age != 0 {
-                back.age += 1;
-            }
-
-            front.attach(self.surface.as_ref().unwrap());
-
-            // Like Mesa's EGL/WSI implementation, we damage the whole buffer with `i32::MAX` if
-            // the compositor doesn't support `damage_buffer`.
-            // https://bugs.freedesktop.org/show_bug.cgi?id=78190
-            if self.surface().version() < 4 {
-                self.surface().damage(0, 0, i32::MAX, i32::MAX);
-            } else {
-                for rect in damage {
-                    // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                    let (x, y, width, height) = (|| {
-                        Some((
-                            i32::try_from(rect.x).ok()?,
-                            i32::try_from(rect.y).ok()?,
-                            i32::try_from(rect.width.get()).ok()?,
-                            i32::try_from(rect.height.get()).ok()?,
-                        ))
-                    })()
-                    .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
-                    self.surface().damage_buffer(x, y, width, height);
-                }
-            }
-
-            self.surface().commit();
-        }
-
-        let _ = self
-            .display
-            .event_queue
-            .lock()
-            .unwrap_or_else(|x| x.into_inner())
-            .flush();
-
-        Ok(())
-    }
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
@@ -242,16 +185,20 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             ));
         };
 
-        let width = self.buffers.as_mut().unwrap().1.width;
-        let height = self.buffers.as_mut().unwrap().1.height;
-        let age = self.buffers.as_mut().unwrap().1.age;
+        let (front, back) = self.buffers.as_mut().unwrap();
+
+        let width = back.width;
+        let height = back.height;
+        let age = back.age;
         Ok(BufferImpl {
-            stack: util::BorrowStack::new(self, |buffer| {
-                Ok(unsafe { buffer.buffers.as_mut().unwrap().1.mapped_mut() })
-            })?,
+            event_queue: &self.display.event_queue,
+            surface: self.surface.as_ref().unwrap(),
+            front,
+            back: BorrowStack::new(back, |buffer| buffer.mapped_mut()),
             width,
             height,
             age,
+            _phantom: PhantomData,
         })
     }
 }
@@ -265,10 +212,14 @@ impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
 
 #[derive(Debug)]
 pub struct BufferImpl<'a, D: ?Sized, W> {
-    stack: util::BorrowStack<'a, WaylandImpl<D, W>, [u32]>,
+    event_queue: &'a Mutex<EventQueue<State>>,
+    surface: &'a wl_surface::WlSurface,
+    front: &'a mut WaylandBuffer,
+    back: BorrowStack<'a, WaylandBuffer, [u32]>,
     width: i32,
     height: i32,
     age: u8,
+    _phantom: PhantomData<(&'a D, W)>,
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for BufferImpl<'_, D, W> {
@@ -282,12 +233,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for Buffe
 
     #[inline]
     fn pixels(&self) -> &[u32] {
-        self.stack.member()
+        self.back.member()
     }
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
-        self.stack.member_mut()
+        self.back.member_mut()
     }
 
     fn age(&self) -> u8 {
@@ -295,20 +246,64 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> BufferInterface for Buffe
     }
 
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        self.stack.into_container().present_with_damage(damage)
+        let _ = self
+            .event_queue
+            .lock()
+            .unwrap_or_else(|x| x.into_inner())
+            .dispatch_pending(&mut State);
+
+        let back = self.back.into_container();
+
+        // Swap front and back buffer
+        std::mem::swap(self.front, back);
+
+        self.front.age = 1;
+        if back.age != 0 {
+            back.age += 1;
+        }
+
+        self.front.attach(self.surface);
+
+        // Like Mesa's EGL/WSI implementation, we damage the whole buffer with `i32::MAX` if
+        // the compositor doesn't support `damage_buffer`.
+        // https://bugs.freedesktop.org/show_bug.cgi?id=78190
+        if self.surface.version() < 4 {
+            self.surface.damage(0, 0, i32::MAX, i32::MAX);
+        } else {
+            for rect in damage {
+                // Introduced in version 4, it is an error to use this request in version 3 or lower.
+                let (x, y, width, height) = (|| {
+                    Some((
+                        i32::try_from(rect.x).ok()?,
+                        i32::try_from(rect.y).ok()?,
+                        i32::try_from(rect.width.get()).ok()?,
+                        i32::try_from(rect.height.get()).ok()?,
+                    ))
+                })()
+                .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
+                self.surface.damage_buffer(x, y, width, height);
+            }
+        }
+
+        self.surface.commit();
+
+        let _ = self
+            .event_queue
+            .lock()
+            .unwrap_or_else(|x| x.into_inner())
+            .flush();
+
+        Ok(())
     }
 
     fn present(self) -> Result<(), SoftBufferError> {
-        let imp = self.stack.into_container();
-        let (width, height) = imp
-            .size
-            .expect("Must set size of surface before calling `present()`");
-        imp.present_with_damage(&[Rect {
+        let (width, height) = (self.width, self.height);
+        self.present_with_damage(&[Rect {
             x: 0,
             y: 0,
-            // We know width/height will be non-negative
-            width: width.try_into().unwrap(),
-            height: height.try_into().unwrap(),
+            // We know width/height will be non-negative and non-zero.
+            width: (width as u32).try_into().unwrap(),
+            height: (height as u32).try_into().unwrap(),
         }])
     }
 }

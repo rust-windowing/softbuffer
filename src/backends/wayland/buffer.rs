@@ -161,7 +161,11 @@ impl WaylandBuffer {
         self.width as usize * self.height as usize
     }
 
-    pub unsafe fn mapped_mut(&mut self) -> &mut [u32] {
+    #[inline]
+    pub fn mapped_mut(&mut self) -> &mut [u32] {
+        debug_assert!(self.len() * 4 <= self.map.len());
+        // SAFETY: We're casting a `&mut [u8]` to `&mut [u32]`, the alignment of the memory region
+        // is at least 4, and the size of the region is large enough.
         unsafe { slice::from_raw_parts_mut(self.map.as_mut_ptr() as *mut u32, self.len()) }
     }
 }
