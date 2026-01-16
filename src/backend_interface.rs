@@ -1,6 +1,6 @@
 //! Interface implemented by backends
 
-use crate::{AlphaMode, InitError, Rect, SoftBufferError};
+use crate::{AlphaMode, InitError, PixelFormat, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
@@ -29,12 +29,15 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
     fn alpha_mode(&self) -> AlphaMode;
 
     /// Reconfigure the internal buffer(s).
+    ///
+    /// Returns `Some(byte_stride)` if the buffer was successfully resized, or `None` if the surface does not support the given pixel format.
     fn configure(
         &mut self,
         width: NonZeroU32,
         height: NonZeroU32,
         alpha_mode: AlphaMode,
-    ) -> Result<(), SoftBufferError>;
+        pixel_format: PixelFormat,
+    ) -> Result<Option<u32>, SoftBufferError>;
 
     /// Get a mutable reference to the buffer.
     fn buffer_mut(&mut self) -> Result<Self::Buffer<'_>, SoftBufferError>;

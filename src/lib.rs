@@ -7,6 +7,8 @@
 extern crate core;
 
 mod backend_dispatch;
+mod convert;
+mod format;
 use backend_dispatch::*;
 mod backend_interface;
 use backend_interface::*;
@@ -18,6 +20,10 @@ use std::cell::Cell;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+
+use crate::convert::FALLBACK_FORMAT;
+
+pub use self::format::PixelFormat;
 
 use error::InitError;
 pub use error::SoftBufferError;
@@ -75,7 +81,10 @@ pub struct Rect {
 #[derive(Debug)]
 pub struct Surface<D, W> {
     alpha_mode: AlphaMode,
-    /// A buffer that is used when `!supported_alpha_mode.contains(alpha_mode)`.
+    pixel_format: PixelFormat,
+    /// A buffer that is used when:
+    /// `!supported_alpha_mode.contains(alpha_mode)`.
+    /// or `!supported_formats.contains(pixel_format)`.
     fallback_buffer: Option<Vec<u8>>,
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch<D, W>>,
@@ -87,6 +96,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
         match SurfaceDispatch::new(window, &context.context_impl) {
             Ok(surface_dispatch) => Ok(Self {
+                pixel_format: FALLBACK_FORMAT,
+                fallback_buffer: None,
                 surface_impl: Box::new(surface_dispatch),
                 _marker: PhantomData,
             }),
@@ -119,16 +130,39 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.configure(width, height, self.alpha_mode())
+        self.configure(width, height, self.pixel_format, self.alpha_mode)
     }
 
     pub fn configure(
         &mut self,
         width: NonZeroU32,
         height: NonZeroU32,
+        pixel_format: PixelFormat,
         alpha_mode: AlphaMode,
     ) -> Result<(), SoftBufferError> {
-        self.surface_impl.configure(width, height, alpha_mode)
+        // TODO: Do we really want this optimization? And if we do, should we clear the buffers
+        // here too, for consistency / more predictability?
+        if self.width == width && self.height == height && self.pixel_format == pixel_format {
+            return Ok(());
+        }
+
+        if let Some(byte_stride) = self.surface_impl.configure(width, height, pixel_format)? {
+            self.byte_stride = byte_stride;
+            self.fallback_buffer = None;
+        } else {
+            // Needs fallback buffer
+            let bit_width = width as usize * pixel_format.bits_per_pixel() as usize;
+            let byte_stride = bit_width.next_multiple_of(32) / 8;
+            self.byte_stride = byte_stride as u32;
+            self.fallback_buffer = Some(vec![0x00; byte_stride * height as usize]);
+        }
+
+        // We successfully configured the buffer.
+        self.width = width;
+        self.height = height;
+        self.pixel_format = pixel_format;
+
+        Ok(())
     }
 
     /// Copies the window contents into a buffer.
