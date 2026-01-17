@@ -36,18 +36,39 @@ fn buffer_mut(c: &mut criterion::Criterion) {
 
             c.bench_function("buffer_mut()", |b| {
                 b.iter(|| {
-                    for _ in 0..500 {
-                        black_box(surface.buffer_mut().unwrap());
-                    }
+                    black_box(surface.buffer_mut().unwrap());
                 });
             });
 
             c.bench_function("pixels_mut()", |b| {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
-                    for _ in 0..500 {
-                        let x: &mut [u32] = &mut buffer;
-                        black_box(x);
+                    let pixels: &mut [u32] = &mut buffer;
+                    black_box(pixels);
+                });
+            });
+
+            c.bench_function("fill", |b| {
+                let mut buffer = surface.buffer_mut().unwrap();
+                b.iter(|| {
+                    let buffer = black_box(&mut buffer);
+                    buffer.fill(0x00000000);
+                });
+            });
+
+            c.bench_function("render", |b| {
+                let mut buffer = surface.buffer_mut().unwrap();
+                b.iter(|| {
+                    let buffer = black_box(&mut buffer);
+                    let width = buffer.width().get();
+                    for y in 0..buffer.height().get() {
+                        for x in 0..buffer.width().get() {
+                            let red = (x & 0xff) ^ (y & 0xff);
+                            let green = (x & 0x7f) ^ (y & 0x7f);
+                            let blue = (x & 0x3f) ^ (y & 0x3f);
+                            let value = blue | (green << 8) | (red << 16);
+                            buffer[(y * width + x) as usize] = value;
+                        }
                     }
                 });
             });
