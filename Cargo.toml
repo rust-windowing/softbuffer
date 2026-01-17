@@ -26,8 +26,10 @@ wayland = [
     "memmap2",
     "rustix",
     "fastrand",
+    "winit/wayland",
+    "winit/wayland-csd-adwaita",
 ]
-wayland-dlopen = ["wayland-sys/dlopen"]
+wayland-dlopen = ["wayland-sys/dlopen", "winit/wayland-dlopen"]
 x11 = [
     "as-raw-xcb-connection",
     "bytemuck",
@@ -35,6 +37,7 @@ x11 = [
     "rustix",
     "tiny-xlib",
     "x11rb",
+    "winit/x11",
 ]
 x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
 
@@ -133,7 +136,7 @@ redox_syscall = "0.7"
 [dev-dependencies]
 colorous = "1.0.12"
 web-time = "1.0.0"
-winit = "0.30.0"
+winit = { version = "0.30.0", default-features = false, features = ["rwh_06"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 glam = { version = "0.30.10", features = ["rand"] }
 rand = "0.9.2"

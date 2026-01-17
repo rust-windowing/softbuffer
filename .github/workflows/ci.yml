@@ -101,7 +101,8 @@ jobs:
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest,   }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "x11,x11-dlopen" }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "wayland,wayland-dlopen" }
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "kms" }
+          # Build with default Winit backends.
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "kms,winit/default" }
           - { target: x86_64-unknown-redox,     os: ubuntu-latest,   }
           - { target: x86_64-unknown-freebsd,   os: ubuntu-latest,   }
           - { target: x86_64-unknown-netbsd,    os: ubuntu-latest, options: --no-default-features, features: "x11,x11-dlopen,wayland,wayland-dlopen"  }
