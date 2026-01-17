@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{DeviceEvent, DeviceId, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
@@ -31,7 +31,8 @@ pub(crate) fn make_window(
 }
 
 /// Easily constructable winit application.
-pub(crate) struct WinitApp<T, S, Init, InitSurface, Handler, AboutToWaitHandler> {
+pub(crate) struct WinitApp<T, S, Init, InitSurface, Handler, DeviceEventHandler, AboutToWaitHandler>
+{
     /// Closure to initialize `state`.
     init: Init,
 
@@ -40,6 +41,9 @@ pub(crate) struct WinitApp<T, S, Init, InitSurface, Handler, AboutToWaitHandler>
 
     /// Closure to run on window events.
     event: Handler,
+
+    /// Closure to run on device events.
+    device_event: DeviceEventHandler,
 
     /// Closure to run on about_to_wait events.
     about_to_wait: AboutToWaitHandler,
@@ -82,20 +86,35 @@ where
     pub(crate) fn with_event_handler<F>(
         self,
         handler: F,
-    ) -> WinitApp<T, S, Init, InitSurface, F, impl FnMut(&mut T, Option<&mut S>, &ActiveEventLoop)>
+    ) -> WinitApp<
+        T,
+        S,
+        Init,
+        InitSurface,
+        F,
+        impl FnMut(&mut T, Option<&mut S>, DeviceEvent, &ActiveEventLoop),
+        impl FnMut(&mut T, Option<&mut S>, &ActiveEventLoop),
+    >
     where
         F: FnMut(&mut T, Option<&mut S>, WindowId, WindowEvent, &ActiveEventLoop),
     {
-        WinitApp::new(self.init, self.init_surface, handler, |_, _, _| {})
+        WinitApp::new(
+            self.init,
+            self.init_surface,
+            handler,
+            |_, _, _, _| {},
+            |_, _, _| {},
+        )
     }
 }
 
-impl<T, S, Init, InitSurface, Handler, AboutToWaitHandler>
-    WinitApp<T, S, Init, InitSurface, Handler, AboutToWaitHandler>
+impl<T, S, Init, InitSurface, Handler, DeviceEventHandler, AboutToWaitHandler>
+    WinitApp<T, S, Init, InitSurface, Handler, DeviceEventHandler, AboutToWaitHandler>
 where
     Init: FnMut(&ActiveEventLoop) -> T,
     InitSurface: FnMut(&ActiveEventLoop, &mut T) -> S,
     Handler: FnMut(&mut T, Option<&mut S>, WindowId, WindowEvent, &ActiveEventLoop),
+    DeviceEventHandler: FnMut(&mut T, Option<&mut S>, DeviceEvent, &ActiveEventLoop),
     AboutToWaitHandler: FnMut(&mut T, Option<&mut S>, &ActiveEventLoop),
 {
     /// Create a new application.
@@ -103,12 +122,14 @@ where
         init: Init,
         init_surface: InitSurface,
         event: Handler,
+        device_event: DeviceEventHandler,
         about_to_wait: AboutToWaitHandler,
     ) -> Self {
         Self {
             init,
             init_surface,
             event,
+            device_event,
             about_to_wait,
             state: None,
             surface_state: None,
@@ -120,20 +141,45 @@ where
     pub(crate) fn with_about_to_wait_handler<F>(
         self,
         about_to_wait: F,
-    ) -> WinitApp<T, S, Init, InitSurface, Handler, F>
+    ) -> WinitApp<T, S, Init, InitSurface, Handler, DeviceEventHandler, F>
     where
         F: FnMut(&mut T, Option<&mut S>, &ActiveEventLoop),
     {
-        WinitApp::new(self.init, self.init_surface, self.event, about_to_wait)
+        WinitApp::new(
+            self.init,
+            self.init_surface,
+            self.event,
+            self.device_event,
+            about_to_wait,
+        )
+    }
+
+    /// Build a new application.
+    #[allow(dead_code)]
+    pub(crate) fn with_device_event_handler<F>(
+        self,
+        device_event: F,
+    ) -> WinitApp<T, S, Init, InitSurface, Handler, F, AboutToWaitHandler>
+    where
+        F: FnMut(&mut T, Option<&mut S>, DeviceEvent, &ActiveEventLoop),
+    {
+        WinitApp::new(
+            self.init,
+            self.init_surface,
+            self.event,
+            device_event,
+            self.about_to_wait,
+        )
     }
 }
 
-impl<T, S, Init, InitSurface, Handler, AboutToWaitHandler> ApplicationHandler
-    for WinitApp<T, S, Init, InitSurface, Handler, AboutToWaitHandler>
+impl<T, S, Init, InitSurface, Handler, DeviceEventHandler, AboutToWaitHandler> ApplicationHandler
+    for WinitApp<T, S, Init, InitSurface, Handler, DeviceEventHandler, AboutToWaitHandler>
 where
     Init: FnMut(&ActiveEventLoop) -> T,
     InitSurface: FnMut(&ActiveEventLoop, &mut T) -> S,
     Handler: FnMut(&mut T, Option<&mut S>, WindowId, WindowEvent, &ActiveEventLoop),
+    DeviceEventHandler: FnMut(&mut T, Option<&mut S>, DeviceEvent, &ActiveEventLoop),
     AboutToWaitHandler: FnMut(&mut T, Option<&mut S>, &ActiveEventLoop),
 {
     fn resumed(&mut self, el: &ActiveEventLoop) {
@@ -165,5 +211,16 @@ where
             let surface_state = self.surface_state.as_mut();
             (self.about_to_wait)(state, surface_state, event_loop);
         }
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        let state = self.state.as_mut().unwrap();
+        let surface_state = self.surface_state.as_mut();
+        (self.device_event)(state, surface_state, event, event_loop);
     }
 }
