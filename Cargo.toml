@@ -15,7 +15,7 @@ categories = ["game-development", "graphics", "gui", "multimedia", "rendering"]
 exclude = ["examples"]
 
 [features]
-default = ["wayland", "wayland-dlopen", "x11", "x11-dlopen", "kms"]
+default = ["wayland", "wayland-dlopen", "x11", "x11-dlopen"]
 
 # Enable the Wayland backend.
 wayland = [

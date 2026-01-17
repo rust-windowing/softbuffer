@@ -45,7 +45,9 @@ jobs:
 
         # Wayland, KMS/DRM, X11
         - target: i686-unknown-linux-gnu
+          features: "kms,x11,x11-dlopen,wayland,wayland-dlopen"
         - target: x86_64-unknown-linux-gnu
+          features: "kms,x11,x11-dlopen,wayland,wayland-dlopen"
         - target: x86_64-unknown-linux-gnu
           features: "x11,x11-dlopen"
         - target: x86_64-unknown-linux-gnu
@@ -53,6 +55,7 @@ jobs:
         - target: x86_64-unknown-linux-gnu
           features: "kms"
         - target: x86_64-unknown-freebsd
+          features: "kms,x11,x11-dlopen,wayland,wayland-dlopen"
         - target: x86_64-unknown-netbsd
           features: "x11,x11-dlopen,wayland,wayland-dlopen"
 
@@ -98,7 +101,7 @@ jobs:
           # - { target: x86_64-pc-windows-gnu,    os: windows-latest, host: -x86_64-pc-windows-gnu }
           # - { target: i686-pc-windows-gnu,      os: windows-latest, host: -i686-pc-windows-gnu }
           - { target: i686-unknown-linux-gnu,   os: ubuntu-latest,   }
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest,   }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, features: "kms" }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "x11,x11-dlopen" }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, options: --no-default-features, features: "wayland,wayland-dlopen" }
           # Build with default Winit backends.
