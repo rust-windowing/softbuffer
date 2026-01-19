@@ -7,7 +7,7 @@
 - **Breaking:** Removed `Deref[Mut]` implementation on `Buffer<'_>`. Use `Buffer::pixels()` instead.
 - **Breaking:** Removed unintentional Cargo features for Softbuffer's optional dependencies.
 - **Breaking:** Removed `DamageOutOfRange` error case. If the damage value is greater than the backend supports, it is instead clamped to an appropriate value.
-- Fixed `present_with_damage` with bounds out of range on Windows.
+- Fixed `present_with_damage` with bounds out of range on Windows and Web.
 
 # 0.4.7
 
