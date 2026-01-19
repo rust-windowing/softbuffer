@@ -124,7 +124,7 @@ mod example {
                         )
                         .unwrap();
                     let mut buffer = surface.buffer_mut().unwrap();
-                    buffer.fill(RED);
+                    buffer.pixels().fill(RED);
                     buffer.present().unwrap();
                 }
                 Event::ConfigureNotify(configure_notify) => {

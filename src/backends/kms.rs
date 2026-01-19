@@ -314,11 +314,6 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
-        bytemuck::cast_slice(self.mapping.as_ref())
-    }
-
-    #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
         bytemuck::cast_slice_mut(self.mapping.as_mut())
     }

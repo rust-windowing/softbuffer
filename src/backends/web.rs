@@ -318,10 +318,6 @@ impl BufferInterface for BufferImpl<'_> {
             .1
     }
 
-    fn pixels(&self) -> &[u32] {
-        self.buffer
-    }
-
     fn pixels_mut(&mut self) -> &mut [u32] {
         self.buffer
     }

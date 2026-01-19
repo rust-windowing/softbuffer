@@ -70,7 +70,7 @@ fn main() {
 
                 let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
 
-                buffer.copy_from_slice(frame);
+                buffer.pixels().copy_from_slice(frame);
                 buffer.present().unwrap();
             }
             WindowEvent::CloseRequested
