@@ -272,6 +272,118 @@ impl Buffer<'_> {
     }
 }
 
+/// Pixel helper accessors.
+impl Buffer<'_> {
+    /// Iterate over each row of pixels.
+    ///
+    /// Each slice returned from the iterator has a length of `buffer.width()`.
+    ///
+    /// # Examples
+    ///
+    /// Fill each row with alternating black and white.
+    ///
+    /// ```no_run
+    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// for (y, row) in buffer.pixel_rows().enumerate() {
+    ///     if y % 2 == 0 {
+    ///         row.fill(0x00ffffff);
+    ///     } else {
+    ///         row.fill(0x00000000);
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Fill a red rectangle while skipping over regions that don't need to be modified.
+    ///
+    /// ```no_run
+    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// let x = 100;
+    /// let y = 200;
+    /// let width = 10;
+    /// let height = 20;
+    ///
+    /// for row in buffer.pixel_rows().skip(y).take(height) {
+    ///     for pixel in row.iter_mut().skip(x).take(width) {
+    ///         *pixel = 0x00ff0000;
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Iterate over each pixel (similar to what the [`pixels_iter`] method does).
+    ///
+    /// [`pixels_iter`]: Self::pixels_iter
+    ///
+    /// ```no_run
+    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// # let pixel_value = |x, y| 0x00000000;
+    /// for (y, row) in buffer.pixel_rows().enumerate() {
+    ///     for (x, pixel) in row.iter_mut().enumerate() {
+    ///         *pixel = pixel_value(x, y);
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    pub fn pixel_rows(
+        &mut self,
+    ) -> impl DoubleEndedIterator<Item = &mut [u32]> + ExactSizeIterator {
+        let width = self.width().get() as usize;
+        let pixels = self.buffer_impl.pixels_mut();
+        assert_eq!(pixels.len() % width, 0, "buffer must be multiple of width");
+        // NOTE: This won't panic because `width` is `NonZeroU32`
+        pixels.chunks_mut(width)
+    }
+
+    /// Iterate over each pixel in the data.
+    ///
+    /// The returned iterator contains the `x` and `y` coordinates and a mutable reference to the
+    /// pixel at that position.
+    ///
+    /// # Examples
+    ///
+    /// Draw a red rectangle with a margin of 10 pixels, and fill the background with blue.
+    ///
+    /// ```no_run
+    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// let width = buffer.width().get();
+    /// let height = buffer.height().get();
+    /// let left = 10;
+    /// let top = 10;
+    /// let right = width.saturating_sub(10);
+    /// let bottom = height.saturating_sub(10);
+    ///
+    /// for (x, y, pixel) in buffer.pixels_iter() {
+    ///     if (left..=right).contains(&x) && (top..=bottom).contains(&y) {
+    ///         // Inside rectangle.
+    ///         *pixel = 0x00ff0000;
+    ///     } else {
+    ///         // Outside rectangle.
+    ///         *pixel = 0x000000ff;
+    ///     };
+    /// }
+    /// ```
+    ///
+    /// Iterate over the pixel data in reverse, and draw a red rectangle in the top-left corner.
+    ///
+    /// ```no_run
+    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// // Only reverses iteration order, x and y are still relative to the top-left corner.
+    /// for (x, y, pixel) in buffer.pixels_iter().rev() {
+    ///     if x <= 100 && y <= 100 {
+    ///         *pixel = 0x00ff0000;
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    pub fn pixels_iter(&mut self) -> impl DoubleEndedIterator<Item = (u32, u32, &mut u32)> {
+        self.pixel_rows().enumerate().flat_map(|(y, pixels)| {
+            pixels
+                .iter_mut()
+                .enumerate()
+                .map(move |(x, pixel)| (x as u32, y as u32, pixel))
+        })
+    }
+}
+
 impl ops::Deref for Buffer<'_> {
     type Target = [u32];
 

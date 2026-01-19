@@ -9,18 +9,15 @@ mod util;
 fn redraw(buffer: &mut Buffer<'_>, flag: bool) {
     let width = buffer.width().get();
     let height = buffer.height().get();
-    for y in 0..height {
-        for x in 0..width {
-            let value = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
-                0x00ffffff
-            } else {
-                let red = (x & 0xff) ^ (y & 0xff);
-                let green = (x & 0x7f) ^ (y & 0x7f);
-                let blue = (x & 0x3f) ^ (y & 0x3f);
-                blue | (green << 8) | (red << 16)
-            };
-            buffer[(y * width + x) as usize] = value;
-        }
+    for (x, y, pixel) in buffer.pixels_iter() {
+        *pixel = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
+            0x00ffffff
+        } else {
+            let red = (x & 0xff) ^ (y & 0xff);
+            let green = (x & 0x7f) ^ (y & 0x7f);
+            let blue = (x & 0x3f) ^ (y & 0x3f);
+            blue | (green << 8) | (red << 16)
+        };
     }
 }
 

@@ -40,7 +40,7 @@ fn buffer_mut(c: &mut criterion::Criterion) {
                 });
             });
 
-            c.bench_function("pixels_mut()", |b| {
+            c.bench_function("data()", |b| {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
                     let pixels: &mut [u32] = &mut buffer;
@@ -48,7 +48,7 @@ fn buffer_mut(c: &mut criterion::Criterion) {
                 });
             });
 
-            c.bench_function("fill", |b| {
+            c.bench_function("fill u32", |b| {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
                     let buffer = black_box(&mut buffer);
@@ -56,19 +56,15 @@ fn buffer_mut(c: &mut criterion::Criterion) {
                 });
             });
 
-            c.bench_function("render", |b| {
+            c.bench_function("render pixels_iter", |b| {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
                     let buffer = black_box(&mut buffer);
-                    let width = buffer.width().get();
-                    for y in 0..buffer.height().get() {
-                        for x in 0..buffer.width().get() {
-                            let red = (x & 0xff) ^ (y & 0xff);
-                            let green = (x & 0x7f) ^ (y & 0x7f);
-                            let blue = (x & 0x3f) ^ (y & 0x3f);
-                            let value = blue | (green << 8) | (red << 16);
-                            buffer[(y * width + x) as usize] = value;
-                        }
+                    for (x, y, pixel) in buffer.pixels_iter() {
+                        let red = (x & 0xff) ^ (y & 0xff);
+                        let green = (x & 0x7f) ^ (y & 0x7f);
+                        let blue = (x & 0x3f) ^ (y & 0x3f);
+                        *pixel = blue | (green << 8) | (red << 16);
                     }
                 });
             });
