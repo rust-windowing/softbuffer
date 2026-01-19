@@ -220,7 +220,7 @@ pub struct BufferImpl<'a> {
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.width as u32 * 4).unwrap()
+        NonZeroU32::new(util::byte_stride(self.width as u32)).unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {

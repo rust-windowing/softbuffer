@@ -259,8 +259,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+        let buffer_size = util::byte_stride(self.width as u32) as usize * self.height / 4;
         Ok(BufferImpl {
-            buffer: util::PixelBuffer(vec![Pixel::default(); self.width * self.height]),
+            buffer: util::PixelBuffer(vec![Pixel::default(); buffer_size]),
             width: self.width,
             height: self.height,
             color_space: &self.color_space,
@@ -280,7 +281,7 @@ pub struct BufferImpl<'a> {
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.width().get() * 4).unwrap()
+        NonZeroU32::new(util::byte_stride(self.width as u32)).unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {
@@ -342,7 +343,7 @@ impl BufferInterface for BufferImpl<'_> {
                 self.height,
                 8,
                 32,
-                self.width * 4,
+                util::byte_stride(self.width as u32) as usize,
                 Some(self.color_space),
                 bitmap_info,
                 Some(&data_provider),
