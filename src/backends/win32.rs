@@ -281,13 +281,13 @@ impl BufferInterface for BufferImpl<'_> {
 
                 Gdi::BitBlt(
                     self.dc.0,
-                    x,
-                    y,
-                    width,
-                    height,
+                    x.min(self.buffer.width.get()),
+                    y.min(self.buffer.height.get()),
+                    width.min(self.buffer.width.get()),
+                    height.min(self.buffer.height.get()),
                     self.buffer.dc,
-                    x,
-                    y,
+                    x.min(self.buffer.width.get()),
+                    y.min(self.buffer.height.get()),
                     Gdi::SRCCOPY,
                 );
             }
