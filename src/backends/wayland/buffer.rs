@@ -15,6 +15,7 @@ use wayland_client::{
 };
 
 use super::State;
+use crate::util;
 use crate::Pixel;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -99,7 +100,7 @@ impl WaylandBuffer {
             0,
             width,
             height,
-            width * 4,
+            util::byte_stride(width as u32) as i32,
             // This is documented as `0xXXRRGGBB` on a little-endian machine, which means a byte
             // order of `[B, G, R, X]`.
             wl_shm::Format::Xrgb8888,
@@ -141,7 +142,7 @@ impl WaylandBuffer {
                 0,
                 width,
                 height,
-                width * 4,
+                util::byte_stride(width as u32) as i32,
                 wl_shm::Format::Xrgb8888,
                 &self.qh,
                 self.released.clone(),
@@ -161,7 +162,7 @@ impl WaylandBuffer {
     }
 
     fn len(&self) -> usize {
-        self.width as usize * self.height as usize
+        util::byte_stride(self.width as u32) as usize * self.height as usize / 4
     }
 
     #[inline]

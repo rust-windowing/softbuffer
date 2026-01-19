@@ -96,3 +96,19 @@ pub(crate) fn to_i16_saturating(val: u32) -> i16 {
 pub(crate) fn to_i32_saturating(val: u32) -> i32 {
     val.try_into().unwrap_or(i32::MAX)
 }
+
+/// Compute the byte stride desired by Softbuffer when a platform can use any stride.
+///
+/// TODO(madsmtm): This should take the pixel format / bit depth as input after:
+/// <https://github.com/rust-windowing/softbuffer/issues/98>
+#[inline]
+pub(crate) fn byte_stride(width: u32) -> u32 {
+    let row_alignment = if cfg!(debug_assertions) {
+        16 // Use a higher alignment to help users catch issues with their stride calculations.
+    } else {
+        4 // At least 4 is necessary for `Buffer` to return `&mut [u32]`.
+    };
+    // TODO: Use `next_multiple_of` when in MSRV.
+    let mask = row_alignment * 4 - 1;
+    ((width * 32 + mask) & !mask) >> 3
+}
