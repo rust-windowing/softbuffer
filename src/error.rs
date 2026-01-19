@@ -86,12 +86,6 @@ pub enum SoftBufferError {
         height: NonZeroU32,
     },
 
-    /// The provided damage rect is outside of the range supported by the backend.
-    DamageOutOfRange {
-        /// The damage rect that was out of range.
-        rect: crate::Rect,
-    },
-
     /// A platform-specific backend error occurred.
     ///
     /// The first field provides a human-readable description of the error. The second field
@@ -133,11 +127,6 @@ impl fmt::Display for SoftBufferError {
             ),
             Self::PlatformError(msg, None) => write!(f, "Platform error: {msg:?}"),
             Self::PlatformError(msg, Some(err)) => write!(f, "Platform error: {msg:?}: {err}"),
-            Self::DamageOutOfRange { rect } => write!(
-                f,
-                "Damage rect {}x{} at ({}, {}) out of range for backend.",
-                rect.width, rect.height, rect.x, rect.y
-            ),
             Self::Unimplemented => write!(f, "This function is unimplemented on this platform."),
         }
     }
