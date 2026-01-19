@@ -115,16 +115,6 @@ impl Buffer {
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
-        unsafe {
-            slice::from_raw_parts(
-                self.pixels.as_ptr(),
-                i32::from(self.width) as usize * i32::from(self.height) as usize,
-            )
-        }
-    }
-
-    #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
         unsafe {
             slice::from_raw_parts_mut(
@@ -266,11 +256,6 @@ impl BufferInterface for BufferImpl<'_> {
 
     fn height(&self) -> NonZeroU32 {
         self.buffer.height.try_into().unwrap()
-    }
-
-    #[inline]
-    fn pixels(&self) -> &[u32] {
-        self.buffer.pixels()
     }
 
     #[inline]

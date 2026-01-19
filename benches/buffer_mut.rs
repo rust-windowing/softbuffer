@@ -40,10 +40,10 @@ fn buffer_mut(c: &mut criterion::Criterion) {
                 });
             });
 
-            c.bench_function("data()", |b| {
+            c.bench_function("pixels()", |b| {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
-                    let pixels: &mut [u32] = &mut buffer;
+                    let pixels: &mut [u32] = buffer.pixels();
                     black_box(pixels);
                 });
             });
@@ -52,7 +52,7 @@ fn buffer_mut(c: &mut criterion::Criterion) {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
                     let buffer = black_box(&mut buffer);
-                    buffer.fill(0x00000000);
+                    buffer.pixels().fill(0x00000000);
                 });
             });
 

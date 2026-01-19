@@ -167,16 +167,6 @@ macro_rules! make_dispatch {
             }
 
             #[inline]
-            fn pixels(&self) -> &[u32] {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.pixels(),
-                    )*
-                }
-            }
-
-            #[inline]
             fn pixels_mut(&mut self) -> &mut [u32] {
                 match self {
                     $(

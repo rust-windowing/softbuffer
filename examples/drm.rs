@@ -128,7 +128,7 @@ mod imple {
 
             // Start drawing.
             let mut buffer = surface.buffer_mut()?;
-            draw_to_buffer(&mut buffer, tick);
+            draw_to_buffer(buffer.pixels(), tick);
             buffer.present()?;
 
             // Wait for the page flip to happen.

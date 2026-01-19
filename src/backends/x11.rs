@@ -417,12 +417,6 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
-        // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer()`.
-        unsafe { self.buffer.buffer() }
-    }
-
-    #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
         // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer_mut`.
         unsafe { self.buffer.buffer_mut() }
@@ -563,19 +557,6 @@ impl Buffer {
         Ok(())
     }
 
-    /// Get a reference to the buffer.
-    ///
-    /// # Safety
-    ///
-    /// `finish_wait()` must be called in between `shm::PutImage` requests and this function.
-    #[inline]
-    unsafe fn buffer(&self) -> &[u32] {
-        match self {
-            Buffer::Shm(ref shm) => unsafe { shm.as_ref() },
-            Buffer::Wire(wire) => wire,
-        }
-    }
-
     /// Get a mutable reference to the buffer.
     ///
     /// # Safety
@@ -615,27 +596,6 @@ impl ShmBuffer {
         }
 
         Ok(())
-    }
-
-    /// Get the SHM buffer as a reference.
-    ///
-    /// # Safety
-    ///
-    /// `finish_wait()` must be called before this function is.
-    #[inline]
-    unsafe fn as_ref(&self) -> &[u32] {
-        match self.seg.as_ref() {
-            Some((seg, _)) => {
-                let buffer_size = seg.buffer_size();
-
-                // SAFETY: No other code should be able to access the segment.
-                bytemuck::cast_slice(unsafe { &seg.as_ref()[..buffer_size] })
-            }
-            None => {
-                // Nothing has been allocated yet.
-                &[]
-            }
-        }
     }
 
     /// Get the SHM buffer as a mutable reference.
@@ -749,15 +709,6 @@ impl ShmSegment {
             size,
             buffer_size,
         })
-    }
-
-    /// Get this shared memory segment as a reference.
-    ///
-    /// # Safety
-    ///
-    /// One must ensure that no other processes are writing to this memory.
-    unsafe fn as_ref(&self) -> &[i8] {
-        unsafe { slice::from_raw_parts(self.ptr.as_ptr(), self.size) }
     }
 
     /// Get this shared memory segment as a mutable reference.

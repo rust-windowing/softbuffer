@@ -4,6 +4,7 @@
 - Added `Buffer::pixel_rows()` for iterating over rows of the buffer data.
 - Added `Buffer::pixels_iter()` for iterating over each pixel with its associated `x`/`y` coordinate.
 - **Breaking:** Removed generic type parameters `D` and `W` from `Buffer<'_>` struct.
+- **Breaking:** Removed `Deref[Mut]` implementation on `Buffer<'_>`. Use `Buffer::pixels()` instead.
 
 # 0.4.7
 

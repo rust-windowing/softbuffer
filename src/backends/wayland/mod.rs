@@ -229,11 +229,6 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels(&self) -> &[u32] {
-        self.back.member()
-    }
-
-    #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
         self.back.member_mut()
     }

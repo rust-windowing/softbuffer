@@ -17,7 +17,6 @@ mod util;
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-use std::ops;
 use std::sync::Arc;
 
 use error::InitError;
@@ -137,8 +136,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
     pub fn buffer_mut(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
+        let mut buffer_impl = self.surface_impl.buffer_mut()?;
+        debug_assert_eq!(
+            buffer_impl.height().get() as usize * buffer_impl.width().get() as usize,
+            buffer_impl.pixels_mut().len(),
+            "buffer must be sized correctly"
+        );
+
         Ok(Buffer {
-            buffer_impl: self.surface_impl.buffer_mut()?,
+            buffer_impl,
             _marker: PhantomData,
         })
     }
@@ -210,24 +216,12 @@ pub struct Buffer<'a> {
 impl Buffer<'_> {
     /// The amount of pixels wide the buffer is.
     pub fn width(&self) -> NonZeroU32 {
-        let width = self.buffer_impl.width();
-        debug_assert_eq!(
-            width.get() as usize * self.buffer_impl.height().get() as usize,
-            self.len(),
-            "buffer must be sized correctly"
-        );
-        width
+        self.buffer_impl.width()
     }
 
     /// The amount of pixels tall the buffer is.
     pub fn height(&self) -> NonZeroU32 {
-        let height = self.buffer_impl.height();
-        debug_assert_eq!(
-            height.get() as usize * self.buffer_impl.width().get() as usize,
-            self.len(),
-            "buffer must be sized correctly"
-        );
-        height
+        self.buffer_impl.height()
     }
 
     /// `age` is the number of frames ago this buffer was last presented. So if the value is
@@ -397,22 +391,6 @@ impl Buffer<'_> {
                 .enumerate()
                 .map(move |(x, pixel)| (x as u32, y as u32, pixel))
         })
-    }
-}
-
-impl ops::Deref for Buffer<'_> {
-    type Target = [u32];
-
-    #[inline]
-    fn deref(&self) -> &[u32] {
-        self.buffer_impl.pixels()
-    }
-}
-
-impl ops::DerefMut for Buffer<'_> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut [u32] {
-        self.buffer_impl.pixels_mut()
     }
 }
 

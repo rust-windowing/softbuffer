@@ -58,7 +58,7 @@ fn main() {
                     let blue = pixel.0[2] as u32;
 
                     let color = blue | (green << 8) | (red << 16);
-                    buffer[(y * width + x) as usize] = color;
+                    buffer.pixels()[(y * width + x) as usize] = color;
                 }
 
                 buffer.present().unwrap();

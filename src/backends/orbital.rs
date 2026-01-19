@@ -38,10 +38,6 @@ impl OrbitalMap {
         })
     }
 
-    unsafe fn data(&self) -> &[u32] {
-        unsafe { slice::from_raw_parts(self.address as *const u32, self.size_unaligned / 4) }
-    }
-
     unsafe fn data_mut(&mut self) -> &mut [u32] {
         unsafe { slice::from_raw_parts_mut(self.address as *mut u32, self.size_unaligned / 4) }
     }
@@ -163,14 +159,6 @@ impl BufferInterface for BufferImpl<'_> {
 
     fn height(&self) -> NonZeroU32 {
         NonZeroU32::new(self.height as u32).unwrap()
-    }
-
-    #[inline]
-    fn pixels(&self) -> &[u32] {
-        match &self.pixels {
-            Pixels::Mapping(mapping) => unsafe { mapping.data() },
-            Pixels::Buffer(buffer) => buffer,
-        }
     }
 
     #[inline]
