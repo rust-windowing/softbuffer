@@ -469,18 +469,13 @@ impl BufferInterface for BufferImpl<'_> {
                     damage
                         .iter()
                         .try_for_each(|rect| {
-                            let (src_x, src_y, dst_x, dst_y, width, height) = (|| {
-                                Some((
-                                    u16::try_from(rect.x).ok()?,
-                                    u16::try_from(rect.y).ok()?,
-                                    i16::try_from(rect.x).ok()?,
-                                    i16::try_from(rect.y).ok()?,
-                                    u16::try_from(rect.width.get()).ok()?,
-                                    u16::try_from(rect.height.get()).ok()?,
-                                ))
-                            })(
-                            )
-                            .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
+                            let src_x = rect.x.try_into().unwrap_or(u16::MAX);
+                            let src_y = rect.y.try_into().unwrap_or(u16::MAX);
+                            let dst_x = rect.x.try_into().unwrap_or(i16::MAX);
+                            let dst_y = rect.y.try_into().unwrap_or(i16::MAX);
+                            let width = rect.width.get().try_into().unwrap_or(u16::MAX);
+                            let height = rect.height.get().try_into().unwrap_or(u16::MAX);
+
                             self.connection
                                 .shm_put_image(
                                     self.window,

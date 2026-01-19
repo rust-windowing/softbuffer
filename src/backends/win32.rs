@@ -285,15 +285,11 @@ impl BufferInterface for BufferImpl<'_> {
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         unsafe {
             for rect in damage.iter().copied() {
-                let (x, y, width, height) = (|| {
-                    Some((
-                        i32::try_from(rect.x).ok()?,
-                        i32::try_from(rect.y).ok()?,
-                        i32::try_from(rect.width.get()).ok()?,
-                        i32::try_from(rect.height.get()).ok()?,
-                    ))
-                })()
-                .ok_or(SoftBufferError::DamageOutOfRange { rect })?;
+                let x = rect.x.try_into().unwrap_or(i32::MAX);
+                let y = rect.y.try_into().unwrap_or(i32::MAX);
+                let width = rect.width.get().try_into().unwrap_or(i32::MAX);
+                let height = rect.height.get().try_into().unwrap_or(i32::MAX);
+
                 Gdi::BitBlt(
                     self.dc.0,
                     x,

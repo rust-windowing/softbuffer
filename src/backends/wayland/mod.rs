@@ -260,16 +260,12 @@ impl BufferInterface for BufferImpl<'_> {
             self.surface.damage(0, 0, i32::MAX, i32::MAX);
         } else {
             for rect in damage {
+                let x = rect.x.try_into().unwrap_or(i32::MAX);
+                let y = rect.y.try_into().unwrap_or(i32::MAX);
+                let width = rect.width.get().try_into().unwrap_or(i32::MAX);
+                let height = rect.height.get().try_into().unwrap_or(i32::MAX);
+
                 // Introduced in version 4, it is an error to use this request in version 3 or lower.
-                let (x, y, width, height) = (|| {
-                    Some((
-                        i32::try_from(rect.x).ok()?,
-                        i32::try_from(rect.y).ok()?,
-                        i32::try_from(rect.width.get()).ok()?,
-                        i32::try_from(rect.height.get()).ok()?,
-                    ))
-                })()
-                .ok_or(SoftBufferError::DamageOutOfRange { rect: *rect })?;
                 self.surface.damage_buffer(x, y, width, height);
             }
         }

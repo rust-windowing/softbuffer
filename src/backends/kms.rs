@@ -325,24 +325,23 @@ impl BufferInterface for BufferImpl<'_> {
 
     #[inline]
     fn present_with_damage(self, damage: &[crate::Rect]) -> Result<(), SoftBufferError> {
-        let rectangles = damage
+        let rectangles: Vec<_> = damage
             .iter()
-            .map(|&rect| {
-                let err = || SoftBufferError::DamageOutOfRange { rect };
-                Ok::<_, SoftBufferError>(ClipRect::new(
-                    rect.x.try_into().map_err(|_| err())?,
-                    rect.y.try_into().map_err(|_| err())?,
+            .map(|rect| {
+                ClipRect::new(
+                    rect.x.try_into().unwrap_or(u16::MAX),
+                    rect.y.try_into().unwrap_or(u16::MAX),
                     rect.x
                         .checked_add(rect.width.get())
                         .and_then(|x| x.try_into().ok())
-                        .ok_or_else(err)?,
+                        .unwrap_or(u16::MAX),
                     rect.y
                         .checked_add(rect.height.get())
-                        .and_then(|y| y.try_into().ok())
-                        .ok_or_else(err)?,
-                ))
+                        .and_then(|x| x.try_into().ok())
+                        .unwrap_or(u16::MAX),
+                )
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect();
 
         // Dirty the framebuffer with out damage rectangles.
         //
