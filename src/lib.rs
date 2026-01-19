@@ -173,6 +173,36 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 ///
 /// This trusts the display server not to mutate the buffer, which could otherwise be unsound.
 ///
+/// # Reading buffer data
+///
+/// Reading from buffer data may perform very poorly, as the underlying storage of zero-copy
+/// buffers, where implemented, may set options optimized for CPU writes, that allows them to bypass
+/// certain caches and avoid cache pollution.
+///
+/// As such, when rendering, you should always set the pixel in its entirety:
+///
+/// ```
+/// # let pixel = &mut 0x00ffffff;
+/// # let (blue, green, red) = (0x11, 0x22, 0x33);
+/// *pixel = blue | (green << 8) | (red << 16);
+/// # assert_eq!(*pixel, 0x00332211);
+/// ```
+///
+/// Instead of e.g. something like:
+///
+/// ```
+/// # let pixel = &mut 0x00ffffff;
+/// # let (blue, green, red) = (0x11, 0x22, 0x33);
+/// // DISCOURAGED!
+/// *pixel &= 0x00000000; // Clear
+/// *pixel |= blue; // Set blue pixel
+/// *pixel |= green << 8; // Set green pixel
+/// *pixel |= red << 16; // Set red pixel
+/// # assert_eq!(*pixel, 0x00332211);
+/// ```
+///
+/// To discourage reading from the buffer, `&self -> &[u8]` methods are intentionally not provided.
+///
 /// # Data representation
 ///
 /// The format of the buffer is as follows. There is one `u32` in the buffer for each pixel in
