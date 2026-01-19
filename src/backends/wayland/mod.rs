@@ -1,7 +1,6 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    util::BorrowStack,
     Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
@@ -193,7 +192,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             event_queue: &self.display.event_queue,
             surface: self.surface.as_ref().unwrap(),
             front,
-            back: BorrowStack::new(back, |buffer| buffer.mapped_mut()),
+            back,
             width,
             height,
             age,
@@ -213,7 +212,7 @@ pub struct BufferImpl<'a> {
     event_queue: &'a Mutex<EventQueue<State>>,
     surface: &'a wl_surface::WlSurface,
     front: &'a mut WaylandBuffer,
-    back: BorrowStack<'a, WaylandBuffer, [u32]>,
+    back: &'a mut WaylandBuffer,
     width: i32,
     height: i32,
     age: u8,
@@ -230,7 +229,7 @@ impl BufferInterface for BufferImpl<'_> {
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
-        self.back.member_mut()
+        self.back.mapped_mut()
     }
 
     fn age(&self) -> u8 {
@@ -244,14 +243,12 @@ impl BufferInterface for BufferImpl<'_> {
             .unwrap_or_else(|x| x.into_inner())
             .dispatch_pending(&mut State);
 
-        let back = self.back.into_container();
-
         // Swap front and back buffer
-        std::mem::swap(self.front, back);
+        std::mem::swap(self.front, self.back);
 
         self.front.age = 1;
-        if back.age != 0 {
-            back.age += 1;
+        if self.back.age != 0 {
+            self.back.age += 1;
         }
 
         self.front.attach(self.surface);
