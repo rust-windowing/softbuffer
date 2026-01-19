@@ -19,10 +19,10 @@
 /// assert_eq!(red.r, 255);
 /// assert_eq!(red.g, 128);
 /// assert_eq!(red.b, 0);
-/// assert_eq!(red.a, 0xff);
-///
-/// let from_struct_literal = Pixel { r: 255, g: 0x80, b: 0, a: 0xff };
-/// assert_eq!(red, from_struct_literal);
+/// # // assert_eq!(red.a, 0xff);
+/// #
+/// # // let from_struct_literal = Pixel { r: 255, g: 0x80, b: 0, a: 0xff };
+/// # // assert_eq!(red, from_struct_literal);
 /// ```
 ///
 /// Convert a pixel to an array of `u8`s.
@@ -48,7 +48,7 @@
 /// let red = unsafe { core::mem::transmute::<Pixel, u32>(red) };
 ///
 /// // BGRX
-/// assert_eq!(red, u32::from_le_bytes([0x00, 0x00, 0xff, 0xff]));
+/// assert_eq!(red, u32::from_le_bytes([0x00, 0x00, 0xff, 0x00]));
 /// ```
 #[repr(C)]
 #[repr(align(4))] // Help the compiler to see that this is a u32
@@ -65,17 +65,14 @@ pub struct Pixel {
     ///
     /// `0xff` here means opaque, whereas `0` means transparent.
     ///
-    /// NOTE: Transparency is yet poorly supported, see [#17], until that is resolved, you will
-    /// probably want to set this to `0xff`.
+    /// NOTE: Transparency is not yet supported, see [#17], so this doesn't actually do anything.
     ///
     /// [#17]: https://github.com/rust-windowing/softbuffer/issues/17
-    pub a: u8,
+    pub(crate) a: u8,
 }
 
 impl Pixel {
     /// Create a new pixel from a red, a green and a blue component.
-    ///
-    /// The alpha component is set to opaque.
     ///
     /// # Example
     ///
@@ -86,12 +83,11 @@ impl Pixel {
     /// assert_eq!(red.r, 255);
     /// ```
     pub const fn new_rgb(r: u8, g: u8, b: u8) -> Self {
-        Self { r, g, b, a: 0xff }
+        // FIXME(madsmtm): Change alpha to `0xff` once we support transparency.
+        Self { r, g, b, a: 0x00 }
     }
 
     /// Create a new pixel from a blue, a green and a red component.
-    ///
-    /// The alpha component is set to opaque.
     ///
     /// # Example
     ///
@@ -102,7 +98,8 @@ impl Pixel {
     /// assert_eq!(red.r, 255);
     /// ```
     pub const fn new_bgr(b: u8, g: u8, r: u8) -> Self {
-        Self { r, g, b, a: 0xff }
+        // FIXME(madsmtm): Change alpha to `0xff` once we support transparency.
+        Self { r, g, b, a: 0x00 }
     }
 
     // TODO(madsmtm): Once we have transparency, add `new_rgba` and `new_bgra` methods.
