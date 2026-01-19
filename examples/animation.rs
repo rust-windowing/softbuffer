@@ -62,7 +62,7 @@ fn main() {
 
                 let mut buffer = surface.buffer_mut().unwrap();
 
-                let size = (buffer.width().get(), buffer.height().get());
+                let size = (buffer.width(), buffer.height());
                 if size != *old_size {
                     *old_size = size;
                     *frames = pre_render_frames(size.0, size.1);

@@ -35,8 +35,8 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
 }
 
 pub(crate) trait BufferInterface {
-    fn width(&self) -> NonZeroU32;
-    fn height(&self) -> NonZeroU32;
+    fn width(&self) -> u32;
+    fn height(&self) -> u32;
     fn pixels(&self) -> &[u32];
     fn pixels_mut(&mut self) -> &mut [u32];
     fn age(&self) -> u8;

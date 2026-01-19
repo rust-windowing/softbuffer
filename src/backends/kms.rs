@@ -305,12 +305,12 @@ impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
 }
 
 impl BufferInterface for BufferImpl<'_> {
-    fn width(&self) -> NonZeroU32 {
-        self.size.0
+    fn width(&self) -> u32 {
+        self.size.0.get()
     }
 
-    fn height(&self) -> NonZeroU32 {
-        self.size.1
+    fn height(&self) -> u32 {
+        self.size.1.get()
     }
 
     #[inline]

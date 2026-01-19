@@ -220,12 +220,12 @@ pub struct BufferImpl<'a> {
 }
 
 impl BufferInterface for BufferImpl<'_> {
-    fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.width as u32).unwrap()
+    fn width(&self) -> u32 {
+        self.width as u32
     }
 
-    fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.height as usize as u32).unwrap()
+    fn height(&self) -> u32 {
+        self.height as usize as u32
     }
 
     #[inline]

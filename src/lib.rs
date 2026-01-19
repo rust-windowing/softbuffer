@@ -209,10 +209,10 @@ pub struct Buffer<'a> {
 
 impl Buffer<'_> {
     /// The amount of pixels wide the buffer is.
-    pub fn width(&self) -> NonZeroU32 {
+    pub fn width(&self) -> u32 {
         let width = self.buffer_impl.width();
         debug_assert_eq!(
-            width.get() as usize * self.buffer_impl.height().get() as usize,
+            width as usize * self.buffer_impl.height() as usize,
             self.len(),
             "buffer must be sized correctly"
         );
@@ -220,10 +220,10 @@ impl Buffer<'_> {
     }
 
     /// The amount of pixels tall the buffer is.
-    pub fn height(&self) -> NonZeroU32 {
+    pub fn height(&self) -> u32 {
         let height = self.buffer_impl.height();
         debug_assert_eq!(
-            height.get() as usize * self.buffer_impl.width().get() as usize,
+            height as usize * self.buffer_impl.width() as usize,
             self.len(),
             "buffer must be sized correctly"
         );
@@ -326,11 +326,11 @@ impl Buffer<'_> {
     pub fn pixel_rows(
         &mut self,
     ) -> impl DoubleEndedIterator<Item = &mut [u32]> + ExactSizeIterator {
-        let width = self.width().get() as usize;
+        let width = self.width() as usize;
         let pixels = self.buffer_impl.pixels_mut();
         assert_eq!(pixels.len() % width, 0, "buffer must be multiple of width");
-        // NOTE: This won't panic because `width` is `NonZeroU32`
-        pixels.chunks_mut(width)
+        // Clamp width to be at least 1 - when the width is 0, the pixel buffer is empty.
+        pixels.chunks_mut(width.max(1))
     }
 
     /// Iterate over each pixel in the data.

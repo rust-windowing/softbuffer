@@ -123,12 +123,12 @@ pub struct BufferImpl<'a> {
 unsafe impl Send for BufferImpl<'_> {}
 
 impl BufferInterface for BufferImpl<'_> {
-    fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.native_window_buffer.width() as u32).unwrap()
+    fn width(&self) -> u32 {
+        self.native_window_buffer.width() as u32
     }
 
-    fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.native_window_buffer.height() as u32).unwrap()
+    fn height(&self) -> u32 {
+        self.native_window_buffer.height() as u32
     }
 
     #[inline]

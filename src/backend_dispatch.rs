@@ -147,7 +147,7 @@ macro_rules! make_dispatch {
 
         impl BufferInterface for BufferDispatch<'_> {
             #[inline]
-            fn width(&self) -> NonZeroU32 {
+            fn width(&self) -> u32 {
                 match self {
                     $(
                         $(#[$attr])*
@@ -157,7 +157,7 @@ macro_rules! make_dispatch {
             }
 
             #[inline]
-            fn height(&self) -> NonZeroU32 {
+            fn height(&self) -> u32 {
                 match self {
                     $(
                         $(#[$attr])*

@@ -56,8 +56,8 @@ impl Game {
         // https://github.com/rust-windowing/softbuffer/issues/177
         let scale_factor = scale_factor * 4.0;
 
-        let width = buffer.width().get() as f32 / scale_factor;
-        let height = buffer.height().get() as f32 / scale_factor;
+        let width = buffer.width() as f32 / scale_factor;
+        let height = buffer.height() as f32 / scale_factor;
 
         let dist_to_focus = 10.0;
         let aperture = 0.1;
@@ -108,7 +108,7 @@ impl Game {
         }
 
         // Upscale by `scale_factor`.
-        let width = (buffer.width().get() as f32 / scale_factor) as usize;
+        let width = (buffer.width() as f32 / scale_factor) as usize;
         buffer.pixels_iter().for_each(|(x, y, pixel)| {
             let x = (x as f32 / scale_factor) as usize;
             let y = (y as f32 / scale_factor) as usize;
@@ -128,8 +128,8 @@ impl Game {
             color: u32,
         }
 
-        let width = buffer.width().get() as f32 / scale_factor;
-        let height = buffer.height().get() as f32 / scale_factor;
+        let width = buffer.width() as f32 / scale_factor;
+        let height = buffer.height() as f32 / scale_factor;
         let rects = &[
             Rect {
                 left: 10.0,

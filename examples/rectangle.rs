@@ -7,8 +7,8 @@ use winit::keyboard::{Key, NamedKey};
 mod util;
 
 fn redraw(buffer: &mut Buffer<'_>, flag: bool) {
-    let width = buffer.width().get();
-    let height = buffer.height().get();
+    let width = buffer.width();
+    let height = buffer.height();
     for (x, y, pixel) in buffer.pixels_iter() {
         *pixel = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
             0x00ffffff

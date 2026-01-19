@@ -306,16 +306,18 @@ pub struct BufferImpl<'a> {
 }
 
 impl BufferInterface for BufferImpl<'_> {
-    fn width(&self) -> NonZeroU32 {
+    fn width(&self) -> u32 {
         self.size
             .expect("must set size of surface before calling `width()` on the buffer")
             .0
+            .get()
     }
 
-    fn height(&self) -> NonZeroU32 {
+    fn height(&self) -> u32 {
         self.size
             .expect("must set size of surface before calling `height()` on the buffer")
             .1
+            .get()
     }
 
     fn pixels(&self) -> &[u32] {

@@ -260,12 +260,12 @@ pub struct BufferImpl<'a> {
 }
 
 impl BufferInterface for BufferImpl<'_> {
-    fn width(&self) -> NonZeroU32 {
-        self.buffer.width.try_into().unwrap()
+    fn width(&self) -> u32 {
+        self.buffer.width.get().try_into().unwrap()
     }
 
-    fn height(&self) -> NonZeroU32 {
-        self.buffer.height.try_into().unwrap()
+    fn height(&self) -> u32 {
+        self.buffer.height.get().try_into().unwrap()
     }
 
     #[inline]
