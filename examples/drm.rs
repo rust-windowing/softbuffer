@@ -19,7 +19,6 @@ mod imple {
     use raw_window_handle::{DisplayHandle, DrmDisplayHandle, DrmWindowHandle, WindowHandle};
     use softbuffer::{Context, Surface};
 
-    use std::num::NonZeroU32;
     use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd};
     use std::path::Path;
     use std::time::{Duration, Instant};
@@ -114,10 +113,7 @@ mod imple {
 
         // Resize the surface.
         let (width, height) = mode.size();
-        surface.resize(
-            NonZeroU32::new(width as u32).unwrap(),
-            NonZeroU32::new(height as u32).unwrap(),
-        )?;
+        surface.resize(width as u32, height as u32)?;
 
         // Start drawing to it.
         let start = Instant::now();

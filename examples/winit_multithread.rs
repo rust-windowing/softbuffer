@@ -4,8 +4,8 @@ mod util;
 
 #[cfg(not(target_family = "wasm"))]
 pub mod ex {
-    use std::num::NonZeroU32;
     use std::sync::{mpsc, Arc, Mutex};
+    use winit::dpi::PhysicalSize;
     use winit::event::{KeyEvent, WindowEvent};
     use winit::event_loop::{ControlFlow, EventLoop, OwnedDisplayHandle};
     use winit::keyboard::{Key, NamedKey};
@@ -16,12 +16,12 @@ pub mod ex {
     type Surface = softbuffer::Surface<OwnedDisplayHandle, Arc<Window>>;
 
     fn render_thread(
-        do_render: mpsc::Receiver<(Arc<Mutex<Surface>>, NonZeroU32, NonZeroU32)>,
+        do_render: mpsc::Receiver<(Arc<Mutex<Surface>>, PhysicalSize<u32>)>,
         done: mpsc::Sender<()>,
     ) {
         loop {
             tracing::info!("waiting for render...");
-            let Ok((surface, width, height)) = do_render.recv() else {
+            let Ok((surface, size)) = do_render.recv() else {
                 tracing::info!("main thread destroyed");
                 break;
             };
@@ -29,7 +29,7 @@ pub mod ex {
             // Perform the rendering.
             let mut surface = surface.lock().unwrap();
             tracing::info!("resizing...");
-            surface.resize(width, height).unwrap();
+            surface.resize(size.width, size.height).unwrap();
 
             let mut buffer = surface.buffer_mut().unwrap();
             for (x, y, pixel) in buffer.pixels_iter() {
@@ -93,13 +93,9 @@ pub mod ex {
 
                     let size = window.inner_size();
                     tracing::info!("got size: {size:?}");
-                    if let (Some(width), Some(height)) =
-                        (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                    {
-                        // Start the render and then finish it.
-                        start_render.send((surface.clone(), width, height)).unwrap();
-                        finish_render.recv().unwrap();
-                    }
+                    // Start the render and then finish it.
+                    start_render.send((surface.clone(), size)).unwrap();
+                    finish_render.recv().unwrap();
                 }
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {

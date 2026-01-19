@@ -74,9 +74,10 @@ pub(super) struct WaylandBuffer {
     map: MmapMut,
     pool: wl_shm_pool::WlShmPool,
     pool_size: i32,
-    buffer: wl_buffer::WlBuffer,
-    pub width: i32,
-    pub height: i32,
+    // width == 0 || height == 0 -> None
+    buffer: Option<wl_buffer::WlBuffer>,
+    width: i32,
+    height: i32,
     released: Arc<AtomicBool>,
     pub age: u8,
 }
@@ -91,18 +92,9 @@ impl WaylandBuffer {
         let _ = tempfile.set_len(pool_size as u64);
         let map = unsafe { map_file(&tempfile) };
 
-        // Create wayland shm pool and buffer
+        // Create wayland shm pool.
         let pool = shm.create_pool(tempfile.as_fd(), pool_size, qh, ());
         let released = Arc::new(AtomicBool::new(true));
-        let buffer = pool.create_buffer(
-            0,
-            width,
-            height,
-            width * 4,
-            wl_shm::Format::Xrgb8888,
-            qh,
-            released.clone(),
-        );
 
         Self {
             qh: qh.clone(),
@@ -110,7 +102,7 @@ impl WaylandBuffer {
             tempfile,
             pool,
             pool_size,
-            buffer,
+            buffer: None,
             width,
             height,
             released,
@@ -122,10 +114,12 @@ impl WaylandBuffer {
         // If size is the same, there's nothing to do
         if self.width != width || self.height != height {
             // Destroy old buffer
-            self.buffer.destroy();
+            if let Some(buffer) = &mut self.buffer {
+                buffer.destroy();
+            }
 
             // Grow pool, if needed
-            let size = ((width * height * 4) as u32).next_power_of_two() as i32;
+            let size = get_pool_size(width, height);
             if size > self.pool_size {
                 let _ = self.tempfile.set_len(size as u64);
                 self.pool.resize(size);
@@ -134,15 +128,19 @@ impl WaylandBuffer {
             }
 
             // Create buffer with correct size
-            self.buffer = self.pool.create_buffer(
-                0,
-                width,
-                height,
-                width * 4,
-                wl_shm::Format::Xrgb8888,
-                &self.qh,
-                self.released.clone(),
-            );
+            self.buffer = if width != 0 && height != 0 {
+                Some(self.pool.create_buffer(
+                    0,
+                    width,
+                    height,
+                    width * 4,
+                    wl_shm::Format::Xrgb8888,
+                    &self.qh,
+                    self.released.clone(),
+                ))
+            } else {
+                None
+            };
             self.width = width;
             self.height = height;
         }
@@ -150,7 +148,8 @@ impl WaylandBuffer {
 
     pub fn attach(&self, surface: &wl_surface::WlSurface) {
         self.released.store(false, Ordering::SeqCst);
-        surface.attach(Some(&self.buffer), 0, 0);
+        // Zero-sized
+        surface.attach(self.buffer.as_ref(), 0, 0);
     }
 
     pub fn released(&self) -> bool {
@@ -172,7 +171,9 @@ impl WaylandBuffer {
 
 impl Drop for WaylandBuffer {
     fn drop(&mut self) {
-        self.buffer.destroy();
+        if let Some(buffer) = &mut self.buffer {
+            buffer.destroy();
+        }
         self.pool.destroy();
     }
 }

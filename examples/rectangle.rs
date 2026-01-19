@@ -1,5 +1,4 @@
 use softbuffer::Buffer;
-use std::num::NonZeroU32;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -7,8 +6,8 @@ use winit::keyboard::{Key, NamedKey};
 mod util;
 
 fn redraw(buffer: &mut Buffer<'_>, flag: bool) {
-    let width = buffer.width().get();
-    let height = buffer.height().get();
+    let width = buffer.width();
+    let height = buffer.height();
     for (x, y, pixel) in buffer.pixels_iter() {
         *pixel = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
             0x00ffffff
@@ -55,12 +54,8 @@ fn main() {
                     return;
                 };
 
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    // Resize surface
-                    surface.resize(width, height).unwrap();
-                }
+                // Resize surface
+                surface.resize(size.width, size.height).unwrap();
             }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {

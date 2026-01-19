@@ -68,7 +68,6 @@ To run the Android-specific example on an Android phone: `cargo apk r --example 
 ## Example
 
 ```rust,no_run
-use std::num::NonZeroU32;
 use std::rc::Rc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -102,12 +101,7 @@ fn main() {
                     return;
                 };
                 let size = window.inner_size();
-                surface
-                    .resize(
-                        NonZeroU32::new(size.width).unwrap(),
-                        NonZeroU32::new(size.height).unwrap(),
-                    )
-                    .unwrap();
+                surface.resize(size.width, size.height).unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
                 for (x, y, pixel) in buffer.pixels_iter() {

@@ -16,7 +16,6 @@ mod util;
 
 use std::cell::Cell;
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
 use std::ops;
 use std::sync::Arc;
 
@@ -67,9 +66,9 @@ pub struct Rect {
     /// y coordinate of top left corner
     pub y: u32,
     /// width
-    pub width: NonZeroU32,
+    pub width: u32,
     /// height
-    pub height: NonZeroU32,
+    pub height: u32,
 }
 
 /// A surface for drawing to a window with software buffers.
@@ -111,7 +110,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// in the upper-left corner of the window. It is recommended in most production use cases
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
-    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
         self.surface_impl.resize(width, height)
     }
 
@@ -127,9 +126,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.fetch()
     }
 
-    /// Return a [`Buffer`] that the next frame should be rendered into. The size must
-    /// be set with [`Surface::resize`] first. The initial contents of the buffer may be zeroed, or
-    /// may contain a previous frame. Call [`Buffer::age`] to determine this.
+    /// Return a [`Buffer`] that the next frame should be rendered into.
+    ///
+    /// The buffer is initially empty, you'll want to set an appropriate size for it with
+    /// [`Surface::resize`].
+    ///
+    /// The initial contents of the buffer may be zeroed, or may contain a previous frame. Call
+    /// [`Buffer::age`] to determine this.
     ///
     /// ## Platform Dependent Behavior
     ///
@@ -209,10 +212,10 @@ pub struct Buffer<'a> {
 
 impl Buffer<'_> {
     /// The amount of pixels wide the buffer is.
-    pub fn width(&self) -> NonZeroU32 {
+    pub fn width(&self) -> u32 {
         let width = self.buffer_impl.width();
         debug_assert_eq!(
-            width.get() as usize * self.buffer_impl.height().get() as usize,
+            width as usize * self.buffer_impl.height() as usize,
             self.len(),
             "buffer must be sized correctly"
         );
@@ -220,10 +223,10 @@ impl Buffer<'_> {
     }
 
     /// The amount of pixels tall the buffer is.
-    pub fn height(&self) -> NonZeroU32 {
+    pub fn height(&self) -> u32 {
         let height = self.buffer_impl.height();
         debug_assert_eq!(
-            height.get() as usize * self.buffer_impl.width().get() as usize,
+            height as usize * self.buffer_impl.width() as usize,
             self.len(),
             "buffer must be sized correctly"
         );
@@ -326,11 +329,11 @@ impl Buffer<'_> {
     pub fn pixel_rows(
         &mut self,
     ) -> impl DoubleEndedIterator<Item = &mut [u32]> + ExactSizeIterator {
-        let width = self.width().get() as usize;
+        let width = self.width() as usize;
         let pixels = self.buffer_impl.pixels_mut();
         assert_eq!(pixels.len() % width, 0, "buffer must be multiple of width");
-        // NOTE: This won't panic because `width` is `NonZeroU32`
-        pixels.chunks_mut(width)
+        // Clamp width to be at least 1 - when the width is 0, the pixel buffer is empty.
+        pixels.chunks_mut(width.max(1))
     }
 
     /// Iterate over each pixel in the data.

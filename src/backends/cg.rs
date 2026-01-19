@@ -21,7 +21,6 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::mem::size_of;
-use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::ptr::{self, slice_from_raw_parts_mut, NonNull};
 
@@ -105,9 +104,9 @@ pub struct CGImpl<D, W> {
     observer: Retained<Observer>,
     color_space: CFRetained<CGColorSpace>,
     /// The width of the underlying buffer.
-    width: usize,
+    width: u32,
     /// The height of the underlying buffer.
-    height: usize,
+    height: u32,
     window_handle: W,
     _display: PhantomData<D>,
 }
@@ -228,20 +227,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         // Initialize color space here, to reduce work later on.
         let color_space = CGColorSpace::new_device_rgb().unwrap();
 
-        // Grab initial width and height from the layer (whose properties have just been initialized
-        // by the observer using `NSKeyValueObservingOptionInitial`).
-        let size = layer.bounds().size;
-        let scale_factor = layer.contentsScale();
-        let width = (size.width * scale_factor) as usize;
-        let height = (size.height * scale_factor) as usize;
-
         Ok(Self {
             layer: SendCALayer(layer),
             root_layer: SendCALayer(root_layer),
             observer,
             color_space,
-            width,
-            height,
+            width: 0,
+            height: 0,
             _display: PhantomData,
             window_handle: window_src,
         })
@@ -252,15 +244,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.width = width.get() as usize;
-        self.height = height.get() as usize;
+    fn resize(&mut self, width: u32, height: u32) -> Result<(), SoftBufferError> {
+        self.width = width;
+        self.height = height;
         Ok(())
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         Ok(BufferImpl {
-            buffer: util::PixelBuffer(vec![0; self.width * self.height]),
+            buffer: util::PixelBuffer(vec![0; self.width as usize * self.height as usize]),
             width: self.width,
             height: self.height,
             color_space: &self.color_space,
@@ -271,20 +263,20 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
 #[derive(Debug)]
 pub struct BufferImpl<'a> {
-    width: usize,
-    height: usize,
+    width: u32,
+    height: u32,
     color_space: &'a CGColorSpace,
     buffer: util::PixelBuffer,
     layer: &'a mut SendCALayer,
 }
 
 impl BufferInterface for BufferImpl<'_> {
-    fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.width as u32).unwrap()
+    fn width(&self) -> u32 {
+        self.width
     }
 
-    fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.height as u32).unwrap()
+    fn height(&self) -> u32 {
+        self.height
     }
 
     #[inline]
@@ -302,57 +294,65 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     fn present(self) -> Result<(), SoftBufferError> {
-        unsafe extern "C-unwind" fn release(
-            _info: *mut c_void,
-            data: NonNull<c_void>,
-            size: usize,
-        ) {
-            let data = data.cast::<u32>();
-            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<u32>());
-            // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
-            drop(unsafe { Box::from_raw(slice) })
-        }
-
-        let data_provider = {
-            let len = self.buffer.len() * size_of::<u32>();
-            let buffer: *mut [u32] = Box::into_raw(self.buffer.0.into_boxed_slice());
-            // Convert slice pointer to thin pointer.
-            let data_ptr = buffer.cast::<c_void>();
-
-            // SAFETY: The data pointer and length are valid.
-            // The info pointer can safely be NULL, we don't use it in the `release` callback.
-            unsafe {
-                CGDataProvider::with_data(ptr::null_mut(), data_ptr, len, Some(release)).unwrap()
+        let image = if !self.buffer.is_empty() {
+            unsafe extern "C-unwind" fn release(
+                _info: *mut c_void,
+                data: NonNull<c_void>,
+                size: usize,
+            ) {
+                let data = data.cast::<u32>();
+                let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<u32>());
+                // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
+                drop(unsafe { Box::from_raw(slice) })
             }
+
+            let data_provider = {
+                let len = self.buffer.len() * size_of::<u32>();
+                let buffer: *mut [u32] = Box::into_raw(self.buffer.0.into_boxed_slice());
+                // Convert slice pointer to thin pointer.
+                let data_ptr = buffer.cast::<c_void>();
+
+                // SAFETY: The data pointer and length are valid.
+                // The info pointer can safely be NULL, we don't use it in the `release` callback.
+                unsafe {
+                    CGDataProvider::with_data(ptr::null_mut(), data_ptr, len, Some(release))
+                        .unwrap()
+                }
+            };
+
+            // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
+            // `CGImageByteOrderInfo` and `CGImagePixelFormatInfo` (see e.g. `CGBitmapInfoMake`).
+            //
+            // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
+            let bitmap_info = CGBitmapInfo(
+                CGImageAlphaInfo::NoneSkipFirst.0
+                    | CGImageComponentInfo::Integer.0
+                    | CGImageByteOrderInfo::Order32Little.0
+                    | CGImagePixelFormatInfo::Packed.0,
+            );
+
+            let image = unsafe {
+                CGImage::new(
+                    self.width as usize,
+                    self.height as usize,
+                    8,
+                    32,
+                    self.width as usize * 4,
+                    Some(self.color_space),
+                    bitmap_info,
+                    Some(&data_provider),
+                    ptr::null(),
+                    false,
+                    CGColorRenderingIntent::RenderingIntentDefault,
+                )
+            }
+            .unwrap();
+
+            Some(image)
+        } else {
+            // Buffer is empty -> clear contents.
+            None
         };
-
-        // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
-        // `CGImageByteOrderInfo` and `CGImagePixelFormatInfo` (see e.g. `CGBitmapInfoMake`).
-        //
-        // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
-        let bitmap_info = CGBitmapInfo(
-            CGImageAlphaInfo::NoneSkipFirst.0
-                | CGImageComponentInfo::Integer.0
-                | CGImageByteOrderInfo::Order32Little.0
-                | CGImagePixelFormatInfo::Packed.0,
-        );
-
-        let image = unsafe {
-            CGImage::new(
-                self.width,
-                self.height,
-                8,
-                32,
-                self.width * 4,
-                Some(self.color_space),
-                bitmap_info,
-                Some(&data_provider),
-                ptr::null(),
-                false,
-                CGColorRenderingIntent::RenderingIntentDefault,
-            )
-        }
-        .unwrap();
 
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
@@ -360,8 +360,9 @@ impl BufferInterface for BufferImpl<'_> {
         CATransaction::begin();
         CATransaction::setDisableActions(true);
 
+        let contents = image.as_ref().map(|i| i.as_ref());
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
-        unsafe { self.layer.setContents(Some(image.as_ref())) };
+        unsafe { self.layer.setContents(contents) };
 
         CATransaction::commit();
         Ok(())

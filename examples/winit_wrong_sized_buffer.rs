@@ -1,4 +1,7 @@
-use std::num::NonZeroU32;
+//! A window with a surface that is 200 pixels less wide and 400 pixels less tall.
+//!
+//! This is useful for testing that zero-sized buffers work, as well as testing buffer vs. window
+//! size discrepancies in general.
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
@@ -14,11 +17,14 @@ fn main() {
     let app = util::WinitAppBuilder::with_init(
         |elwt| util::make_window(elwt, |w| w),
         move |_elwt, window| {
+            let size = window.inner_size();
+
             let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
-            // Intentionally set the size of the surface to something different than the size of the window.
-            surface
-                .resize(NonZeroU32::new(256).unwrap(), NonZeroU32::new(128).unwrap())
-                .unwrap();
+
+            let width = size.width.saturating_sub(200);
+            let height = size.height.saturating_sub(400);
+            tracing::info!("size initially at: {width}/{height}");
+            surface.resize(width, height).unwrap();
             surface
         },
     )
@@ -30,6 +36,17 @@ fn main() {
         }
 
         match event {
+            WindowEvent::Resized(size) => {
+                let Some(surface) = surface else {
+                    tracing::warn!("RedrawRequested fired before Resumed or after Suspended");
+                    return;
+                };
+
+                let width = size.width.saturating_sub(200);
+                let height = size.height.saturating_sub(400);
+                tracing::info!("resized to: {width}/{height}");
+                surface.resize(width, height).unwrap();
+            }
             WindowEvent::RedrawRequested => {
                 let Some(surface) = surface else {
                     tracing::warn!("RedrawRequested fired before Resumed or after Suspended");
@@ -43,6 +60,7 @@ fn main() {
                     let blue = (x * y) % 255;
                     *pixel = blue | (green << 8) | (red << 16);
                 }
+
                 buffer.present().unwrap();
             }
             WindowEvent::CloseRequested

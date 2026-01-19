@@ -3,7 +3,6 @@
 //! Note that this is quite slow, you probably don't want to do realtime CPU raytracing in practice.
 //!
 //! [Ray Tracing in One Weekend]: https://raytracing.github.io/books/RayTracingInOneWeekend.html
-use std::num::NonZeroU32;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey};
@@ -32,10 +31,7 @@ fn main() {
         move |_elwt, window| {
             let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
             surface
-                .resize(
-                    NonZeroU32::new(window.inner_size().width).unwrap(),
-                    NonZeroU32::new(window.inner_size().height).unwrap(),
-                )
+                .resize(window.inner_size().width, window.inner_size().height)
                 .unwrap();
             let game = Game::new();
             (surface, game)
@@ -53,11 +49,7 @@ fn main() {
                     return;
                 };
 
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    surface.resize(width, height).unwrap();
-                }
+                surface.resize(size.width, size.height).unwrap();
             }
             WindowEvent::RedrawRequested => {
                 let Some((surface, game)) = surface else {
