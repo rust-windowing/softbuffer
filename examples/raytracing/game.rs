@@ -108,13 +108,11 @@ impl Game {
         }
 
         // Upscale by `scale_factor`.
-        let width = buffer.width().get() as usize;
-        buffer.iter_mut().enumerate().for_each(|(i, pixel)| {
-            let y = i % width;
-            let x = i / width;
-            let y = (y as f32 / scale_factor) as usize;
+        let width = (buffer.width().get() as f32 / scale_factor) as usize;
+        buffer.pixels_iter().for_each(|(x, y, pixel)| {
             let x = (x as f32 / scale_factor) as usize;
-            if let Some(x) = pixels.get(x * (width as f32 / scale_factor) as usize + y) {
+            let y = (y as f32 / scale_factor) as usize;
+            if let Some(x) = pixels.get(x * width + y) {
                 *pixel = *x;
             }
         });
@@ -149,8 +147,7 @@ impl Game {
             },
         ];
 
-        let width = buffer.width().get();
-        for (y, row) in buffer.chunks_exact_mut(width as usize).enumerate() {
+        for (y, row) in buffer.pixel_rows().enumerate() {
             for rect in rects {
                 let rect_vertical =
                     (rect.top * scale_factor) as usize..(rect.bottom * scale_factor) as usize;

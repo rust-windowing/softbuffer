@@ -110,14 +110,12 @@ fn main() {
                     .unwrap();
 
                 let mut buffer = surface.buffer_mut().unwrap();
-                for index in 0..(buffer.width().get() * buffer.height().get()) {
-                    let y = index / buffer.width().get();
-                    let x = index % buffer.width().get();
+                for (x, y, pixel) in buffer.pixels_iter() {
                     let red = x % 255;
                     let green = y % 255;
                     let blue = (x * y) % 255;
 
-                    buffer[index as usize] = blue | (green << 8) | (red << 16);
+                    *pixel = blue | (green << 8) | (red << 16);
                 }
 
                 buffer.present().unwrap();
