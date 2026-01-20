@@ -289,6 +289,8 @@ impl Buffer<'_> {
 
     /// Presents buffer to the window, with damage regions.
     ///
+    /// Damage regions that fall outside the surface are ignored.
+    ///
     /// # Platform dependent behavior
     ///
     /// Supported on:
