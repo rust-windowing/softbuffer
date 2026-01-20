@@ -260,6 +260,8 @@ impl BufferInterface for BufferImpl<'_> {
             self.surface.damage(0, 0, i32::MAX, i32::MAX);
         } else {
             for rect in damage {
+                // Damage that falls outside the surface is ignored.
+                // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_surface
                 let x = rect.x.try_into().unwrap_or(i32::MAX);
                 let y = rect.y.try_into().unwrap_or(i32::MAX);
                 let width = rect.width.get().try_into().unwrap_or(i32::MAX);
