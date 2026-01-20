@@ -1,7 +1,7 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    Rect, SoftBufferError,
+    AlphaMode, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
@@ -81,6 +81,7 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
     surface: Option<wl_surface::WlSurface>,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
     size: Option<(NonZeroI32, NonZeroI32)>,
+    format: wl_shm::Format,
 
     /// The pointer to the window object.
     ///
@@ -128,7 +129,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        alpha_mode: AlphaMode,
+    ) -> Result<AlphaMode, SoftBufferError> {
         self.size = Some(
             (|| {
                 let width = NonZeroI32::try_from(width).ok()?;
@@ -137,7 +143,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             })()
             .ok_or(SoftBufferError::SizeOutOfRange { width, height })?,
         );
-        Ok(())
+        let (format, chosen_alpha_mode) = match alpha_mode {
+            AlphaMode::Opaque => (wl_shm::Format::Xrgb8888, AlphaMode::Opaque),
+            AlphaMode::PreMultiplied => (wl_shm::Format::Argb8888, AlphaMode::PreMultiplied),
+            AlphaMode::PostMultiplied => (wl_shm::Format::Argb8888, AlphaMode::PostMultiplied),
+        };
+        self.format = format;
+        Ok(chosen_alpha_mode)
     }
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
@@ -164,7 +176,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             }
 
             // Resize, if buffer isn't large enough
-            back.resize(width.get(), height.get());
+            back.configure(width.get(), height.get(), self.format);
         } else {
             // Allocate front and back buffer
             self.buffers = Some((
@@ -172,12 +184,14 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
                     &self.display.shm,
                     width.get(),
                     height.get(),
+                    self.format,
                     &self.display.qh,
                 ),
                 WaylandBuffer::new(
                     &self.display.shm,
                     width.get(),
                     height.get(),
+                    self.format,
                     &self.display.qh,
                 ),
             ));
