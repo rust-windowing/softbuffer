@@ -67,9 +67,12 @@ impl Buffer {
                 biClrUsed: 0,
                 biClrImportant: 0,
             },
+            // debug_assertions -> RGBX order.
+            // not(debug_assertions) -> BGRX order.
             bmi_colors: [
                 Gdi::RGBQUAD {
-                    rgbRed: 0xff,
+                    rgbRed: if cfg!(debug_assertions) { 0xff } else { 0 },
+                    rgbBlue: if cfg!(debug_assertions) { 0 } else { 0xff },
                     ..ZERO_QUAD
                 },
                 Gdi::RGBQUAD {
@@ -77,7 +80,8 @@ impl Buffer {
                     ..ZERO_QUAD
                 },
                 Gdi::RGBQUAD {
-                    rgbBlue: 0xff,
+                    rgbBlue: if cfg!(debug_assertions) { 0xff } else { 0 },
+                    rgbRed: if cfg!(debug_assertions) { 0 } else { 0xff },
                     ..ZERO_QUAD
                 },
             ],

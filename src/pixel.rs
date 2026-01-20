@@ -60,10 +60,20 @@
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct Pixel {
     #[cfg_attr(docsrs, doc(auto_cfg = false))]
-    #[cfg(any(doc, target_family = "wasm", target_os = "android"))]
+    #[cfg(any(
+        doc,
+        target_family = "wasm",
+        target_os = "android",
+        all(target_os = "windows", debug_assertions),
+    ))]
     /// The red component.
     pub r: u8,
-    #[cfg(not(any(doc, target_family = "wasm", target_os = "android")))]
+    #[cfg(not(any(
+        doc,
+        target_family = "wasm",
+        target_os = "android",
+        all(target_os = "windows", debug_assertions),
+    )))]
     /// The blue component.
     pub b: u8,
 
@@ -71,10 +81,20 @@ pub struct Pixel {
     pub g: u8,
 
     #[cfg_attr(docsrs, doc(auto_cfg = false))]
-    #[cfg(any(doc, target_family = "wasm", target_os = "android"))]
+    #[cfg(any(
+        doc,
+        target_family = "wasm",
+        target_os = "android",
+        all(target_os = "windows", debug_assertions),
+    ))]
     /// The blue component.
     pub b: u8,
-    #[cfg(not(any(doc, target_family = "wasm", target_os = "android")))]
+    #[cfg(not(any(
+        doc,
+        target_family = "wasm",
+        target_os = "android",
+        all(target_os = "windows", debug_assertions),
+    )))]
     /// The red component.
     pub r: u8,
 
