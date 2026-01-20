@@ -40,12 +40,18 @@ x11 = [
     "winit/x11",
 ]
 x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
+f16 = ["half"]
 
 [dependencies]
 raw_window_handle = { package = "raw-window-handle", version = "0.6", features = [
     "std",
 ] }
 tracing = { version = "0.1.41", default-features = false }
+
+# For f16 support in pixel conversions.
+# TODO: Use standard library's f16 once stable:
+# https://github.com/rust-lang/rust/issues/116909
+half = { version = "2.7.1", optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 bytemuck = "1.12.3"

@@ -10,6 +10,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::backend_interface::*;
+use crate::convert::FALLBACK_FORMAT;
 use crate::error::{InitError, SwResultExt};
 use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
 use std::marker::PhantomData;
@@ -231,6 +232,8 @@ impl SurfaceExtWeb for crate::Surface<NoDisplayHandle, NoWindowHandle> {
         let imple = crate::SurfaceDispatch::Web(WebImpl::from_canvas(canvas, NoWindowHandle(()))?);
 
         Ok(Self {
+            pixel_format: FALLBACK_FORMAT,
+            fallback_buffer: None,
             surface_impl: Box::new(imple),
             _marker: PhantomData,
         })
@@ -243,6 +246,8 @@ impl SurfaceExtWeb for crate::Surface<NoDisplayHandle, NoWindowHandle> {
         )?);
 
         Ok(Self {
+            pixel_format: FALLBACK_FORMAT,
+            fallback_buffer: None,
             surface_impl: Box::new(imple),
             _marker: PhantomData,
         })

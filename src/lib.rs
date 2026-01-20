@@ -7,6 +7,8 @@
 extern crate core;
 
 mod backend_dispatch;
+mod convert;
+mod format;
 use backend_dispatch::*;
 mod backend_interface;
 use backend_interface::*;
@@ -18,6 +20,10 @@ use std::cell::Cell;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+
+use crate::convert::FALLBACK_FORMAT;
+
+pub use self::format::PixelFormat;
 
 use error::InitError;
 pub use error::SoftBufferError;
@@ -74,6 +80,12 @@ pub struct Rect {
 /// A surface for drawing to a window with software buffers.
 #[derive(Debug)]
 pub struct Surface<D, W> {
+    alpha_mode: AlphaMode,
+    pixel_format: PixelFormat,
+    /// A buffer that is used when:
+    /// `!supported_alpha_mode.contains(alpha_mode)`.
+    /// or `!supported_formats.contains(pixel_format)`.
+    fallback_buffer: Option<Vec<u8>>,
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch<D, W>>,
     _marker: PhantomData<Cell<()>>,
@@ -84,6 +96,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
         match SurfaceDispatch::new(window, &context.context_impl) {
             Ok(surface_dispatch) => Ok(Self {
+                pixel_format: FALLBACK_FORMAT,
+                fallback_buffer: None,
                 surface_impl: Box::new(surface_dispatch),
                 _marker: PhantomData,
             }),
@@ -104,6 +118,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.window()
     }
 
+    /// The current alpha mode of the surface.
+    pub fn alpha_mode(&self) -> AlphaMode {
+        self.surface_impl.alpha_mode()
+    }
+
     /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
     ///
     /// If the size of the buffer does not match the size of the window, the buffer is drawn
@@ -111,7 +130,39 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.surface_impl.resize(width, height)
+        self.configure(width, height, self.pixel_format, self.alpha_mode)
+    }
+
+    pub fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        pixel_format: PixelFormat,
+        alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
+        // TODO: Do we really want this optimization? And if we do, should we clear the buffers
+        // here too, for consistency / more predictability?
+        if self.width == width && self.height == height && self.pixel_format == pixel_format {
+            return Ok(());
+        }
+
+        if let Some(byte_stride) = self.surface_impl.configure(width, height, pixel_format)? {
+            self.byte_stride = byte_stride;
+            self.fallback_buffer = None;
+        } else {
+            // Needs fallback buffer
+            let bit_width = width as usize * pixel_format.bits_per_pixel() as usize;
+            let byte_stride = bit_width.next_multiple_of(32) / 8;
+            self.byte_stride = byte_stride as u32;
+            self.fallback_buffer = Some(vec![0x00; byte_stride * height as usize]);
+        }
+
+        // We successfully configured the buffer.
+        self.width = width;
+        self.height = height;
+        self.pixel_format = pixel_format;
+
+        Ok(())
     }
 
     /// Copies the window contents into a buffer.
@@ -421,6 +472,72 @@ impl Buffer<'_> {
                 .enumerate()
                 .map(move |(x, pixel)| (x as u32, y as u32, pixel))
         })
+    }
+}
+
+/// Specifies how the alpha channel of the surface should be handled by the compositor.
+///
+/// Whether this has an effect is dependent on whether [the pixel format](crate::Format) has an
+/// alpha component.
+///
+/// See [the WhatWG spec][whatwg-premultiplied] for a good description of the difference between
+/// premultiplied and postmultiplied alpha.
+///
+/// [whatwg-premultiplied]: https://html.spec.whatwg.org/multipage/canvas.html#premultiplied-alpha-and-the-2d-rendering-context
+#[doc(alias = "Transparency")]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+pub enum AlphaMode {
+    /// The alpha channel is ignored.
+    ///
+    /// # Platform-specific
+    ///
+    /// This requires a copy on Web.
+    #[default]
+    Opaque,
+    /// The non-alpha channels are expected to already have been multiplied by the alpha channel.
+    ///
+    /// # Platform-specific
+    ///
+    /// This requires a copy on Web.
+    PreMultiplied,
+    /// The non-alpha channels are not expected to already be multiplied by the alpha channel;
+    /// instead, the compositor will multiply the non-alpha channels by the alpha channel during
+    /// compositing.
+    ///
+    /// Also known as "straight alpha".
+    ///
+    /// # Platform-specific
+    ///
+    /// This is unsupported on Wayland (TODO: And others?), so there Softbuffer creates a separate
+    /// buffer that is used later on for the conversion.
+    ///
+    /// Web: Works great.
+    #[doc(alias = "Straight")]
+    PostMultiplied,
+}
+
+/// Convenience helpers.
+impl AlphaMode {
+    /// Check if this is [`AlphaMode::Opaque`].
+    pub fn is_opaque(self) -> bool {
+        matches!(self, Self::Opaque)
+    }
+
+    /// Check if this is [`AlphaMode::PreMultiplied`].
+    pub fn is_pre_multiplied(self) -> bool {
+        matches!(self, Self::PreMultiplied)
+    }
+
+    /// Check if this is [`AlphaMode::PostMultiplied`].
+    pub fn is_post_multiplied(self) -> bool {
+        matches!(self, Self::PostMultiplied)
+    }
+
+    /// Whether the alpha mode allows the surface to be transparent.
+    ///
+    /// This is true for pre-multiplied and post-multiplied alpha modes.
+    pub fn has_transparency(self) -> bool {
+        !self.is_opaque()
     }
 }
 
