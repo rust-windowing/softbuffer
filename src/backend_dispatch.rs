@@ -185,15 +185,6 @@ macro_rules! make_dispatch {
                 }
             }
 
-            fn present(self) -> Result<(), SoftBufferError> {
-                match self {
-                    $(
-                        $(#[$attr])*
-                        Self::$name(inner) => inner.present(),
-                    )*
-                }
-            }
-
             fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
                 match self {
                     $(

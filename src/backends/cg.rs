@@ -296,7 +296,7 @@ impl BufferInterface for BufferImpl<'_> {
         0
     }
 
-    fn present(self) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
         unsafe extern "C-unwind" fn release(
             _info: *mut c_void,
             data: NonNull<c_void>,
@@ -360,10 +360,6 @@ impl BufferInterface for BufferImpl<'_> {
 
         CATransaction::commit();
         Ok(())
-    }
-
-    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        self.present()
     }
 }
 

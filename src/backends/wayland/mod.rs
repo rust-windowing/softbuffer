@@ -280,17 +280,6 @@ impl BufferInterface for BufferImpl<'_> {
 
         Ok(())
     }
-
-    fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = (self.width, self.height);
-        self.present_with_damage(&[Rect {
-            x: 0,
-            y: 0,
-            // We know width/height will be non-negative and non-zero.
-            width: (width as u32).try_into().unwrap(),
-            height: (height as u32).try_into().unwrap(),
-        }])
-    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {

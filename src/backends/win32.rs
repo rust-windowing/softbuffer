@@ -271,17 +271,6 @@ impl BufferInterface for BufferImpl<'_> {
         }
     }
 
-    fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = (self.buffer.width, self.buffer.height);
-        self.present_with_damage(&[Rect {
-            x: 0,
-            y: 0,
-            // We know width/height will be non-negative
-            width: width.try_into().unwrap(),
-            height: height.try_into().unwrap(),
-        }])
-    }
-
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         unsafe {
             for rect in damage.iter().copied() {

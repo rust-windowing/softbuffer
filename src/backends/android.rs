@@ -142,7 +142,17 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     // TODO: This function is pretty slow this way
-    fn present(mut self) -> Result<(), SoftBufferError> {
+    fn present_with_damage(mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        // TODO: Android requires the damage rect _at lock time_
+        // Since we're faking the backing buffer _anyway_, we could even fake the surface lock
+        // and lock it here (if it doesn't influence timings).
+        //
+        // Android seems to do this because the region can be expanded by the
+        // system, requesting the user to actually redraw a larger region.
+        // It's unclear if/when this is used, or if corruption/artifacts occur
+        // when the enlarged damage region is not re-rendered?
+        let _ = damage;
+
         let input_lines = self.buffer.chunks(self.native_window_buffer.width());
         for (output, input) in self
             .native_window_buffer
@@ -164,12 +174,5 @@ impl BufferInterface for BufferImpl<'_> {
             }
         }
         Ok(())
-    }
-
-    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        // TODO: Android requires the damage rect _at lock time_
-        // Since we're faking the backing buffer _anyway_, we could even fake the surface lock
-        // and lock it here (if it doesn't influence timings).
-        self.present()
     }
 }
