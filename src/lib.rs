@@ -272,8 +272,24 @@ impl Buffer<'_> {
     }
 }
 
-/// Pixel helper accessors.
+/// Helper methods for writing to the buffer as RGBA pixel data.
 impl Buffer<'_> {
+    /// Get a mutable reference to the buffer's pixels.
+    ///
+    /// The size of the returned slice is `buffer.width() * buffer.height()`.
+    ///
+    /// # Examples
+    ///
+    /// Clear the buffer with red.
+    ///
+    /// ```no_run
+    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// buffer.pixels().fill(0x00ff0000);
+    /// ```
+    pub fn pixels(&mut self) -> &mut [u32] {
+        self.buffer_impl.pixels_mut()
+    }
+
     /// Iterate over each row of pixels.
     ///
     /// Each slice returned from the iterator has a length of `buffer.width()`.
@@ -327,7 +343,7 @@ impl Buffer<'_> {
         &mut self,
     ) -> impl DoubleEndedIterator<Item = &mut [u32]> + ExactSizeIterator {
         let width = self.width().get() as usize;
-        let pixels = self.buffer_impl.pixels_mut();
+        let pixels = self.pixels();
         assert_eq!(pixels.len() % width, 0, "buffer must be multiple of width");
         // NOTE: This won't panic because `width` is `NonZeroU32`
         pixels.chunks_mut(width)
