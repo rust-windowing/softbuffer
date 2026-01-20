@@ -377,17 +377,6 @@ impl BufferInterface for BufferImpl<'_> {
 
         Ok(())
     }
-
-    #[inline]
-    fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = self.size;
-        self.present_with_damage(&[crate::Rect {
-            x: 0,
-            y: 0,
-            width,
-            height,
-        }])
-    }
 }
 
 impl SharedBuffer {

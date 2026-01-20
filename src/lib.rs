@@ -276,8 +276,15 @@ impl Buffer<'_> {
     ///
     /// If the caller wishes to synchronize other surface/window changes, such requests must be sent to the
     /// Wayland compositor before calling this function.
+    #[inline]
     pub fn present(self) -> Result<(), SoftBufferError> {
-        self.buffer_impl.present()
+        // Damage the entire buffer.
+        self.present_with_damage(&[Rect {
+            x: 0,
+            y: 0,
+            width: NonZeroU32::MAX,
+            height: NonZeroU32::MAX,
+        }])
     }
 
     /// Presents buffer to the window, with damage regions.

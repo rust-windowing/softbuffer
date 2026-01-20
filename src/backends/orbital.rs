@@ -176,7 +176,7 @@ impl BufferInterface for BufferImpl<'_> {
         }
     }
 
-    fn present(self) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
         match self.pixels {
             Pixels::Mapping(mapping) => {
                 drop(mapping);
@@ -189,10 +189,6 @@ impl BufferInterface for BufferImpl<'_> {
         }
 
         Ok(())
-    }
-
-    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        self.present()
     }
 }
 

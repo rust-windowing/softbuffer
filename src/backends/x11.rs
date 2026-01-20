@@ -511,18 +511,6 @@ impl BufferInterface for BufferImpl<'_> {
 
         Ok(())
     }
-
-    fn present(self) -> Result<(), SoftBufferError> {
-        let (width, height) = self
-            .size
-            .expect("Must set size of surface before calling `present()`");
-        self.present_with_damage(&[Rect {
-            x: 0,
-            y: 0,
-            width: width.into(),
-            height: height.into(),
-        }])
-    }
 }
 
 impl Buffer {
