@@ -43,6 +43,22 @@ pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
     })
 }
 
+/// Clamp the damage rectangle to be within the given bounds.
+pub(crate) fn clamp_rect(rect: Rect, width: NonZeroU32, height: NonZeroU32) -> Rect {
+    // The positions of the edges of the rectangle.
+    let left = rect.x.min(width.get());
+    let top = rect.y.min(height.get());
+    let right = rect.x.saturating_add(rect.width.get()).min(width.get());
+    let bottom = rect.y.saturating_add(rect.height.get()).min(height.get());
+
+    Rect {
+        x: left,
+        y: top,
+        width: NonZeroU32::new(right - left).expect("rect ended up being zero-sized"),
+        height: NonZeroU32::new(bottom - top).expect("rect ended up being zero-sized"),
+    }
+}
+
 /// A wrapper around a `Vec` of pixels that doesn't print the whole buffer on `Debug`.
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub(crate) struct PixelBuffer(pub Vec<u32>);

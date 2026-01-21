@@ -469,6 +469,11 @@ impl BufferInterface for BufferImpl<'_> {
                     damage
                         .iter()
                         .try_for_each(|rect| {
+                            let rect = util::clamp_rect(
+                                *rect,
+                                surface_width.into(),
+                                surface_height.into(),
+                            );
                             let src_x = util::to_u16_saturating(rect.x);
                             let src_y = util::to_u16_saturating(rect.y);
                             let dst_x = util::to_i16_saturating(rect.x);
@@ -482,12 +487,12 @@ impl BufferInterface for BufferImpl<'_> {
                                     self.gc,
                                     surface_width.get(),
                                     surface_height.get(),
-                                    src_x.min(surface_width.get()),
-                                    src_y.min(surface_height.get()),
-                                    width.min(surface_width.get()),
-                                    height.min(surface_height.get()),
-                                    dst_x.min(surface_width.get() as i16),
-                                    dst_y.min(surface_height.get() as i16),
+                                    src_x,
+                                    src_y,
+                                    width,
+                                    height,
+                                    dst_x,
+                                    dst_y,
                                     self.depth,
                                     xproto::ImageFormat::Z_PIXMAP.into(),
                                     false,

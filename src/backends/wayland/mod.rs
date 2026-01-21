@@ -260,7 +260,8 @@ impl BufferInterface for BufferImpl<'_> {
             self.surface.damage(0, 0, i32::MAX, i32::MAX);
         } else {
             for rect in damage {
-                // Damage that falls outside the surface is ignored.
+                // Damage that falls outside the surface is ignored, so we don't need to clamp the
+                // rect manually.
                 // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_surface
                 let x = util::to_i32_saturating(rect.x);
                 let y = util::to_i32_saturating(rect.y);
