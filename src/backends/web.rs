@@ -337,7 +337,7 @@ impl BufferInterface for BufferImpl<'_> {
             .expect("Must set size of surface before calling `present_with_damage()`");
 
         let union_damage = if let Some(rect) = util::union_damage(damage) {
-            rect
+            util::clamp_rect(rect, buffer_width, buffer_height)
         } else {
             return Ok(());
         };
@@ -359,9 +359,7 @@ impl BufferInterface for BufferImpl<'_> {
 
         debug_assert_eq!(
             bitmap.len(),
-            union_damage.width.get().min(buffer_width.get()) as usize
-                * union_damage.height.get().min(buffer_height.get()) as usize
-                * 4
+            union_damage.width.get() as usize * union_damage.height.get() as usize * 4
         );
 
         #[cfg(target_feature = "atomics")]
@@ -384,29 +382,31 @@ impl BufferInterface for BufferImpl<'_> {
             let array = Uint8Array::new_with_length(bitmap.len() as u32);
             array.copy_from(&bitmap);
             let array = Uint8ClampedArray::new(&array);
-            ImageDataExt::new(array, union_damage.width.get().min(buffer_width.get()))
+            ImageDataExt::new(array, union_damage.width.get())
                 .map(JsValue::from)
                 .map(ImageData::unchecked_from_js)
         };
         #[cfg(not(target_feature = "atomics"))]
         let result = ImageData::new_with_u8_clamped_array(
             wasm_bindgen::Clamped(&bitmap),
-            union_damage.width.get().min(buffer_width.get()),
+            union_damage.width.get(),
         );
         // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data = result.unwrap();
 
         for rect in damage {
+            let rect = util::clamp_rect(*rect, buffer_width, buffer_height);
+
             // This can only throw an error if `data` is detached, which is impossible.
             self.canvas
                 .put_image_data(
                     &image_data,
-                    union_damage.x.min(buffer_width.get()).into(),
-                    union_damage.y.min(buffer_height.get()).into(),
+                    union_damage.x.into(),
+                    union_damage.y.into(),
                     (rect.x - union_damage.x).into(),
                     (rect.y - union_damage.y).into(),
-                    rect.width.get().min(buffer_width.get()).into(),
-                    rect.height.get().min(buffer_height.get()).into(),
+                    rect.width.get().into(),
+                    rect.height.get().into(),
                 )
                 .unwrap();
         }

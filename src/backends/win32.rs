@@ -273,7 +273,12 @@ impl BufferInterface for BufferImpl<'_> {
 
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         unsafe {
-            for rect in damage.iter().copied() {
+            for rect in damage {
+                let rect = util::clamp_rect(
+                    *rect,
+                    self.buffer.width.try_into().unwrap(),
+                    self.buffer.height.try_into().unwrap(),
+                );
                 let x = util::to_i32_saturating(rect.x);
                 let y = util::to_i32_saturating(rect.y);
                 let width = util::to_i32_saturating(rect.width.get());
@@ -281,13 +286,13 @@ impl BufferInterface for BufferImpl<'_> {
 
                 Gdi::BitBlt(
                     self.dc.0,
-                    x.min(self.buffer.width.get()),
-                    y.min(self.buffer.height.get()),
-                    width.min(self.buffer.width.get()),
-                    height.min(self.buffer.height.get()),
+                    x,
+                    y,
+                    width,
+                    height,
                     self.buffer.dc,
-                    x.min(self.buffer.width.get()),
-                    y.min(self.buffer.height.get()),
+                    x,
+                    y,
                     Gdi::SRCCOPY,
                 );
             }
