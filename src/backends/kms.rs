@@ -13,8 +13,10 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, Raw
 
 use std::collections::HashSet;
 use std::fmt;
+use std::mem::size_of;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
+use std::slice;
 use std::sync::Arc;
 
 use crate::backend_interface::*;
@@ -316,7 +318,12 @@ impl BufferInterface for BufferImpl<'_> {
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [u32] {
-        bytemuck::cast_slice_mut(self.mapping.as_mut())
+        let ptr = self.mapping.as_mut_ptr().cast::<u32>();
+        let len = self.mapping.len() / size_of::<u32>();
+        debug_assert_eq!(self.mapping.len() % size_of::<u32>(), 0);
+        // SAFETY: `&mut [u8]` can be reinterpreted as `&mut [u32]`, assuming that the allocation
+        // is aligned to at least a multiple of 4 bytes.
+        unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
 
     #[inline]

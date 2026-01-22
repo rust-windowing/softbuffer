@@ -21,7 +21,8 @@ use std::{
     collections::HashSet,
     fmt,
     fs::File,
-    io, mem,
+    io,
+    mem::{self, size_of},
     num::{NonZeroU16, NonZeroU32},
     ptr::{null_mut, NonNull},
     slice,
@@ -383,8 +384,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             .swbuf_err("Failed to fetch image from window")?;
 
         if reply.depth == self.depth && reply.visual == self.visual_id {
-            let mut out = vec![0u32; reply.data.len() / 4];
-            bytemuck::cast_slice_mut::<u32, u8>(&mut out).copy_from_slice(&reply.data);
+            let mut out = vec![0; reply.data.len() / size_of::<u32>()];
+            // SAFETY: `u32` can be re-interpreted as `[u8; 4]`.
+            let out_u8s = unsafe {
+                slice::from_raw_parts_mut(
+                    out.as_mut_ptr().cast::<u8>(),
+                    out.len() * size_of::<u32>(),
+                )
+            };
+            out_u8s.copy_from_slice(&reply.data);
             Ok(out)
         } else {
             Err(SoftBufferError::PlatformError(
@@ -443,6 +451,11 @@ impl BufferInterface for BufferImpl<'_> {
                 // This is a suboptimal strategy, raise a stink in the debug logs.
                 tracing::debug!("Falling back to non-SHM method for window drawing.");
 
+                // SAFETY: `u32` can be re-interpreted as `[u8; 4]`.
+                let data = unsafe {
+                    slice::from_raw_parts(wire.as_ptr().cast::<u8>(), wire.len() * size_of::<u32>())
+                };
+
                 self.connection
                     .put_image(
                         xproto::ImageFormat::Z_PIXMAP,
@@ -454,7 +467,7 @@ impl BufferInterface for BufferImpl<'_> {
                         0,
                         0,
                         self.depth,
-                        bytemuck::cast_slice(wire),
+                        data,
                     )
                     .map(|c| c.ignore_error())
                     .push_err()
@@ -598,7 +611,14 @@ impl ShmBuffer {
                 let buffer_size = seg.buffer_size();
 
                 // SAFETY: No other code should be able to access the segment.
-                bytemuck::cast_slice_mut(unsafe { &mut seg.as_mut()[..buffer_size] })
+                let segment = unsafe { &mut seg.as_mut()[..buffer_size] };
+
+                let ptr = segment.as_mut_ptr().cast::<u32>();
+                let len = segment.len() / size_of::<u32>();
+                debug_assert_eq!(segment.len() % size_of::<u32>(), 0);
+                // SAFETY: The segment buffer is a multiple of `u32`, and we assume that the
+                // memmap allocation is aligned to at least a multiple of 4 bytes.
+                unsafe { slice::from_raw_parts_mut(ptr, len) }
             }
             None => {
                 // Nothing has been allocated yet.
