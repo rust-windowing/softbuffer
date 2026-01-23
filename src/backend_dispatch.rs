@@ -1,6 +1,6 @@
 //! Implements `buffer_interface::*` traits for enums dispatching to backends
 
-use crate::{backend_interface::*, backends, InitError, Pixel, Rect, SoftBufferError};
+use crate::{backend_interface::*, backends, AlphaMode, InitError, Pixel, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::fmt;
@@ -99,20 +99,30 @@ macro_rules! make_dispatch {
                 }
             }
 
-            fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+            #[inline]
+            fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => inner.resize(width, height),
+                        Self::$name(inner) => inner.supports_alpha_mode(alpha_mode),
                     )*
                 }
             }
 
-            fn next_buffer(&mut self) -> Result<BufferDispatch<'_>, SoftBufferError> {
+            fn configure(&mut self, width: NonZeroU32, height: NonZeroU32, alpha_mode: AlphaMode) -> Result<(), SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.next_buffer()?)),
+                        Self::$name(inner) => inner.configure(width, height, alpha_mode),
+                    )*
+                }
+            }
+
+            fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferDispatch<'_>, SoftBufferError> {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.next_buffer(alpha_mode)?)),
                     )*
                 }
             }
