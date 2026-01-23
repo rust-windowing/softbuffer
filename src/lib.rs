@@ -9,6 +9,7 @@ extern crate core;
 mod backend_dispatch;
 mod backend_interface;
 mod backends;
+mod convert;
 mod error;
 mod format;
 mod pixel;
@@ -566,6 +567,76 @@ impl Buffer<'_> {
                 .enumerate()
                 .map(move |(x, pixel)| (x as u32, y as u32, pixel))
         })
+    }
+
+    /// Convert the alpha mode of the buffer in place.
+    ///
+    /// # Examples
+    ///
+    /// Write to the buffer as-if it was [`AlphaMode::Ignored`], and convert afterwards if
+    /// necessary.
+    ///
+    /// ```no_run
+    /// # let buffer: Buffer<'_> = unimplemented!();
+    ///
+    /// let needs_alpha_conversion = surface.supports_alpha_mode(AlphaMode::Ignored) {
+    ///     surface.set_alpha_mode(AlphaMode::Ignored);
+    ///     false
+    /// } else {
+    ///     surface.set_alpha_mode(AlphaMode::Opaque);
+    ///     true
+    /// };
+    ///
+    /// for row in buffer.pixel_rows() {
+    ///     for pixel in row {
+    ///         // Write red pixels with an arbitrary alpha value.
+    ///         pixel = Pixel::new_rgba(0xff, 0x00, 0x00, 0x7f);
+    ///     }
+    /// }
+    ///
+    /// if needs_alpha_conversion {
+    ///     buffer.make_pixels_opaque();
+    /// }
+    ///
+    /// // Alpha value is ignored, either by compositor () or by us above.
+    /// buffer.present();
+    /// ```
+    #[inline]
+    pub fn make_pixels_opaque(&mut self) {
+        for row in self.pixel_rows() {
+            for pixel in row {
+                // TODO: SIMD-optimize this somehow? Or maybe autovectorization is good enough.
+                pixel.a = 0xff;
+            }
+        }
+    }
+
+    /// Multiply pixel color components by the alpha component.
+    #[inline]
+    pub fn premultiply_pixels(&mut self) {
+        for row in self.pixel_rows() {
+            for pixel in row {
+                // TODO: SIMD-optimize this somehow? Or maybe autovectorization is good enough.
+                let a = pixel.a;
+                pixel.r = convert::premultiply(pixel.r, a);
+                pixel.g = convert::premultiply(pixel.g, a);
+                pixel.b = convert::premultiply(pixel.b, a);
+            }
+        }
+    }
+
+    /// Divide pixel color components by the alpha component.
+    #[inline]
+    pub fn unpremultiply_pixels(&mut self) {
+        for row in self.pixel_rows() {
+            for pixel in row {
+                // TODO: SIMD-optimize this somehow? Or maybe autovectorization is good enough.
+                let a = pixel.a;
+                pixel.r = convert::unpremultiply(pixel.r, a);
+                pixel.g = convert::unpremultiply(pixel.g, a);
+                pixel.b = convert::unpremultiply(pixel.b, a);
+            }
+        }
     }
 }
 
