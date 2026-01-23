@@ -1,7 +1,7 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    util, Pixel, Rect, SoftBufferError,
+    util, AlphaMode, Pixel, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
@@ -81,7 +81,6 @@ pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
     surface: Option<wl_surface::WlSurface>,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
     size: Option<(NonZeroI32, NonZeroI32)>,
-
     /// The pointer to the window object.
     ///
     /// This has to be dropped *after* the `surface` field, because the `surface` field implicitly
@@ -128,7 +127,20 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    #[inline]
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        matches!(
+            alpha_mode,
+            AlphaMode::Opaque | AlphaMode::Ignored | AlphaMode::Premultiplied
+        )
+    }
+
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        _alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
         self.size = Some(
             (|| {
                 let width = NonZeroI32::try_from(width).ok()?;
@@ -140,7 +152,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn buffer_mut(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+        // This is documented as `0xXXRRGGBB` on a little-endian machine, which means a byte
+        // order of `[B, G, R, X]`.
+        let format = match alpha_mode {
+            AlphaMode::Opaque | AlphaMode::Ignored => wl_shm::Format::Xrgb8888,
+            AlphaMode::Premultiplied => wl_shm::Format::Argb8888,
+            _ => unimplemented!(),
+        };
+
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `buffer_mut()`");
@@ -163,8 +183,8 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
                 }
             }
 
-            // Resize, if buffer isn't large enough
-            back.resize(width.get(), height.get());
+            // Resize if buffer isn't large enough.
+            back.configure(width.get(), height.get(), format);
         } else {
             // Allocate front and back buffer
             self.buffers = Some((
@@ -172,12 +192,14 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
                     &self.display.shm,
                     width.get(),
                     height.get(),
+                    format,
                     &self.display.qh,
                 ),
                 WaylandBuffer::new(
                     &self.display.shm,
                     width.get(),
                     height.get(),
+                    format,
                     &self.display.qh,
                 ),
             ));

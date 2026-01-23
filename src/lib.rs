@@ -79,6 +79,8 @@ pub struct Rect {
 pub struct Surface<D, W> {
     /// This is boxed so that `Surface` is the same size on every platform.
     surface_impl: Box<SurfaceDispatch<D, W>>,
+    /// The current alpha mode that the surface is configured with.
+    alpha_mode: AlphaMode,
     _marker: PhantomData<Cell<()>>,
 }
 
@@ -87,6 +89,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
         match SurfaceDispatch::new(window, &context.context_impl) {
             Ok(surface_dispatch) => Ok(Self {
+                alpha_mode: AlphaMode::default(),
                 surface_impl: Box::new(surface_dispatch),
                 _marker: PhantomData,
             }),
@@ -107,6 +110,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.window()
     }
 
+    /// The current alpha mode of the surface.
+    pub fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
+    }
+
     /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
     ///
     /// If the size of the buffer does not match the size of the window, the buffer is drawn
@@ -114,14 +122,42 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+        self.configure(width, height, self.alpha_mode())
+    }
+
+    /// Reconfigure the surface's properties.
+    // TODO(madsmtm): What are the exact semantics of configuring? Should it always re-create the
+    // buffers, or should that only be done in `buffer_mut` if properties changed?
+    pub fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
         if u32::MAX / 4 < width.get() {
             // Stride would be too large.
             return Err(SoftBufferError::SizeOutOfRange { width, height });
         }
 
-        self.surface_impl.resize(width, height)?;
+        if !self.supports_alpha_mode(alpha_mode) {
+            return Err(SoftBufferError::UnsupportedAlphaMode { alpha_mode });
+        }
+
+        self.surface_impl.configure(width, height, alpha_mode)?;
+
+        self.alpha_mode = alpha_mode;
 
         Ok(())
+    }
+
+    /// Query if the given alpha mode is supported.
+    #[inline]
+    pub fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        // TODO: Once we get pixel formats, replace this with something like:
+        // fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat];
+        //
+        // And return an empty list from that if the alpha mode isn't supported.
+        self.surface_impl.supports_alpha_mode(alpha_mode)
     }
 
     /// Copies the window contents into a buffer.
@@ -146,7 +182,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
     pub fn buffer_mut(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
-        let mut buffer_impl = self.surface_impl.buffer_mut()?;
+        let alpha_mode = self.alpha_mode();
+
+        let mut buffer_impl = self.surface_impl.buffer_mut(alpha_mode)?;
 
         debug_assert_eq!(
             buffer_impl.byte_stride().get() % 4,
@@ -165,6 +203,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
 
         Ok(Buffer {
             buffer_impl,
+            #[cfg(debug_assertions)]
+            alpha_mode,
             _marker: PhantomData,
         })
     }
@@ -248,6 +288,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 #[derive(Debug)]
 pub struct Buffer<'a> {
     buffer_impl: BufferDispatch<'a>,
+    #[cfg(debug_assertions)]
+    alpha_mode: AlphaMode,
     _marker: PhantomData<Cell<()>>,
 }
 
@@ -325,7 +367,20 @@ impl Buffer<'_> {
     /// - Web
     ///
     /// Otherwise this is equivalent to [`Self::present`].
-    pub fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+    #[allow(unused_mut)]
+    pub fn present_with_damage(mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        // Verify that pixels are set as opaque if the alpha mode requires it.
+        #[cfg(debug_assertions)]
+        if self.alpha_mode == AlphaMode::Opaque {
+            // Only check inside `width`, pixels outside are allowed to be anything.
+            let width = self.width().get() as usize;
+            for (y, row) in self.pixel_rows().enumerate() {
+                for (x, pixel) in row.iter().take(width).enumerate() {
+                    assert_eq!(pixel.a, 0xff, "pixel at ({x}, {y}) was not opaque");
+                }
+            }
+        }
+
         self.buffer_impl.present_with_damage(damage)
     }
 }
@@ -350,7 +405,7 @@ impl Buffer<'_> {
     /// provide a simple API that provides RGBX rendering.
     ///
     /// ```no_run
-    /// use softbuffer::{Pixel, PixelFormat};
+    /// use softbuffer::{AlphaMode, Pixel, PixelFormat};
     ///
     /// // Assume the user controls the following rendering function:
     /// fn render(pixels: &mut [[u8; 4]], width: u32, height: u32) {
@@ -359,6 +414,9 @@ impl Buffer<'_> {
     ///
     /// // Then we'd convert pixel data as follows:
     ///
+    /// # let alpha_mode: AlphaMode = todo!();
+    /// # #[cfg(false)]
+    /// let alpha_mode = surface.alpha_mode();
     /// # let buffer: softbuffer::Buffer<'_> = todo!();
     /// # #[cfg(false)]
     /// let buffer = surface.buffer_mut();
@@ -367,10 +425,16 @@ impl Buffer<'_> {
     /// let height = buffer.height().get();
     ///
     /// // Use fast, zero-copy implementation when possible, and fall back to slower version when not.
-    /// if PixelFormat::Rgbx.is_default() && buffer.byte_stride().get() == width * 4 {
+    /// if PixelFormat::Rgba.is_default()
+    ///     && buffer.byte_stride().get() == width * 4
+    ///     && alpha_mode == AlphaMode::Ignored
+    /// {
     ///     // SAFETY: `Pixel` can be reinterpreted as `[u8; 4]`.
     ///     let pixels = unsafe { std::mem::transmute::<&mut [Pixel], &mut [[u8; 4]]>(buffer.pixels()) };
-    ///     // CORRECTNESS: We just checked that the format is RGBX, and that `stride == width * 4`.
+    ///     // CORRECTNESS: We just checked that:
+    ///     // - The format is RGBA.
+    ///     // - The `stride == width * 4`.
+    ///     // - The alpha value can be ignored (A -> X).
     ///     render(pixels, width, height);
     /// } else {
     ///     // Render into temporary buffer.
@@ -502,6 +566,87 @@ impl Buffer<'_> {
                 .enumerate()
                 .map(move |(x, pixel)| (x as u32, y as u32, pixel))
         })
+    }
+}
+
+/// Specifies how the alpha channel of the surface should be handled by the compositor.
+///
+/// See [the WhatWG spec][whatwg-premultiplied] for a good description of the difference between
+/// premultiplied and postmultiplied alpha.
+///
+/// Query [`Surface::supports_alpha_mode`] to figure out supported modes for the current platform.
+///
+/// [whatwg-premultiplied]: https://html.spec.whatwg.org/multipage/canvas.html#premultiplied-alpha-and-the-2d-rendering-context
+#[doc(alias = "Transparency")]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+pub enum AlphaMode {
+    /// The alpha channel must be set as opaque.
+    ///
+    /// If it isn't, the alpha channel may be ignored, or the contents may be drawn transparent,
+    /// depending on the platform. Softbuffer contains consistency checks for this internally, so
+    /// using this mode with a transparent alpha channel may panic with `cfg!(debug_assertions)`
+    /// enabled.
+    ///
+    /// **This is the default.**
+    //
+    // NOTE: We use a separate enum value here instead of just making a platform-specific default,
+    // because even though we'll want to effectively use a `*multiplied` internally on some
+    // platforms, we'll still want to hint to the compositor that the surface is opaque.
+    #[default]
+    Opaque,
+    /// The alpha channel is ignored, and the contents are treated as opaque.
+    ///
+    /// ## Platform Dependent Behavior
+    ///
+    /// - Web: Cannot be supported (in a zero-copy manner).
+    Ignored,
+    /// The non-alpha channels are expected to already have been multiplied by the alpha channel.
+    ///
+    /// ## Platform Dependent Behavior
+    ///
+    /// - Wayland and DRM/KMS: Supported.
+    /// - macOS/iOS: Supported, but currently doesn't work with additive values (maybe only as the
+    ///   root layer?). Make sure that components are `<= alpha` if you want to be cross-platform.
+    /// - Android, Orbital, Web, Windows and X11: Not yet supported.
+    #[doc(alias = "Associated")]
+    Premultiplied,
+    /// The non-alpha channels are not expected to already be multiplied by the alpha channel;
+    /// instead, the compositor will multiply the non-alpha channels by the alpha channel during
+    /// compositing.
+    ///
+    /// Also known as "straight alpha".
+    ///
+    /// ## Platform Dependent Behavior
+    ///
+    /// - Web and macOS/iOS: Supported.
+    /// - Android, KMS/DRM, Orbital, Windows, X11: Not yet supported.
+    #[doc(alias = "Straight")]
+    #[doc(alias = "Unassociated")]
+    #[doc(alias = "Unpremultiplied")]
+    Postmultiplied,
+    // Intentionally exhaustive, there are probably no other alpha modes that make sense.
+}
+
+/// Convenience helpers.
+impl AlphaMode {
+    /// Check if this is [`AlphaMode::Opaque`].
+    pub fn is_opaque(self) -> bool {
+        matches!(self, Self::Opaque)
+    }
+
+    /// Check if this is [`AlphaMode::Ignored`].
+    pub fn is_ignored(self) -> bool {
+        matches!(self, Self::Ignored)
+    }
+
+    /// Check if this is [`AlphaMode::Premultiplied`].
+    pub fn is_pre_multiplied(self) -> bool {
+        matches!(self, Self::Premultiplied)
+    }
+
+    /// Check if this is [`AlphaMode::Postmultiplied`].
+    pub fn is_post_multiplied(self) -> bool {
+        matches!(self, Self::Postmultiplied)
     }
 }
 

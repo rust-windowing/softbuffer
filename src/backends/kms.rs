@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
-use crate::{util, Pixel};
+use crate::{util, AlphaMode, Pixel};
 
 #[derive(Debug, Clone)]
 struct DrmDevice<'a> {
@@ -225,7 +225,20 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    #[inline]
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        matches!(
+            alpha_mode,
+            AlphaMode::Opaque | AlphaMode::Ignored | AlphaMode::Premultiplied
+        )
+    }
+
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
         // Don't resize if we don't have to.
         if let Some(buffer) = &self.buffer {
             let (buffer_width, buffer_height) = buffer.size();
@@ -234,9 +247,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             }
         }
 
+        let format = match alpha_mode {
+            AlphaMode::Opaque | AlphaMode::Ignored => DrmFourcc::Xrgb8888,
+            AlphaMode::Premultiplied => DrmFourcc::Argb8888,
+            _ => unimplemented!(),
+        };
+
         // Create a new buffer set.
-        let front_buffer = SharedBuffer::new(&self.display, width, height)?;
-        let back_buffer = SharedBuffer::new(&self.display, width, height)?;
+        let front_buffer = SharedBuffer::new(&self.display, width, height, format)?;
+        let back_buffer = SharedBuffer::new(&self.display, width, height, format)?;
 
         self.buffer = Some(Buffers {
             first_is_front: true,
@@ -252,7 +271,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
     */
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn buffer_mut(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         // Map the dumb buffer.
         let set = self
             .buffer
@@ -391,10 +410,11 @@ impl SharedBuffer {
         display: &KmsDisplayImpl<D>,
         width: NonZeroU32,
         height: NonZeroU32,
+        format: DrmFourcc,
     ) -> Result<Self, SoftBufferError> {
         let db = display
             .device
-            .create_dumb_buffer((width.get(), height.get()), DrmFourcc::Xrgb8888, 32)
+            .create_dumb_buffer((width.get(), height.get()), format, 32)
             .swbuf_err("failed to create dumb buffer")?;
         let fb = display
             .device

@@ -1,6 +1,6 @@
 //! Softbuffer implementation using CoreGraphics.
-use crate::backend_interface::*;
 use crate::error::InitError;
+use crate::{backend_interface::*, AlphaMode};
 use crate::{util, Pixel, Rect, SoftBufferError};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
@@ -252,19 +252,42 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    #[inline]
+    fn supports_alpha_mode(&self, _alpha_mode: AlphaMode) -> bool {
+        true
+    }
+
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
+        let opaque = matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored);
+        self.layer.setOpaque(opaque);
+        // TODO: Set opaque-ness on root layer too? Is that our responsibility, or Winit's?
+        // self.root_layer.setOpaque(opaque);
+
         self.width = width.get() as usize;
         self.height = height.get() as usize;
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn buffer_mut(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer_size = util::byte_stride(self.width as u32) as usize * self.height / 4;
         Ok(BufferImpl {
             buffer: util::PixelBuffer(vec![Pixel::default(); buffer_size]),
             width: self.width,
             height: self.height,
             color_space: &self.color_space,
+            alpha_info: match (alpha_mode, cfg!(target_endian = "little")) {
+                (AlphaMode::Opaque | AlphaMode::Ignored, true) => CGImageAlphaInfo::NoneSkipFirst,
+                (AlphaMode::Opaque | AlphaMode::Ignored, false) => CGImageAlphaInfo::NoneSkipLast,
+                (AlphaMode::Premultiplied, true) => CGImageAlphaInfo::PremultipliedFirst,
+                (AlphaMode::Premultiplied, false) => CGImageAlphaInfo::PremultipliedLast,
+                (AlphaMode::Postmultiplied, true) => CGImageAlphaInfo::First,
+                (AlphaMode::Postmultiplied, false) => CGImageAlphaInfo::Last,
+            },
             layer: &mut self.layer,
         })
     }
@@ -276,6 +299,7 @@ pub struct BufferImpl<'a> {
     height: usize,
     color_space: &'a CGColorSpace,
     buffer: util::PixelBuffer,
+    alpha_info: CGImageAlphaInfo,
     layer: &'a mut SendCALayer,
 }
 
@@ -331,9 +355,9 @@ impl BufferInterface for BufferImpl<'_> {
         //
         // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
         let bitmap_info = CGBitmapInfo(
-            CGImageAlphaInfo::NoneSkipFirst.0
+            self.alpha_info.0
                 | CGImageComponentInfo::Integer.0
-                | CGImageByteOrderInfo::Order32Little.0
+                | CGImageByteOrderInfo::Order32Host.0
                 | CGImagePixelFormatInfo::Packed.0,
         );
 

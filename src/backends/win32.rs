@@ -3,7 +3,7 @@
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
 use crate::backend_interface::*;
-use crate::{util, Pixel, Rect, SoftBufferError};
+use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
@@ -17,6 +17,7 @@ use std::thread;
 
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::Graphics::Gdi;
+use windows_sys::Win32::UI::ColorSystem::LCS_WINDOWS_COLOR_SPACE;
 
 const ZERO_QUAD: Gdi::RGBQUAD = Gdi::RGBQUAD {
     rgbBlue: 0,
@@ -48,24 +49,53 @@ impl Drop for Buffer {
 }
 
 impl Buffer {
-    fn new(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32) -> Self {
+    fn new(window_dc: Gdi::HDC, width: NonZeroI32, height: NonZeroI32, alpha: bool) -> Self {
         let dc = Allocator::get().allocate(window_dc);
         assert!(!dc.is_null());
 
         // Create a new bitmap info struct.
         let bitmap_info = BitmapInfo {
-            bmi_header: Gdi::BITMAPINFOHEADER {
-                biSize: size_of::<Gdi::BITMAPINFOHEADER>() as u32,
-                biWidth: width.get(),
-                biHeight: -height.get(),
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: Gdi::BI_BITFIELDS,
-                biSizeImage: 0,
-                biXPelsPerMeter: 0,
-                biYPelsPerMeter: 0,
-                biClrUsed: 0,
-                biClrImportant: 0,
+            bmi_header: Gdi::BITMAPV5HEADER {
+                bV5Size: size_of::<Gdi::BITMAPV5HEADER>() as u32,
+                bV5Width: width.get(),
+                bV5Height: -height.get(),
+                bV5Planes: 1,
+                bV5BitCount: 32,
+                bV5Compression: Gdi::BI_BITFIELDS,
+                bV5SizeImage: 0,
+                bV5XPelsPerMeter: 0,
+                bV5YPelsPerMeter: 0,
+                bV5ClrUsed: 0,
+                bV5ClrImportant: 0,
+                bV5RedMask: 0x00ff0000,
+                bV5GreenMask: 0x0000ff00,
+                bV5BlueMask: 0x000000ff,
+                bV5AlphaMask: if alpha { 0xff000000 } else { 0x00000000 },
+                bV5CSType: LCS_WINDOWS_COLOR_SPACE as u32,
+                bV5Endpoints: Gdi::CIEXYZTRIPLE {
+                    ciexyzRed: Gdi::CIEXYZ {
+                        ciexyzX: 0,
+                        ciexyzY: 0,
+                        ciexyzZ: 0,
+                    },
+                    ciexyzGreen: Gdi::CIEXYZ {
+                        ciexyzX: 0,
+                        ciexyzY: 0,
+                        ciexyzZ: 0,
+                    },
+                    ciexyzBlue: Gdi::CIEXYZ {
+                        ciexyzX: 0,
+                        ciexyzY: 0,
+                        ciexyzZ: 0,
+                    },
+                },
+                bV5GammaRed: 0,
+                bV5GammaGreen: 0,
+                bV5GammaBlue: 0,
+                bV5Intent: 0,
+                bV5ProfileData: 0,
+                bV5ProfileSize: 0,
+                bV5Reserved: 0,
             },
             bmi_colors: [
                 Gdi::RGBQUAD {
@@ -155,7 +185,7 @@ impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
 /// The Win32-compatible bitmap information.
 #[repr(C)]
 struct BitmapInfo {
-    bmi_header: Gdi::BITMAPINFOHEADER,
+    bmi_header: Gdi::BITMAPV5HEADER,
     bmi_colors: [Gdi::RGBQUAD; 3],
 }
 
@@ -201,7 +231,18 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         &self.handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    #[inline]
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        // TODO: Support transparency.
+        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored)
+    }
+
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
             let width = NonZeroI32::try_from(width).ok()?;
             let height = NonZeroI32::try_from(height).ok()?;
@@ -215,12 +256,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             }
         }
 
-        self.buffer = Some(Buffer::new(self.dc.0, width, height));
+        let alpha = match alpha_mode {
+            AlphaMode::Opaque | AlphaMode::Ignored => false,
+            AlphaMode::Premultiplied => true,
+            _ => unimplemented!(),
+        };
+        self.buffer = Some(Buffer::new(self.dc.0, width, height, alpha));
 
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn buffer_mut(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer = self
             .buffer
             .as_mut()
@@ -286,6 +332,7 @@ impl BufferInterface for BufferImpl<'_> {
                 let width = util::to_i32_saturating(rect.width.get());
                 let height = util::to_i32_saturating(rect.height.get());
 
+                // TODO: Draw with something else to make transparency work.
                 Gdi::BitBlt(
                     self.dc.0,
                     x,
