@@ -19,12 +19,12 @@ default = ["wayland", "wayland-dlopen", "x11", "x11-dlopen", "kms"]
 
 # Enable the Wayland backend.
 wayland = [
-    "wayland-backend",
-    "wayland-client",
-    "wayland-sys",
-    "memmap2",
-    "rustix",
-    "fastrand",
+    "dep:wayland-backend",
+    "dep:wayland-client",
+    "dep:wayland-sys",
+    "dep:memmap2",
+    "dep:rustix",
+    "dep:fastrand",
     # Only used as a dev-dependency.
     "winit/wayland",
     "winit/wayland-csd-adwaita",
@@ -33,19 +33,19 @@ wayland-dlopen = ["wayland-sys/dlopen", "winit/wayland-dlopen"]
 
 # Enable the X11 backend.
 x11 = [
-    "as-raw-xcb-connection",
-    "bytemuck",
-    "fastrand",
-    "rustix",
-    "tiny-xlib",
-    "x11rb",
+    "dep:as-raw-xcb-connection",
+    "dep:bytemuck",
+    "dep:fastrand",
+    "dep:rustix",
+    "dep:tiny-xlib",
+    "dep:x11rb",
     # Only used as a dev-dependency.
     "winit/x11",
 ]
 x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
 
 # Enable the KMS/DRM backend.
-kms = ["bytemuck", "drm", "rustix"]
+kms = ["dep:bytemuck", "dep:drm", "dep:rustix"]
 
 # Common dependencies.
 [dependencies]
