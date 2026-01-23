@@ -100,7 +100,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         }
 
         let buffer =
-            vec![Pixel::default(); native_window_buffer.width() * native_window_buffer.height()];
+            vec![Pixel::default(); native_window_buffer.stride() * native_window_buffer.height()];
 
         Ok(BufferImpl {
             native_window_buffer,
@@ -125,7 +125,7 @@ unsafe impl Send for BufferImpl<'_> {}
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.width().get() * 4).unwrap()
+        NonZeroU32::new(self.native_window_buffer.stride() as u32 * 4).unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {
@@ -158,27 +158,19 @@ impl BufferInterface for BufferImpl<'_> {
         // when the enlarged damage region is not re-rendered?
         let _ = damage;
 
-        let input_lines = self.buffer.chunks(self.native_window_buffer.width());
-        for (output, input) in self
-            .native_window_buffer
-            .lines()
-            // Unreachable as we checked before that this is a valid, mappable format
-            .unwrap()
-            .zip(input_lines)
-        {
-            // .lines() removed the stride
-            assert_eq!(output.len(), input.len() * 4);
+        // Unreachable as we checked before that this is a valid, mappable format
+        let native_buffer = self.native_window_buffer.bytes().unwrap();
 
-            // Write RGB(A) to the output.
-            // TODO: Use `slice::write_copy_of_slice` once stable and in MSRV.
-            // TODO(madsmtm): Verify that this compiles down to an efficient copy.
-            for (i, pixel) in input.iter().enumerate() {
-                output[i * 4].write(pixel.r);
-                output[i * 4 + 1].write(pixel.g);
-                output[i * 4 + 2].write(pixel.b);
-                output[i * 4 + 3].write(pixel.a);
-            }
+        // Write RGB(A) to the output.
+        // TODO: Use `slice::write_copy_of_slice` once stable and in MSRV.
+        // TODO(madsmtm): Verify that this compiles down to an efficient copy.
+        for (pixel, output) in self.buffer.iter().zip(native_buffer.chunks_mut(4)) {
+            output[0].write(pixel.r);
+            output[1].write(pixel.g);
+            output[2].write(pixel.b);
+            output[3].write(pixel.a);
         }
+
         Ok(())
     }
 }
