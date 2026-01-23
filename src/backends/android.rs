@@ -12,7 +12,7 @@ use raw_window_handle::AndroidNdkWindowHandle;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use crate::error::InitError;
-use crate::{util, BufferInterface, Pixel, Rect, SoftBufferError, SurfaceInterface};
+use crate::{util, AlphaMode, BufferInterface, Pixel, Rect, SoftBufferError, SurfaceInterface};
 
 /// The handle to a window for software buffering.
 #[derive(Debug)]
@@ -52,8 +52,18 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         &self.window
     }
 
-    /// Also changes the pixel format to [`HardwareBufferFormat::R8G8B8A8_UNORM`].
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    #[inline]
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored)
+    }
+
+    /// Also changes the pixel format.
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
             let width = NonZeroI32::try_from(width).ok()?;
             let height = NonZeroI32::try_from(height).ok()?;
@@ -61,22 +71,26 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
 
+        // Default is typically R5G6B5 16bpp, switch to 32bpp
+        let pixel_format = match alpha_mode {
+            AlphaMode::Opaque | AlphaMode::Ignored => HardwareBufferFormat::R8G8B8X8_UNORM,
+            AlphaMode::Premultiplied => todo!("HardwareBufferFormat::R8G8B8A8_UNORM"),
+            _ => unimplemented!(),
+        };
+
         self.native_window
-            .set_buffers_geometry(
-                width.into(),
-                height.into(),
-                // Default is typically R5G6B5 16bpp, switch to 32bpp
-                Some(HardwareBufferFormat::R8G8B8X8_UNORM),
-            )
+            .set_buffers_geometry(width.into(), height.into(), Some(pixel_format))
             .map_err(|err| {
                 SoftBufferError::PlatformError(
                     Some("Failed to set buffer geometry on ANativeWindow".to_owned()),
                     Some(Box::new(err)),
                 )
-            })
+            })?;
+
+        Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn buffer_mut(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         let native_window_buffer = self.native_window.lock(None).map_err(|err| {
             SoftBufferError::PlatformError(
                 Some("Failed to lock ANativeWindow".to_owned()),

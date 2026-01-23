@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added `AlphaMode` to allow configuring transparency and zero-copy on Web. Set it with `Surface::configure`.
+- Added `Surface::supports_alpha_mode` for querying supported alpha modes.
 - Added `PixelFormat` enum.
 - Added `Buffer::pixels()` for accessing the buffer's pixel data.
 - Added `Buffer::pixel_rows()` for iterating over rows of the buffer data.
