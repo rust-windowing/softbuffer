@@ -3,7 +3,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, 
 use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::backend_interface::*;
-use crate::{util, Pixel, Rect, SoftBufferError};
+use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
 
 #[derive(Debug)]
 struct OrbitalMap {
@@ -101,7 +101,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         &self.window_handle
     }
 
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    #[inline]
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored)
+    }
+
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        _alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
         let width = width.get();
         let height = height.get();
         if width != self.width || height != self.height {
@@ -112,7 +122,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         Ok(())
     }
 
-    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         let (window_width, window_height) = window_size(self.window_fd());
         let pixels = if self.width as usize == window_width && self.height as usize == window_height
         {

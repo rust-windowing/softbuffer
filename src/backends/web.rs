@@ -11,7 +11,7 @@ use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{util, Pixel, Rect, SoftBufferError};
+use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
@@ -166,9 +166,19 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         &self.window_handle
     }
 
+    #[inline]
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Postmultiplied)
+    }
+
     /// De-duplicates the error handling between `HtmlCanvasElement` and `OffscreenCanvas`.
     /// Resize the canvas to the given dimensions.
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        _alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError> {
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
             self.buffer
@@ -178,10 +188,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
             self.size = Some((width, height));
         }
 
+        // TODO: Re-resolve the canvas context with `alpha` value.
+
         Ok(())
     }
 
-    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         Ok(BufferImpl {
             canvas: &self.canvas,
             buffer: &mut self.buffer,
@@ -202,6 +214,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
             // TODO: Can also error if width or height are 0.
             .swbuf_err("`Canvas` contains pixels from a different origin")?;
 
+        // TODO: How should we handle alpha modes here?
         Ok(image_data
             .data()
             .0
@@ -307,31 +320,12 @@ impl BufferInterface for BufferImpl<'_> {
             .size
             .expect("Must set size of surface before calling `present_with_damage()`");
 
-        let union_damage = if let Some(rect) = util::union_damage(damage) {
-            util::clamp_rect(rect, buffer_width, buffer_height)
-        } else {
-            return Ok(());
+        let bitmap: &[u8] = {
+            let ptr = self.buffer.as_ptr();
+            let len = self.buffer.len();
+            // SAFETY: `Pixel` can be reinterpreted as 4 `u8`s.
+            unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), len * 4) }
         };
-
-        // Create a bitmap from the buffer.
-        let bitmap: Vec<_> = self
-            .buffer
-            .chunks_exact(buffer_width.get() as usize)
-            .skip(union_damage.y as usize)
-            .take(union_damage.height.get() as usize)
-            .flat_map(|row| {
-                row.iter()
-                    .skip(union_damage.x as usize)
-                    .take(union_damage.width.get() as usize)
-            })
-            .copied()
-            .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, 0xff])
-            .collect();
-
-        debug_assert_eq!(
-            bitmap.len(),
-            union_damage.width.get() as usize * union_damage.height.get() as usize * 4
-        );
 
         #[cfg(target_feature = "atomics")]
         #[allow(non_local_definitions)]
@@ -351,17 +345,15 @@ impl BufferInterface for BufferImpl<'_> {
             }
 
             let array = Uint8Array::new_with_length(bitmap.len() as u32);
-            array.copy_from(&bitmap);
+            array.copy_from(bitmap);
             let array = Uint8ClampedArray::new(&array);
-            ImageDataExt::new(array, union_damage.width.get())
+            ImageDataExt::new(array, buffer_width.get())
                 .map(JsValue::from)
                 .map(ImageData::unchecked_from_js)
         };
         #[cfg(not(target_feature = "atomics"))]
-        let result = ImageData::new_with_u8_clamped_array(
-            wasm_bindgen::Clamped(&bitmap),
-            union_damage.width.get(),
-        );
+        let result =
+            ImageData::new_with_u8_clamped_array(wasm_bindgen::Clamped(bitmap), buffer_width.get());
         // This should only throw an error if the buffer we pass's size is incorrect.
         let image_data = result.unwrap();
 
@@ -372,10 +364,10 @@ impl BufferInterface for BufferImpl<'_> {
             self.canvas
                 .put_image_data(
                     &image_data,
-                    union_damage.x.into(),
-                    union_damage.y.into(),
-                    (rect.x - union_damage.x).into(),
-                    (rect.y - union_damage.y).into(),
+                    0.0,
+                    0.0,
+                    rect.x.into(),
+                    rect.y.into(),
                     rect.width.get().into(),
                     rect.height.get().into(),
                 )
