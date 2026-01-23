@@ -271,33 +271,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 ///
 /// # Reading buffer data
 ///
-/// Reading from buffer data may perform very poorly, as the underlying storage of zero-copy
-/// buffers, where implemented, may set options optimized for CPU writes, that allows them to bypass
-/// certain caches and avoid cache pollution.
-///
-/// As such, when rendering, you should always set the pixel in its entirety:
-///
-/// ```
-/// # use softbuffer::Pixel;
-/// # let pixel = &mut Pixel::default();
-/// # let (red, green, blue) = (0x11, 0x22, 0x33);
-/// *pixel = Pixel::new_rgb(red, green, blue);
-/// ```
-///
-/// Instead of e.g. something like:
-///
-/// ```
-/// # use softbuffer::Pixel;
-/// # let pixel = &mut Pixel::default();
-/// # let (red, green, blue) = (0x11, 0x22, 0x33);
-/// // DISCOURAGED!
-/// *pixel = Pixel::default(); // Clear
-/// pixel.r |= red;
-/// pixel.g |= green;
-/// pixel.b |= blue;
-/// ```
-///
-/// To discourage reading from the buffer, `&self -> &[u8]` methods are intentionally not provided.
+/// The API of this is simplified for writing to buffer data, so various `&self -> &[X]` methods are
+/// intentionally not provided. You can still read from the buffer data via. the `&mut self` methods
+/// though.
 ///
 /// # Platform dependent behavior
 ///
