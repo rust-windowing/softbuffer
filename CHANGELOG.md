@@ -1,5 +1,6 @@
 # Unreleased
 
+- Added `Surface::set_write_only()` for optimizing for write-only workloads.
 - Added `Buffer::pixels()` for accessing the buffer's pixel data.
 - Added `Buffer::pixel_rows()` for iterating over rows of the buffer data.
 - Added `Buffer::pixels_iter()` for iterating over each pixel with its associated `x`/`y` coordinate.

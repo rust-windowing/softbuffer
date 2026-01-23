@@ -114,6 +114,47 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.resize(width, height)
     }
 
+    /// Set the buffer as optimized for only being written to.
+    ///
+    /// Setting this allows the underlying storage to bypass certain caches and reduce cache
+    /// pollution. In turn, this may make reading from the buffer data perform very poorly.
+    ///
+    /// As such, when rendering with this set, you should make sure to set pixels in their entirety:
+    ///
+    /// ```
+    /// # let pixel = &mut 0x00ffffff;
+    /// # let (blue, green, red) = (0x11, 0x22, 0x33);
+    /// *pixel = blue | (green << 8) | (red << 16);
+    /// # assert_eq!(*pixel, 0x00332211);
+    /// ```
+    ///
+    /// Instead of e.g. something like:
+    ///
+    /// ```
+    /// # let pixel = &mut 0x00ffffff;
+    /// # let (blue, green, red) = (0x11, 0x22, 0x33);
+    /// // DISCOURAGED!
+    /// *pixel &= 0x00000000; // Clear
+    /// *pixel |= blue; // Set blue pixel
+    /// *pixel |= green << 8; // Set green pixel
+    /// *pixel |= red << 16; // Set red pixel
+    /// # assert_eq!(*pixel, 0x00332211);
+    /// ```
+    ///
+    /// This is disabled by default.
+    ///
+    /// # Platform-specific
+    ///
+    /// This isn't yet implemented on any platforms, and is simply a no-op.
+    ///
+    /// On macOS, this may in the future set `kIOSurfaceCacheMode` to
+    /// `kIOSurfaceMapWriteCombineCache`.
+    #[inline]
+    // TODO: Add `write_only` getter? Would it ever really be useful?
+    pub fn set_write_only(&mut self, write_only: bool) {
+        self.surface_impl.set_write_only(write_only)
+    }
+
     /// Copies the window contents into a buffer.
     ///
     /// ## Platform Dependent Behavior
@@ -175,33 +216,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 ///
 /// # Reading buffer data
 ///
-/// Reading from buffer data may perform very poorly, as the underlying storage of zero-copy
-/// buffers, where implemented, may set options optimized for CPU writes, that allows them to bypass
-/// certain caches and avoid cache pollution.
-///
-/// As such, when rendering, you should always set the pixel in its entirety:
-///
-/// ```
-/// # let pixel = &mut 0x00ffffff;
-/// # let (blue, green, red) = (0x11, 0x22, 0x33);
-/// *pixel = blue | (green << 8) | (red << 16);
-/// # assert_eq!(*pixel, 0x00332211);
-/// ```
-///
-/// Instead of e.g. something like:
-///
-/// ```
-/// # let pixel = &mut 0x00ffffff;
-/// # let (blue, green, red) = (0x11, 0x22, 0x33);
-/// // DISCOURAGED!
-/// *pixel &= 0x00000000; // Clear
-/// *pixel |= blue; // Set blue pixel
-/// *pixel |= green << 8; // Set green pixel
-/// *pixel |= red << 16; // Set red pixel
-/// # assert_eq!(*pixel, 0x00332211);
-/// ```
-///
-/// To discourage reading from the buffer, `&self -> &[u8]` methods are intentionally not provided.
+/// The API of this is simplified for writing to buffer data, so various `&self -> &[X]` methods are
+/// intentionally not provided. You can still read from the buffer data via. the `&mut self` methods
+/// though.
 ///
 /// # Data representation
 ///

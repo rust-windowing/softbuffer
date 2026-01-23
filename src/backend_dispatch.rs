@@ -108,6 +108,15 @@ macro_rules! make_dispatch {
                 }
             }
 
+            fn set_write_only(&mut self, write_only: bool) {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.set_write_only(write_only),
+                    )*
+                }
+            }
+
             fn buffer_mut(&mut self) -> Result<BufferDispatch<'_>, SoftBufferError> {
                 match self {
                     $(
