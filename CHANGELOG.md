@@ -5,6 +5,7 @@
 - Added `Buffer::pixels_iter()` for iterating over each pixel with its associated `x`/`y` coordinate.
 - **Breaking:** Removed generic type parameters `D` and `W` from `Buffer<'_>` struct.
 - **Breaking:** Removed `Deref[Mut]` implementation on `Buffer<'_>`. Use `Buffer::pixels()` instead.
+- **Breaking:** Removed unintentional Cargo features for Softbuffer's optional dependencies.
 
 # 0.4.7
 
