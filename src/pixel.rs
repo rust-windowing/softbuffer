@@ -1,20 +1,21 @@
-/// A RGBA pixel.
+/// A RGBA or BGRA pixel.
 ///
 /// # Representation
 ///
-/// This is a set of `u8`'s in the order BGRX (first component blue, second green, third red and
-/// last unset).
+/// This is a set of 4 `u8`'s laid out in the order defined by [`PixelFormat::default()`].
 ///
-/// If you're familiar with [the `rgb` crate](https://docs.rs/rgb/), you can treat this mostly as-if
-/// it is `rgb::Bgra<u8>`, except that this type has an alignment of `4` for performance reasons.
+/// This type has an alignment of `4` as that makes copies faster on many platforms, and makes this
+/// type have the same in-memory representation as a `u32`.
+///
+/// [`PixelFormat::default()`]: crate::PixelFormat#default
 ///
 /// # Example
 ///
 /// Construct a new pixel.
 ///
 /// ```
-/// # use softbuffer::Pixel;
-/// #
+/// use softbuffer::Pixel;
+///
 /// let red = Pixel::new_rgb(0xff, 0x80, 0);
 /// assert_eq!(red.r, 255);
 /// assert_eq!(red.g, 128);
@@ -28,36 +29,52 @@
 /// Convert a pixel to an array of `u8`s.
 ///
 /// ```
-/// # use softbuffer::Pixel;
-/// #
+/// use softbuffer::{Pixel, PixelFormat};
+///
 /// let red = Pixel::new_rgb(0xff, 0, 0);
 /// // SAFETY: `Pixel` can be reinterpreted as `[u8; 4]`.
 /// let red = unsafe { core::mem::transmute::<Pixel, [u8; 4]>(red) };
 ///
-/// // BGRX
-/// assert_eq!(red[2], 255);
+/// match PixelFormat::default() {
+///     PixelFormat::Bgrx => assert_eq!(red[2], 255),
+///     PixelFormat::Rgbx => assert_eq!(red[0], 255),
+/// }
 /// ```
 ///
 /// Convert a pixel to a `u32`.
 ///
 /// ```
-/// # use softbuffer::Pixel;
-/// #
+/// use softbuffer::{Pixel, PixelFormat};
+///
 /// let red = Pixel::new_rgb(0xff, 0, 0);
 /// // SAFETY: `Pixel` can be reinterpreted as `u32`.
 /// let red = unsafe { core::mem::transmute::<Pixel, u32>(red) };
 ///
-/// // BGRX
-/// assert_eq!(red, u32::from_le_bytes([0x00, 0x00, 0xff, 0x00]));
+/// match PixelFormat::default() {
+///     PixelFormat::Bgrx => assert_eq!(red, u32::from_ne_bytes([0x00, 0x00, 0xff, 0x00])),
+///     PixelFormat::Rgbx => assert_eq!(red, u32::from_ne_bytes([0xff, 0x00, 0x00, 0x00])),
+/// }
 /// ```
 #[repr(C)]
 #[repr(align(4))] // Help the compiler to see that this is a u32
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct Pixel {
+    #[cfg_attr(docsrs, doc(auto_cfg = false))]
+    #[cfg(any(doc, target_family = "wasm", target_os = "android"))]
+    /// The red component.
+    pub r: u8,
+    #[cfg(not(any(doc, target_family = "wasm", target_os = "android")))]
     /// The blue component.
     pub b: u8,
+
     /// The green component.
     pub g: u8,
+
+    #[cfg_attr(docsrs, doc(auto_cfg = false))]
+    #[cfg(any(doc, target_family = "wasm", target_os = "android"))]
+    /// The blue component.
+    pub b: u8,
+    #[cfg(not(any(doc, target_family = "wasm", target_os = "android")))]
     /// The red component.
     pub r: u8,
 
@@ -106,3 +123,6 @@ impl Pixel {
 }
 
 // TODO: Implement `Add`/`Mul`/similar `std::ops` like `rgb` does?
+
+// TODO: Implement `zerocopy` / `bytemuck` traits behind a feature flag?
+// May not be that useful, since the representation is platform-specific.

@@ -10,6 +10,7 @@ mod backend_dispatch;
 mod backend_interface;
 mod backends;
 mod error;
+mod format;
 mod pixel;
 mod util;
 
@@ -26,6 +27,7 @@ use self::backend_interface::*;
 pub use self::backends::web::SurfaceExtWeb;
 use self::error::InitError;
 pub use self::error::SoftBufferError;
+pub use self::format::PixelFormat;
 pub use self::pixel::Pixel;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
@@ -308,6 +310,46 @@ impl Buffer<'_> {
     /// # use softbuffer::{Buffer, Pixel};
     /// # let buffer: Buffer<'_> = unimplemented!();
     /// buffer.pixels().fill(Pixel::new_rgb(0xff, 0x00, 0x00));
+    /// ```
+    ///
+    /// Render to a slice of `[u8; 4]`s. This might be useful for library authors that want to
+    /// provide a simple API that provides RGBX rendering.
+    ///
+    /// ```no_run
+    /// use softbuffer::{Pixel, PixelFormat};
+    ///
+    /// // Assume the user controls the following rendering function:
+    /// fn render(pixels: &mut [[u8; 4]], width: u32, height: u32) {
+    ///     pixels.fill([0xff, 0xff, 0x00, 0x00]); // Yellow in RGBX
+    /// }
+    ///
+    /// // Then we'd convert pixel data as follows:
+    ///
+    /// # let buffer: softbuffer::Buffer<'_> = todo!();
+    /// # #[cfg(false)]
+    /// let buffer = surface.buffer_mut();
+    ///
+    /// let width = buffer.width().get();
+    /// let height = buffer.height().get();
+    ///
+    /// // Use fast, zero-copy implementation when possible, and fall back to slower version when not.
+    /// if PixelFormat::Rgbx.is_default() {
+    ///     // SAFETY: `Pixel` can be reinterpreted as `[u8; 4]`.
+    ///     let pixels = unsafe { std::mem::transmute::<&mut [Pixel], &mut [[u8; 4]]>(buffer.pixels()) };
+    ///     // CORRECTNESS: We just checked that the format is RGBX.
+    ///     render(pixels, width, height);
+    /// } else {
+    ///     // Render into temporary buffer.
+    ///     let mut temporary = vec![[0; 4]; width as usize * height as usize];
+    ///     render(&mut temporary, width, height);
+    ///
+    ///     // And copy from temporary buffer to actual pixel data.
+    ///     for (tmp, actual) in temporary.iter_mut().zip(buffer.pixels()) {
+    ///         *actual = Pixel::new_rgb(tmp[0], tmp[1], tmp[2]);
+    ///     }
+    /// }
+    ///
+    /// buffer.present();
     /// ```
     pub fn pixels(&mut self) -> &mut [Pixel] {
         self.buffer_impl.pixels_mut()

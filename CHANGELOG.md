@@ -1,9 +1,11 @@
 # Unreleased
 
+- Added `PixelFormat` enum.
 - Added `Buffer::pixels()` for accessing the buffer's pixel data.
 - Added `Buffer::pixel_rows()` for iterating over rows of the buffer data.
 - Added `Buffer::pixels_iter()` for iterating over each pixel with its associated `x`/`y` coordinate.
 - **Breaking:** Add `Pixel` struct, and use that for pixels instead of `u32`.
+- **Breaking:** The pixel format is now target-dependent. Access `PixelFormat::default()` to see which format is used on the current platform.
 - **Breaking:** Removed generic type parameters `D` and `W` from `Buffer<'_>` struct.
 - **Breaking:** Removed `Deref[Mut]` implementation on `Buffer<'_>`. Use `Buffer::pixels()` instead.
 - **Breaking:** Removed unintentional Cargo features for Softbuffer's optional dependencies.

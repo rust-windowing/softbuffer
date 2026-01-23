@@ -166,8 +166,8 @@ impl BufferInterface for BufferImpl<'_> {
             assert_eq!(output.len(), input.len() * 4);
 
             // Write RGB(A) to the output.
-            // TODO: Use `slice::write_copy_of_slice` once stable and in MSRV and once the pixel
-            // structure is of the RGBA format.
+            // TODO: Use `slice::write_copy_of_slice` once stable and in MSRV.
+            // TODO(madsmtm): Verify that this compiles down to an efficient copy.
             for (i, pixel) in input.iter().enumerate() {
                 output[i * 4].write(pixel.r);
                 output[i * 4 + 1].write(pixel.g);
