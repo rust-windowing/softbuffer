@@ -312,6 +312,10 @@ pub struct BufferImpl<'a> {
 }
 
 impl BufferInterface for BufferImpl<'_> {
+    fn byte_stride(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.width().get() * 4).unwrap()
+    }
+
     fn width(&self) -> NonZeroU32 {
         self.size
             .expect("must set size of surface before calling `width()` on the buffer")

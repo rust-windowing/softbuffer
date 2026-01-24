@@ -8,7 +8,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::size_of;
 use std::num::{NonZeroI32, NonZeroU32};
 use std::ptr::{self, NonNull};
 use std::slice;
@@ -55,7 +55,7 @@ impl Buffer {
         // Create a new bitmap info struct.
         let bitmap_info = BitmapInfo {
             bmi_header: Gdi::BITMAPINFOHEADER {
-                biSize: mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32,
+                biSize: size_of::<Gdi::BITMAPINFOHEADER>() as u32,
                 biWidth: width.get(),
                 biHeight: -height.get(),
                 biPlanes: 1,
@@ -116,12 +116,9 @@ impl Buffer {
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        unsafe {
-            slice::from_raw_parts_mut(
-                self.pixels.as_ptr(),
-                i32::from(self.width) as usize * i32::from(self.height) as usize,
-            )
-        }
+        let num_bytes =
+            byte_stride(self.width.get() as u32, 32) as usize * self.height.get() as usize;
+        unsafe { slice::from_raw_parts_mut(self.pixels.as_ptr(), num_bytes / size_of::<Pixel>()) }
     }
 }
 
@@ -250,6 +247,11 @@ pub struct BufferImpl<'a> {
 }
 
 impl BufferInterface for BufferImpl<'_> {
+    fn byte_stride(&self) -> NonZeroU32 {
+        let width = self.buffer.width.get() as u32;
+        NonZeroU32::new(byte_stride(width, 32)).unwrap()
+    }
+
     fn width(&self) -> NonZeroU32 {
         self.buffer.width.try_into().unwrap()
     }
@@ -456,4 +458,11 @@ impl<T> From<T> for OnlyUsedFromOrigin<T> {
     fn from(t: T) -> Self {
         Self(t)
     }
+}
+
+#[inline]
+fn byte_stride(width: u32, bit_count: u32) -> u32 {
+    // <https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader#calculating-surface-stride>
+    // When `bit_count == 32`, this is always just equal to `width * 4`.
+    ((width * bit_count + 31) & !31) >> 3
 }

@@ -147,6 +147,16 @@ macro_rules! make_dispatch {
 
         impl BufferInterface for BufferDispatch<'_> {
             #[inline]
+            fn byte_stride(&self) -> NonZeroU32 {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.byte_stride(),
+                    )*
+                }
+            }
+
+            #[inline]
             fn width(&self) -> NonZeroU32 {
                 match self {
                     $(

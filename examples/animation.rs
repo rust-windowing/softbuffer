@@ -23,7 +23,7 @@ fn main() {
             let window = util::make_window(event_loop, |w| w);
 
             let old_size = (0, 0);
-            let frames = pre_render_frames(0, 0);
+            let frames = pre_render_frames(0, 0, 0);
 
             (window, old_size, frames)
         },
@@ -64,7 +64,7 @@ fn main() {
                 let size = (buffer.width().get(), buffer.height().get());
                 if size != *old_size {
                     *old_size = size;
-                    *frames = pre_render_frames(size.0, size.1);
+                    *frames = pre_render_frames(buffer.byte_stride().get() / 4, size.0, size.1);
                 }
 
                 let frame = &frames[((elapsed * 60.0).round() as usize).clamp(0, 59)];
@@ -94,11 +94,11 @@ fn main() {
     util::run_app(event_loop, app);
 }
 
-fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<Pixel>> {
+fn pre_render_frames(stride: u32, width: u32, height: u32) -> Vec<Vec<Pixel>> {
     let render = |frame_id| {
         let elapsed = ((frame_id as f64) / (60.0)) * 2.0 * PI;
 
-        let coords = (0..height).flat_map(|x| (0..width).map(move |y| (x, y)));
+        let coords = (0..height).flat_map(|x| (0..stride).map(move |y| (x, y)));
         coords
             .map(|(x, y)| {
                 let y = (y as f64) / (height as f64);
