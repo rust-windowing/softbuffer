@@ -114,7 +114,14 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// to have the buffer fill the entire window. Use your windowing library to find the size
     /// of the window.
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.surface_impl.resize(width, height)
+        if u32::MAX / 4 < width.get() {
+            // Stride would be too large.
+            return Err(SoftBufferError::SizeOutOfRange { width, height });
+        }
+
+        self.surface_impl.resize(width, height)?;
+
+        Ok(())
     }
 
     /// Copies the window contents into a buffer.
@@ -140,10 +147,20 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     ///   sending another frame.
     pub fn buffer_mut(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
         let mut buffer_impl = self.surface_impl.buffer_mut()?;
+
         debug_assert_eq!(
-            buffer_impl.height().get() as usize * buffer_impl.width().get() as usize,
-            buffer_impl.pixels_mut().len(),
+            buffer_impl.byte_stride().get() % 4,
+            0,
+            "stride must be a multiple of 4"
+        );
+        debug_assert_eq!(
+            buffer_impl.height().get() as usize * buffer_impl.byte_stride().get() as usize,
+            buffer_impl.pixels_mut().len() * 4,
             "buffer must be sized correctly"
+        );
+        debug_assert!(
+            buffer_impl.width().get() * 4 <= buffer_impl.byte_stride().get(),
+            "width * 4 must be less than or equal to stride"
         );
 
         Ok(Buffer {
@@ -235,6 +252,23 @@ pub struct Buffer<'a> {
 }
 
 impl Buffer<'_> {
+    /// The number of bytes wide each row in the buffer is.
+    ///
+    /// On some platforms, the buffer is slightly larger than `width * height * 4`, usually for
+    /// performance reasons to align each row such that they are never split across cache lines.
+    ///
+    /// In your code, prefer to use [`Buffer::pixel_rows`] (which handles this correctly), or
+    /// failing that, make sure to chunk rows by the stride instead of the width.
+    ///
+    /// This is guaranteed to be `>= width * 4`, and is guaranteed to be a multiple of 4.
+    #[doc(alias = "pitch")] // SDL and Direct3D
+    #[doc(alias = "bytes_per_row")] // WebGPU
+    #[doc(alias = "row_stride")]
+    #[doc(alias = "stride")]
+    pub fn byte_stride(&self) -> NonZeroU32 {
+        self.buffer_impl.byte_stride()
+    }
+
     /// The amount of pixels wide the buffer is.
     pub fn width(&self) -> NonZeroU32 {
         self.buffer_impl.width()
@@ -300,7 +334,7 @@ impl Buffer<'_> {
 impl Buffer<'_> {
     /// Get a mutable reference to the buffer's pixels.
     ///
-    /// The size of the returned slice is `buffer.width() * buffer.height()`.
+    /// The size of the returned slice is `buffer.byte_stride() * buffer.height() / 4`.
     ///
     /// # Examples
     ///
@@ -333,10 +367,10 @@ impl Buffer<'_> {
     /// let height = buffer.height().get();
     ///
     /// // Use fast, zero-copy implementation when possible, and fall back to slower version when not.
-    /// if PixelFormat::Rgbx.is_default() {
+    /// if PixelFormat::Rgbx.is_default() && buffer.byte_stride().get() == width * 4 {
     ///     // SAFETY: `Pixel` can be reinterpreted as `[u8; 4]`.
     ///     let pixels = unsafe { std::mem::transmute::<&mut [Pixel], &mut [[u8; 4]]>(buffer.pixels()) };
-    ///     // CORRECTNESS: We just checked that the format is RGBX.
+    ///     // CORRECTNESS: We just checked that the format is RGBX, and that `stride == width * 4`.
     ///     render(pixels, width, height);
     /// } else {
     ///     // Render into temporary buffer.
@@ -344,8 +378,10 @@ impl Buffer<'_> {
     ///     render(&mut temporary, width, height);
     ///
     ///     // And copy from temporary buffer to actual pixel data.
-    ///     for (tmp, actual) in temporary.iter_mut().zip(buffer.pixels()) {
-    ///         *actual = Pixel::new_rgb(tmp[0], tmp[1], tmp[2]);
+    ///     for (tmp_row, actual_row) in temporary.chunks(width as usize).zip(buffer.pixel_rows()) {
+    ///         for (tmp, actual) in tmp_row.iter().zip(actual_row) {
+    ///             *actual = Pixel::new_rgb(tmp[0], tmp[1], tmp[2]);
+    ///         }
     ///     }
     /// }
     ///
@@ -357,7 +393,7 @@ impl Buffer<'_> {
 
     /// Iterate over each row of pixels.
     ///
-    /// Each slice returned from the iterator has a length of `buffer.width()`.
+    /// Each slice returned from the iterator has a length of `buffer.byte_stride() / 4`.
     ///
     /// # Examples
     ///
@@ -409,11 +445,11 @@ impl Buffer<'_> {
     pub fn pixel_rows(
         &mut self,
     ) -> impl DoubleEndedIterator<Item = &mut [Pixel]> + ExactSizeIterator {
-        let width = self.width().get() as usize;
+        let pixel_stride = self.byte_stride().get() as usize / 4;
         let pixels = self.pixels();
-        assert_eq!(pixels.len() % width, 0, "buffer must be multiple of width");
-        // NOTE: This won't panic because `width` is `NonZeroU32`
-        pixels.chunks_mut(width)
+        assert_eq!(pixels.len() % pixel_stride, 0, "must be multiple of stride");
+        // NOTE: This won't panic because `pixel_stride` came from `NonZeroU32`
+        pixels.chunks_mut(pixel_stride)
     }
 
     /// Iterate over each pixel in the data.

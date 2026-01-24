@@ -328,10 +328,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             height,
         }))?;
 
+        let byte_stride = width.get() * 4;
+        let num_bytes = byte_stride as usize * height.get() as usize;
+
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
             self.buffer
-                .resize(self.display.connection(), width.get(), height.get())
+                .resize(self.display.connection(), num_bytes)
                 .swbuf_err("Failed to resize X11 buffer")?;
 
             // We successfully resized the buffer.
@@ -416,6 +419,10 @@ pub struct BufferImpl<'a> {
 }
 
 impl BufferInterface for BufferImpl<'_> {
+    fn byte_stride(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.width().get() * 4).unwrap()
+    }
+
     fn width(&self) -> NonZeroU32 {
         self.size.unwrap().0.into()
     }
@@ -535,20 +542,12 @@ impl BufferInterface for BufferImpl<'_> {
 }
 
 impl Buffer {
-    /// Resize the buffer to the given size.
-    fn resize(
-        &mut self,
-        conn: &impl Connection,
-        width: u16,
-        height: u16,
-    ) -> Result<(), PushBufferError> {
+    /// Resize the buffer to the given number of bytes.
+    fn resize(&mut self, conn: &impl Connection, num_bytes: usize) -> Result<(), PushBufferError> {
         match self {
-            Buffer::Shm(ref mut shm) => shm.alloc_segment(conn, total_len(width, height)),
+            Buffer::Shm(ref mut shm) => shm.alloc_segment(conn, num_bytes),
             Buffer::Wire(wire) => {
-                wire.resize(
-                    total_len(width, height) / size_of::<Pixel>(),
-                    Pixel::default(),
-                );
+                wire.resize(num_bytes / size_of::<Pixel>(), Pixel::default());
                 Ok(())
             }
         }
@@ -983,16 +982,4 @@ impl<T, E: Into<PushBufferError>> PushResultExt<T, E> for Result<T, E> {
     fn push_err(self) -> Result<T, PushBufferError> {
         self.map_err(Into::into)
     }
-}
-
-/// Get the length that a slice needs to be to hold a buffer of the given dimensions.
-#[inline(always)]
-fn total_len(width: u16, height: u16) -> usize {
-    let width: usize = width.into();
-    let height: usize = height.into();
-
-    width
-        .checked_mul(height)
-        .and_then(|len| len.checked_mul(size_of::<Pixel>()))
-        .unwrap_or_else(|| panic!("Dimensions are too large: ({} x {})", width, height))
 }

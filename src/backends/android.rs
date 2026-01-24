@@ -124,6 +124,10 @@ pub struct BufferImpl<'a> {
 unsafe impl Send for BufferImpl<'_> {}
 
 impl BufferInterface for BufferImpl<'_> {
+    fn byte_stride(&self) -> NonZeroU32 {
+        NonZeroU32::new(self.width().get() * 4).unwrap()
+    }
+
     fn width(&self) -> NonZeroU32 {
         NonZeroU32::new(self.native_window_buffer.width() as u32).unwrap()
     }
