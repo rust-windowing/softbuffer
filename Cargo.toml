@@ -178,7 +178,7 @@ colorous = "1.0.12"
 web-time = "1.0.0"
 winit = { version = "0.30.0", default-features = false, features = ["rwh_06"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-glam = { version = "0.30.10", features = ["rand"] }
+glam = { version = "0.31.0", features = ["rand"] }
 rand = "0.9.2"
 # Disable unnecessary formats.
 image = { version = "0.25.0", default-features = false, features = ["jpeg"] }
