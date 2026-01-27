@@ -1,23 +1,23 @@
 # Android
-/src/android.rs     @MarijnS95
+/src/backends/android.rs     @MarijnS95
 
 # Apple platforms
-/src/cg.rs          @madsmtm
+/src/backends/cg.rs          @madsmtm
 
 # DRM/KMS (no maintainer)
-/src/kms.rs
+/src/backends/kms.rs
 
 # Redox
-/src/orbital.rs     @jackpot51
+/src/backends/orbital.rs     @jackpot51
 
 # Wayland
-/src/wayland        @ids1024
+/src/backends/wayland        @ids1024
 
 # Web
-/src/web.rs         @daxpedda
+/src/backends/web.rs         @daxpedda
 
 # Windows
-/src/win32.rs       @notgull
+/src/backends/win32.rs       @notgull
 
 # X11
-/src/x11.rs         @notgull
+/src/backends/x11.rs         @notgull
