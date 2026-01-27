@@ -791,13 +791,13 @@ fn create_shm_id() -> io::Result<OwnedFd> {
     use posix_shm::{Mode, OFlags};
 
     let mut rng = fastrand::Rng::new();
-    let mut name = String::with_capacity(23);
+    let mut name = String::with_capacity(24);
 
     // Only try four times; the chances of a collision on this space is astronomically low, so if
     // we miss four times in a row we're probably under attack.
     for i in 0..4 {
         name.clear();
-        name.push_str("softbuffer-x11-");
+        name.push_str("/softbuffer-x11-");
         name.extend(std::iter::repeat_with(|| rng.alphanumeric()).take(7));
 
         // Try to create the shared memory segment.
