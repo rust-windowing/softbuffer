@@ -31,8 +31,6 @@ from the minifb library to do platform-specific work.
 
 Softbuffer supports many platforms, some to a higher degree than others. This is codified with a "tier" system. Tier 1 platforms can be thought of as "tested and guaranteed to work", tier 2 as "will likely work", and tier 3 as "builds in CI".
 
-When submitting pull requests that change multiple platforms, you're expected to have tested it on all tier 1 platforms.
-
 The current status is as follows (based on the list of platforms exposed by [`raw-window-handle`](https://crates.io/crates/raw-window-handle)):
 
 |  Platform          | Tier | Available |
