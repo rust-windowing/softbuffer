@@ -1,10 +1,24 @@
 # Softbuffer
 
-Enables software rendering via drawing an image straight to a window.
+Render an image on the CPU and show it on a window in a cross-platform manner.
 
-Softbuffer integrates with the [`raw-window-handle`](https://crates.io/crates/raw-window-handle) crate
-to allow writing pixels to a window in a cross-platform way while using the very high quality dedicated window management
-libraries that are available in the Rust ecosystem.
+There exist many libraries for doing realtime rendering on the GPU, such as `wgpu`, `blade`,
+`ash`, etc. This is often the sensible choice, but there are a few cases where it makes sense to
+render on the CPU, such as for learning purposes, drawing simple 2D scenes or GUIs, or as a
+fallback rendering path when a GPU isn't available. Softbuffer allows you to do this.
+
+To use Softbuffer, first create a window using `winit`, `sdl3`, or any other crate that provides a
+[`raw_window_handle::HasWindowHandle`].
+
+Next, you create a [`Context`] and [`Surface`] from that window, and can now call
+[`Surface::buffer_mut()`] to get a [`Buffer`] that you can draw into. Once you're done drawing, call
+[`Buffer::present()`] to show the buffer on the window.
+
+Note that Softbuffer only provides the `&mut [...]` buffer, it does not provide any rendering
+primitives for drawing rectangles, circles, curves and so on. For that, you'll want to use crates
+like [`tiny-skia`](https://docs.rs/tiny-skia/) or [`vello_cpu`](https://docs.rs/vello_cpu/).
+
+[`raw_window_handle::HasWindowHandle`]: https://docs.rs/raw-window-handle/0.6.2/raw_window_handle/trait.HasWindowHandle.html
 
 ## Platform support
 
