@@ -20,6 +20,23 @@ like [`tiny-skia`](https://docs.rs/tiny-skia/) or [`vello_cpu`](https://docs.rs/
 
 [`raw_window_handle::HasWindowHandle`]: https://docs.rs/raw-window-handle/0.6.2/raw_window_handle/trait.HasWindowHandle.html
 
+## How it works
+
+Most platforms have a compositor of some sort (WindowServer on macOS, Desktop Window Manager on
+Windows, the Wayland compositor, etc). This is a separate process that applications communicate
+with over IPC, and it is responsible for taking the various surfaces that applications send to it
+and mash ("composite") them together in the right way to render the user's desktop on the
+connected monitors.
+
+The role of Softbuffer then is to create a shared memory region (i.e. [`Buffer`]) that can be
+written to from the CPU, and then handed to the compositor (in [`Buffer::present`]). Softbuffer
+keeps a set of buffers around per surface to implement double-buffering (depending on platform
+requirements).
+
+Softbuffer strives to present buffers in a zero-copy manner. One interesting wrinkle here is that
+the compositor is often GPU-accelerated, so on platforms without a unified memory architecture,
+some copying is inherently necessary (though when possible, it is done in hardware using DMA).
+
 ## Platform support
 
 Softbuffer supports many platforms, some to a higher degree than others. This is codified with a "tier" system. Tier 1 platforms can be thought of as "tested and guaranteed to work", tier 2 as "will likely work", and tier 3 as "builds in CI".
