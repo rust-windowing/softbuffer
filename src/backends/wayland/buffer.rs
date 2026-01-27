@@ -37,7 +37,7 @@ fn create_memfile() -> File {
     let mut rng = fastrand::Rng::new();
 
     for _ in 0..=4 {
-        let mut name = String::from("softbuffer-");
+        let mut name = String::from("/softbuffer-");
         name.extend(iter::repeat_with(|| rng.alphanumeric()).take(7));
         name.push('\0');
 
