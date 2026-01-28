@@ -469,12 +469,12 @@ impl BufferInterface for BufferImpl<'_> {
                     damage
                         .iter()
                         .try_for_each(|rect| {
-                            let src_x = rect.x.try_into().unwrap_or(u16::MAX);
-                            let src_y = rect.y.try_into().unwrap_or(u16::MAX);
-                            let dst_x = rect.x.try_into().unwrap_or(i16::MAX);
-                            let dst_y = rect.y.try_into().unwrap_or(i16::MAX);
-                            let width = rect.width.get().try_into().unwrap_or(u16::MAX);
-                            let height = rect.height.get().try_into().unwrap_or(u16::MAX);
+                            let src_x = util::to_u16_saturating(rect.x);
+                            let src_y = util::to_u16_saturating(rect.y);
+                            let dst_x = util::to_i16_saturating(rect.x);
+                            let dst_y = util::to_i16_saturating(rect.y);
+                            let width = util::to_u16_saturating(rect.width.get());
+                            let height = util::to_u16_saturating(rect.height.get());
 
                             self.connection
                                 .shm_put_image(
