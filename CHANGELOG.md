@@ -6,6 +6,7 @@
 - **Breaking:** Removed generic type parameters `D` and `W` from `Buffer<'_>` struct.
 - **Breaking:** Removed `Deref[Mut]` implementation on `Buffer<'_>`. Use `Buffer::pixels()` instead.
 - **Breaking:** Removed unintentional Cargo features for Softbuffer's optional dependencies.
+- **Breaking:** Disable the DRM/KMS backend by default.
 - **Breaking:** Removed `DamageOutOfRange` error case. If the damage value is greater than the backend supports, it is instead clamped to an appropriate value.
 - Fixed `present_with_damage` with bounds out of range on Windows, Web and X11.
 
