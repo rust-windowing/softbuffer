@@ -1,3 +1,4 @@
+use softbuffer::{Context, Pixel, Surface};
 use std::num::NonZeroU32;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -13,11 +14,11 @@ fn main() {
 }
 
 pub(crate) fn entry(event_loop: EventLoop<()>) {
-    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+    let context = Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = util::WinitAppBuilder::with_init(
         |elwt| util::make_window(elwt, |w| w),
-        move |_elwt, window| softbuffer::Surface::new(&context, window.clone()).unwrap(),
+        move |_elwt, window| Surface::new(&context, window.clone()).unwrap(),
     )
     .with_event_handler(|window, surface, window_id, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
@@ -50,7 +51,7 @@ pub(crate) fn entry(event_loop: EventLoop<()>) {
                     let red = x % 255;
                     let green = y % 255;
                     let blue = (x * y) % 255;
-                    *pixel = blue | (green << 8) | (red << 16);
+                    *pixel = Pixel::new_rgb(red as u8, green as u8, blue as u8);
                 }
 
                 buffer.present().unwrap();

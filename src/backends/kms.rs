@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
-use crate::util;
+use crate::{util, Pixel};
 
 #[derive(Debug, Clone)]
 struct DrmDevice<'a> {
@@ -317,11 +317,11 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
-        let ptr = self.mapping.as_mut_ptr().cast::<u32>();
-        let len = self.mapping.len() / size_of::<u32>();
-        debug_assert_eq!(self.mapping.len() % size_of::<u32>(), 0);
-        // SAFETY: `&mut [u8]` can be reinterpreted as `&mut [u32]`, assuming that the allocation
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
+        let ptr = self.mapping.as_mut_ptr().cast::<Pixel>();
+        let len = self.mapping.len() / size_of::<Pixel>();
+        debug_assert_eq!(self.mapping.len() % size_of::<Pixel>(), 0);
+        // SAFETY: `&mut [u8]` can be reinterpreted as `&mut [Pixel]`, assuming that the allocation
         // is aligned to at least a multiple of 4 bytes.
         unsafe { slice::from_raw_parts_mut(ptr, len) }
     }

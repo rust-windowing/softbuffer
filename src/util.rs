@@ -6,7 +6,7 @@ use std::fmt;
 use std::num::NonZeroU32;
 use std::ops;
 
-use crate::Rect;
+use crate::{Pixel, Rect};
 
 /// Calculates the smallest `Rect` necessary to represent all damaged `Rect`s.
 pub(crate) fn union_damage(damage: &[Rect]) -> Option<Rect> {
@@ -61,7 +61,7 @@ pub(crate) fn clamp_rect(rect: Rect, width: NonZeroU32, height: NonZeroU32) -> R
 
 /// A wrapper around a `Vec` of pixels that doesn't print the whole buffer on `Debug`.
 #[derive(PartialEq, Eq, Hash, Clone)]
-pub(crate) struct PixelBuffer(pub Vec<u32>);
+pub(crate) struct PixelBuffer(pub Vec<Pixel>);
 
 impl fmt::Debug for PixelBuffer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -70,7 +70,7 @@ impl fmt::Debug for PixelBuffer {
 }
 
 impl ops::Deref for PixelBuffer {
-    type Target = Vec<u32>;
+    type Target = Vec<Pixel>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }

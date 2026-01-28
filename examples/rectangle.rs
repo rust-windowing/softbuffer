@@ -1,4 +1,4 @@
-use softbuffer::Buffer;
+use softbuffer::{Buffer, Context, Pixel, Surface};
 use std::num::NonZeroU32;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -11,12 +11,12 @@ fn redraw(buffer: &mut Buffer<'_>, flag: bool) {
     let height = buffer.height().get();
     for (x, y, pixel) in buffer.pixels_iter() {
         *pixel = if flag && x >= 100 && x < width - 100 && y >= 100 && y < height - 100 {
-            0x00ffffff
+            Pixel::new_rgb(0xff, 0xff, 0xff)
         } else {
             let red = (x & 0xff) ^ (y & 0xff);
             let green = (x & 0x7f) ^ (y & 0x7f);
             let blue = (x & 0x3f) ^ (y & 0x3f);
-            blue | (green << 8) | (red << 16)
+            Pixel::new_rgb(red as u8, green as u8, blue as u8)
         };
     }
 }
@@ -25,7 +25,7 @@ fn main() {
     util::setup();
 
     let event_loop = EventLoop::new().unwrap();
-    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+    let context = Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = util::WinitAppBuilder::with_init(
         |elwt| {
@@ -37,7 +37,7 @@ fn main() {
 
             (window, flag)
         },
-        move |_elwt, (window, _flag)| softbuffer::Surface::new(&context, window.clone()).unwrap(),
+        move |_elwt, (window, _flag)| Surface::new(&context, window.clone()).unwrap(),
     )
     .with_event_handler(|state, surface, window_id, event, elwt| {
         let (window, flag) = state;

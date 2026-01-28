@@ -7,11 +7,10 @@
 extern crate core;
 
 mod backend_dispatch;
-use backend_dispatch::*;
 mod backend_interface;
-use backend_interface::*;
 mod backends;
 mod error;
+mod pixel;
 mod util;
 
 use std::cell::Cell;
@@ -19,13 +18,15 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use error::InitError;
-pub use error::SoftBufferError;
-
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 
+use self::backend_dispatch::*;
+use self::backend_interface::*;
 #[cfg(target_family = "wasm")]
-pub use backends::web::SurfaceExtWeb;
+pub use self::backends::web::SurfaceExtWeb;
+use self::error::InitError;
+pub use self::error::SoftBufferError;
+pub use self::pixel::Pixel;
 
 /// An instance of this struct contains the platform-specific data that must be managed in order to
 /// write to a window on that platform.
@@ -122,7 +123,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// - On AppKit, UIKit, Redox and Wayland, this function is unimplemented.
     /// - On Web, this will fail if the content was supplied by
     ///   a different origin depending on the sites CORS rules.
-    pub fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    pub fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         self.surface_impl.fetch()
     }
 
@@ -168,10 +169,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 
 /// A buffer that can be written to by the CPU and presented to the window.
 ///
-/// This derefs to a `[u32]`, which depending on the backend may be a mapping into shared memory
-/// accessible to the display server, so presentation doesn't require any (client-side) copying.
+/// The buffer's contents is a [slice] of [`Pixel`]s, which depending on the backend may be a
+/// mapping into shared memory accessible to the display server, so presentation doesn't require any
+/// (client-side) copying.
 ///
 /// This trusts the display server not to mutate the buffer, which could otherwise be unsound.
+///
+/// # Data representation
+///
+/// The buffer data is laid out in row-major order (split into horizontal lines), with origin in the
+/// top-left corner. There is one [`Pixel`] (4 bytes) in the buffer for each pixel in the area to
+/// draw.
 ///
 /// # Reading buffer data
 ///
@@ -182,48 +190,29 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// As such, when rendering, you should always set the pixel in its entirety:
 ///
 /// ```
-/// # let pixel = &mut 0x00ffffff;
-/// # let (blue, green, red) = (0x11, 0x22, 0x33);
-/// *pixel = blue | (green << 8) | (red << 16);
-/// # assert_eq!(*pixel, 0x00332211);
+/// # use softbuffer::Pixel;
+/// # let pixel = &mut Pixel::default();
+/// # let (red, green, blue) = (0x11, 0x22, 0x33);
+/// *pixel = Pixel::new_rgb(red, green, blue);
 /// ```
 ///
 /// Instead of e.g. something like:
 ///
 /// ```
-/// # let pixel = &mut 0x00ffffff;
-/// # let (blue, green, red) = (0x11, 0x22, 0x33);
+/// # use softbuffer::Pixel;
+/// # let pixel = &mut Pixel::default();
+/// # let (red, green, blue) = (0x11, 0x22, 0x33);
 /// // DISCOURAGED!
-/// *pixel &= 0x00000000; // Clear
-/// *pixel |= blue; // Set blue pixel
-/// *pixel |= green << 8; // Set green pixel
-/// *pixel |= red << 16; // Set red pixel
-/// # assert_eq!(*pixel, 0x00332211);
+/// *pixel = Pixel::default(); // Clear
+/// pixel.r |= red;
+/// pixel.g |= green;
+/// pixel.b |= blue;
 /// ```
 ///
 /// To discourage reading from the buffer, `&self -> &[u8]` methods are intentionally not provided.
 ///
-/// # Data representation
-///
-/// The format of the buffer is as follows. There is one `u32` in the buffer for each pixel in
-/// the area to draw. The first entry is the upper-left most pixel. The second is one to the right
-/// etc. (Row-major top to bottom left to right one `u32` per pixel). Within each `u32` the highest
-/// order 8 bits are to be set to 0. The next highest order 8 bits are the red channel, then the
-/// green channel, and then the blue channel in the lowest-order 8 bits. See the examples for
-/// one way to build this format using bitwise operations.
-///
-/// --------
-///
-/// Pixel format (`u32`):
-///
-/// 00000000RRRRRRRRGGGGGGGGBBBBBBBB
-///
-/// 0: Bit is 0
-/// R: Red channel
-/// G: Green channel
-/// B: Blue channel
-///
 /// # Platform dependent behavior
+///
 /// No-copy presentation is currently supported on:
 /// - Wayland
 /// - X, when XShm is available
@@ -316,10 +305,11 @@ impl Buffer<'_> {
     /// Clear the buffer with red.
     ///
     /// ```no_run
-    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
-    /// buffer.pixels().fill(0x00ff0000);
+    /// # use softbuffer::{Buffer, Pixel};
+    /// # let buffer: Buffer<'_> = unimplemented!();
+    /// buffer.pixels().fill(Pixel::new_rgb(0xff, 0x00, 0x00));
     /// ```
-    pub fn pixels(&mut self) -> &mut [u32] {
+    pub fn pixels(&mut self) -> &mut [Pixel] {
         self.buffer_impl.pixels_mut()
     }
 
@@ -332,12 +322,13 @@ impl Buffer<'_> {
     /// Fill each row with alternating black and white.
     ///
     /// ```no_run
-    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// # use softbuffer::{Buffer, Pixel};
+    /// # let buffer: Buffer<'_> = unimplemented!();
     /// for (y, row) in buffer.pixel_rows().enumerate() {
     ///     if y % 2 == 0 {
-    ///         row.fill(0x00ffffff);
+    ///         row.fill(Pixel::new_rgb(0xff, 0xff, 0xff));
     ///     } else {
-    ///         row.fill(0x00000000);
+    ///         row.fill(Pixel::new_rgb(0x00, 0x00, 0x00));
     ///     }
     /// }
     /// ```
@@ -345,7 +336,8 @@ impl Buffer<'_> {
     /// Fill a red rectangle while skipping over regions that don't need to be modified.
     ///
     /// ```no_run
-    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// # use softbuffer::{Buffer, Pixel};
+    /// # let buffer: Buffer<'_> = unimplemented!();
     /// let x = 100;
     /// let y = 200;
     /// let width = 10;
@@ -353,7 +345,7 @@ impl Buffer<'_> {
     ///
     /// for row in buffer.pixel_rows().skip(y).take(height) {
     ///     for pixel in row.iter_mut().skip(x).take(width) {
-    ///         *pixel = 0x00ff0000;
+    ///         *pixel = Pixel::new_rgb(0xff, 0x00, 0x00);
     ///     }
     /// }
     /// ```
@@ -363,18 +355,18 @@ impl Buffer<'_> {
     /// [`pixels_iter`]: Self::pixels_iter
     ///
     /// ```no_run
-    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
-    /// # let pixel_value = |x, y| 0x00000000;
+    /// # use softbuffer::{Buffer, Pixel};
+    /// # let buffer: Buffer<'_> = unimplemented!();
     /// for (y, row) in buffer.pixel_rows().enumerate() {
     ///     for (x, pixel) in row.iter_mut().enumerate() {
-    ///         *pixel = pixel_value(x, y);
+    ///         *pixel = Pixel::new_rgb((x % 0xff) as u8, (y % 0xff) as u8, 0x00);
     ///     }
     /// }
     /// ```
     #[inline]
     pub fn pixel_rows(
         &mut self,
-    ) -> impl DoubleEndedIterator<Item = &mut [u32]> + ExactSizeIterator {
+    ) -> impl DoubleEndedIterator<Item = &mut [Pixel]> + ExactSizeIterator {
         let width = self.width().get() as usize;
         let pixels = self.pixels();
         assert_eq!(pixels.len() % width, 0, "buffer must be multiple of width");
@@ -392,7 +384,8 @@ impl Buffer<'_> {
     /// Draw a red rectangle with a margin of 10 pixels, and fill the background with blue.
     ///
     /// ```no_run
-    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// # use softbuffer::{Buffer, Pixel};
+    /// # let buffer: Buffer<'_> = unimplemented!();
     /// let width = buffer.width().get();
     /// let height = buffer.height().get();
     /// let left = 10;
@@ -403,10 +396,10 @@ impl Buffer<'_> {
     /// for (x, y, pixel) in buffer.pixels_iter() {
     ///     if (left..=right).contains(&x) && (top..=bottom).contains(&y) {
     ///         // Inside rectangle.
-    ///         *pixel = 0x00ff0000;
+    ///         *pixel = Pixel::new_rgb(0xff, 0x00, 0x00);
     ///     } else {
     ///         // Outside rectangle.
-    ///         *pixel = 0x000000ff;
+    ///         *pixel = Pixel::new_rgb(0x00, 0x00, 0xff);
     ///     };
     /// }
     /// ```
@@ -414,16 +407,17 @@ impl Buffer<'_> {
     /// Iterate over the pixel data in reverse, and draw a red rectangle in the top-left corner.
     ///
     /// ```no_run
-    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// # use softbuffer::{Buffer, Pixel};
+    /// # let buffer: Buffer<'_> = unimplemented!();
     /// // Only reverses iteration order, x and y are still relative to the top-left corner.
     /// for (x, y, pixel) in buffer.pixels_iter().rev() {
     ///     if x <= 100 && y <= 100 {
-    ///         *pixel = 0x00ff0000;
+    ///         *pixel = Pixel::new_rgb(0xff, 0x00, 0x00);
     ///     }
     /// }
     /// ```
     #[inline]
-    pub fn pixels_iter(&mut self) -> impl DoubleEndedIterator<Item = (u32, u32, &mut u32)> {
+    pub fn pixels_iter(&mut self) -> impl DoubleEndedIterator<Item = (u32, u32, &mut Pixel)> {
         self.pixel_rows().enumerate().flat_map(|(y, pixels)| {
             pixels
                 .iter_mut()

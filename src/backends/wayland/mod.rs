@@ -1,7 +1,7 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    util, Rect, SoftBufferError,
+    util, Pixel, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
@@ -228,7 +228,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         self.back.mapped_mut()
     }
 

@@ -7,7 +7,7 @@
 )))]
 fn buffer_mut(c: &mut criterion::Criterion) {
     use criterion::black_box;
-    use softbuffer::{Context, Surface};
+    use softbuffer::{Context, Pixel, Surface};
     use std::num::NonZeroU32;
     use winit::event_loop::ControlFlow;
     use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
@@ -43,16 +43,16 @@ fn buffer_mut(c: &mut criterion::Criterion) {
             c.bench_function("pixels()", |b| {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
-                    let pixels: &mut [u32] = buffer.pixels();
+                    let pixels: &mut [Pixel] = buffer.pixels();
                     black_box(pixels);
                 });
             });
 
-            c.bench_function("fill u32", |b| {
+            c.bench_function("fill pixels", |b| {
                 let mut buffer = surface.buffer_mut().unwrap();
                 b.iter(|| {
                     let buffer = black_box(&mut buffer);
-                    buffer.pixels().fill(0x00000000);
+                    buffer.pixels().fill(Pixel::default());
                 });
             });
 
@@ -64,7 +64,7 @@ fn buffer_mut(c: &mut criterion::Criterion) {
                         let red = (x & 0xff) ^ (y & 0xff);
                         let green = (x & 0x7f) ^ (y & 0x7f);
                         let blue = (x & 0x3f) ^ (y & 0x3f);
-                        *pixel = blue | (green << 8) | (red << 16);
+                        *pixel = Pixel::new_rgb(red as u8, green as u8, blue as u8);
                     }
                 });
             });

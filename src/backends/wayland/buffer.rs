@@ -15,6 +15,7 @@ use wayland_client::{
 };
 
 use super::State;
+use crate::Pixel;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn create_memfile() -> File {
@@ -99,6 +100,8 @@ impl WaylandBuffer {
             width,
             height,
             width * 4,
+            // This is documented as `0xXXRRGGBB` on a little-endian machine, which means a byte
+            // order of `[B, G, R, X]`.
             wl_shm::Format::Xrgb8888,
             qh,
             released.clone(),
@@ -162,11 +165,12 @@ impl WaylandBuffer {
     }
 
     #[inline]
-    pub fn mapped_mut(&mut self) -> &mut [u32] {
+    pub fn mapped_mut(&mut self) -> &mut [Pixel] {
         debug_assert!(self.len() * 4 <= self.map.len());
-        // SAFETY: We're casting a `&mut [u8]` to `&mut [u32]`, the alignment of the memory region
-        // is at least 4, and the size of the region is large enough.
-        unsafe { slice::from_raw_parts_mut(self.map.as_mut_ptr() as *mut u32, self.len()) }
+        // SAFETY: We're casting a `&mut [u8]` to `&mut [Pixel]`, and we assume that the memmap
+        // allocation s aligned to at least a multiple of 4 bytes, and that the size of the
+        // region is large enough.
+        unsafe { slice::from_raw_parts_mut(self.map.as_mut_ptr() as *mut Pixel, self.len()) }
     }
 }
 

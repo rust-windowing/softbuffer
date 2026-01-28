@@ -3,7 +3,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, 
 use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::backend_interface::*;
-use crate::{util, Rect, SoftBufferError};
+use crate::{util, Pixel, Rect, SoftBufferError};
 
 #[derive(Debug)]
 struct OrbitalMap {
@@ -38,8 +38,8 @@ impl OrbitalMap {
         })
     }
 
-    unsafe fn data_mut(&mut self) -> &mut [u32] {
-        unsafe { slice::from_raw_parts_mut(self.address as *mut u32, self.size_unaligned / 4) }
+    unsafe fn data_mut(&mut self) -> &mut [Pixel] {
+        unsafe { slice::from_raw_parts_mut(self.address as *mut Pixel, self.size_unaligned / 4) }
     }
 }
 
@@ -122,7 +122,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
             )
         } else {
             Pixels::Buffer(util::PixelBuffer(vec![
-                0;
+                Pixel::default();
                 self.width as usize
                     * self.height as usize
             ]))
@@ -162,7 +162,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         match &mut self.pixels {
             Pixels::Mapping(mapping) => unsafe { mapping.data_mut() },
             Pixels::Buffer(buffer) => buffer,
@@ -212,7 +212,7 @@ fn window_size(window_fd: usize) -> (usize, usize) {
     (window_width, window_height)
 }
 
-fn set_buffer(window_fd: usize, buffer: &[u32], width_u32: u32, height_u32: u32) {
+fn set_buffer(window_fd: usize, buffer: &[Pixel], width_u32: u32, height_u32: u32) {
     // Read the current width and size
     let (window_width, window_height) = window_size(window_fd);
 
@@ -222,7 +222,8 @@ fn set_buffer(window_fd: usize, buffer: &[u32], width_u32: u32, height_u32: u32)
             unsafe { OrbitalMap::new(window_fd, window_width * window_height * 4) }
                 .expect("failed to map orbital window");
 
-        // Window buffer is u32 color data in 0xAABBGGRR format
+        // Window buffer is u32 color data in BGRA format:
+        // https://docs.rs/orbclient/0.3.48/src/orbclient/color.rs.html#25-29
         let window_data = unsafe { window_map.data_mut() };
 
         // Copy each line, cropping to fit

@@ -1,7 +1,7 @@
 //! Softbuffer implementation using CoreGraphics.
 use crate::backend_interface::*;
 use crate::error::InitError;
-use crate::{util, Rect, SoftBufferError};
+use crate::{util, Pixel, Rect, SoftBufferError};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
@@ -260,7 +260,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
     fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         Ok(BufferImpl {
-            buffer: util::PixelBuffer(vec![0; self.width * self.height]),
+            buffer: util::PixelBuffer(vec![Pixel::default(); self.width * self.height]),
             width: self.width,
             height: self.height,
             color_space: &self.color_space,
@@ -288,7 +288,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         &mut self.buffer
     }
 
@@ -302,15 +302,15 @@ impl BufferInterface for BufferImpl<'_> {
             data: NonNull<c_void>,
             size: usize,
         ) {
-            let data = data.cast::<u32>();
-            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<u32>());
+            let data = data.cast::<Pixel>();
+            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<Pixel>());
             // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
             drop(unsafe { Box::from_raw(slice) })
         }
 
         let data_provider = {
-            let len = self.buffer.len() * size_of::<u32>();
-            let buffer: *mut [u32] = Box::into_raw(self.buffer.0.into_boxed_slice());
+            let len = self.buffer.len() * size_of::<Pixel>();
+            let buffer: *mut [Pixel] = Box::into_raw(self.buffer.0.into_boxed_slice());
             // Convert slice pointer to thin pointer.
             let data_ptr = buffer.cast::<c_void>();
 

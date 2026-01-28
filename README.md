@@ -67,6 +67,7 @@ To run the Android-specific example on an Android phone: `cargo apk r --example 
 ```rust,no_run
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use softbuffer::{Context, Pixel, Surface};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
@@ -76,14 +77,14 @@ mod util;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
-    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+    let context = Context::new(event_loop.owned_display_handle()).unwrap();
 
     let mut app = util::WinitAppBuilder::with_init(
         |elwt| {
             let window = elwt.create_window(Window::default_attributes());
             Rc::new(window.unwrap())
         },
-        |_elwt, window| softbuffer::Surface::new(&context, window.clone()).unwrap(),
+        |_elwt, window| Surface::new(&context, window.clone()).unwrap(),
     )
     .with_event_handler(|window, surface, window_id, event, elwt| {
         elwt.set_control_flow(ControlFlow::Wait);
@@ -108,11 +109,11 @@ fn main() {
 
                 let mut buffer = surface.buffer_mut().unwrap();
                 for (x, y, pixel) in buffer.pixels_iter() {
-                    let red = x % 255;
-                    let green = y % 255;
-                    let blue = (x * y) % 255;
+                    let red = (x % 255) as u8;
+                    let green = (y % 255) as u8;
+                    let blue = ((x * y) % 255) as u8;
 
-                    *pixel = blue | (green << 8) | (red << 16);
+                    *pixel = Pixel::new_rgb(red, green, blue);
                 }
 
                 buffer.present().unwrap();

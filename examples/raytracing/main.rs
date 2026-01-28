@@ -3,6 +3,7 @@
 //! Note that this is quite slow, you probably don't want to do realtime CPU raytracing in practice.
 //!
 //! [Ray Tracing in One Weekend]: https://raytracing.github.io/books/RayTracingInOneWeekend.html
+use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::EventLoop;
@@ -25,12 +26,12 @@ fn main() {
     util::setup();
 
     let event_loop = EventLoop::new().unwrap();
-    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+    let context = Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = util::WinitAppBuilder::with_init(
         |elwt| util::make_window(elwt, |w| w),
         move |_elwt, window| {
-            let mut surface = softbuffer::Surface::new(&context, window.clone()).unwrap();
+            let mut surface = Surface::new(&context, window.clone()).unwrap();
             surface
                 .resize(
                     NonZeroU32::new(window.inner_size().width).unwrap(),
