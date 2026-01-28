@@ -11,7 +11,7 @@ use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{util, NoDisplayHandle, NoWindowHandle, Rect, SoftBufferError};
+use crate::{util, NoDisplayHandle, NoWindowHandle, Pixel, Rect, SoftBufferError};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
@@ -171,7 +171,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
-            self.buffer.resize(total_len(width.get(), height.get()), 0);
+            self.buffer
+                .resize(total_len(width.get(), height.get()), Pixel::default());
             self.canvas.set_width(width.get());
             self.canvas.set_height(height.get());
             self.size = Some((width, height));
@@ -189,7 +190,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         })
     }
 
-    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         let (width, height) = self
             .size
             .expect("Must set size of surface before calling `fetch()`");
@@ -205,7 +206,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
             .data()
             .0
             .chunks_exact(4)
-            .map(|chunk| u32::from_be_bytes([0, chunk[0], chunk[1], chunk[2]]))
+            .map(|chunk| Pixel {
+                r: chunk[0],
+                g: chunk[1],
+                b: chunk[2],
+                a: 0,
+            })
             .collect())
     }
 }
@@ -318,7 +324,7 @@ impl BufferInterface for BufferImpl<'_> {
             .1
     }
 
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         self.buffer
     }
 
@@ -354,7 +360,7 @@ impl BufferInterface for BufferImpl<'_> {
                     .take(union_damage.width.get() as usize)
             })
             .copied()
-            .flat_map(|pixel| [(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8, 255])
+            .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, 0xff])
             .collect();
 
         debug_assert_eq!(

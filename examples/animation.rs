@@ -1,5 +1,6 @@
 #[cfg(not(target_family = "wasm"))]
 use rayon::prelude::*;
+use softbuffer::{Context, Pixel, Surface};
 use std::f64::consts::PI;
 use std::num::NonZeroU32;
 use web_time::Instant;
@@ -15,7 +16,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let start = Instant::now();
 
-    let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+    let context = Context::new(event_loop.owned_display_handle()).unwrap();
 
     let app = util::WinitAppBuilder::with_init(
         |event_loop| {
@@ -26,9 +27,7 @@ fn main() {
 
             (window, old_size, frames)
         },
-        move |_elwft, (window, _old_size, _frames)| {
-            softbuffer::Surface::new(&context, window.clone()).unwrap()
-        },
+        move |_elwft, (window, _old_size, _frames)| Surface::new(&context, window.clone()).unwrap(),
     )
     .with_event_handler(move |state, surface, window_id, event, elwt| {
         let (window, old_size, frames) = state;
@@ -95,7 +94,7 @@ fn main() {
     util::run_app(event_loop, app);
 }
 
-fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<u32>> {
+fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<Pixel>> {
     let render = |frame_id| {
         let elapsed = ((frame_id as f64) / (60.0)) * 2.0 * PI;
 
@@ -104,14 +103,11 @@ fn pre_render_frames(width: u32, height: u32) -> Vec<Vec<u32>> {
             .map(|(x, y)| {
                 let y = (y as f64) / (height as f64);
                 let x = (x as f64) / (width as f64);
-                let red =
-                    ((((y + elapsed).sin() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
-                let green =
-                    ((((x + elapsed).sin() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
-                let blue =
-                    ((((y - elapsed).cos() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
+                let r = ((((y + elapsed).sin() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
+                let g = ((((x + elapsed).sin() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
+                let b = ((((y - elapsed).cos() * 0.5 + 0.5) * 255.0).round() as u32).clamp(0, 255);
 
-                blue | (green << 8) | (red << 16)
+                Pixel::new_rgb(r as u8, g as u8, b as u8)
             })
             .collect::<Vec<_>>()
     };

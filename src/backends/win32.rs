@@ -3,7 +3,7 @@
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
 use crate::backend_interface::*;
-use crate::{util, Rect, SoftBufferError};
+use crate::{util, Pixel, Rect, SoftBufferError};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
@@ -29,7 +29,7 @@ const ZERO_QUAD: Gdi::RGBQUAD = Gdi::RGBQUAD {
 struct Buffer {
     dc: Gdi::HDC,
     bitmap: Gdi::HBITMAP,
-    pixels: NonNull<u32>,
+    pixels: NonNull<Pixel>,
     width: NonZeroI32,
     height: NonZeroI32,
     presented: bool,
@@ -86,13 +86,13 @@ impl Buffer {
         // XXX alignment?
         // XXX better to use CreateFileMapping, and pass hSection?
         // XXX test return value?
-        let mut pixels: *mut u32 = ptr::null_mut();
+        let mut pixels: *mut Pixel = ptr::null_mut();
         let bitmap = unsafe {
             Gdi::CreateDIBSection(
                 dc,
                 &bitmap_info as *const BitmapInfo as *const _,
                 Gdi::DIB_RGB_COLORS,
-                &mut pixels as *mut *mut u32 as _,
+                &mut pixels as *mut *mut Pixel as _,
                 ptr::null_mut(),
                 0,
             )
@@ -115,7 +115,7 @@ impl Buffer {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         unsafe {
             slice::from_raw_parts_mut(
                 self.pixels.as_ptr(),
@@ -237,7 +237,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
     }
 
     /// Fetch the buffer from the window.
-    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)
     }
 }
@@ -259,7 +259,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         self.buffer.pixels_mut()
     }
 

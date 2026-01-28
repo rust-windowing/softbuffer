@@ -34,7 +34,6 @@ wayland-dlopen = ["wayland-sys/dlopen", "winit/wayland-dlopen"]
 # Enable the X11 backend.
 x11 = [
     "dep:as-raw-xcb-connection",
-    "dep:bytemuck",
     "dep:fastrand",
     "dep:rustix",
     "dep:tiny-xlib",
@@ -45,7 +44,7 @@ x11 = [
 x11-dlopen = ["tiny-xlib/dlopen", "x11rb/dl-libxcb"]
 
 # Enable the KMS/DRM backend.
-kms = ["dep:bytemuck", "dep:drm", "dep:rustix"]
+kms = ["dep:drm", "dep:rustix"]
 
 # Common dependencies.
 [dependencies]
@@ -54,13 +53,11 @@ tracing = { version = "0.1.41", default-features = false }
 
 # Android dependencies.
 [target.'cfg(target_os = "android")'.dependencies]
-bytemuck = "1.12.3"
 ndk = "0.9.0"
 
 # Wayland, X11 and KMS/DRM dependencies.
 [target.'cfg(not(any(target_os = "android", target_vendor = "apple", target_os = "redox", target_family = "wasm", target_os = "windows")))'.dependencies]
 # Common
-bytemuck = { version = "1.12.3", optional = true }
 fastrand = { version = "2.0.0", optional = true }
 rustix = { version = "1.0.1", default-features = false, optional = true, features = [
     "fs",

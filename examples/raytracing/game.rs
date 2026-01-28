@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use softbuffer::Buffer;
+use softbuffer::{Buffer, Pixel};
 
 use crate::camera::Camera;
 use crate::vec3::{Color, Point3, Vec3};
@@ -71,9 +71,9 @@ impl Game {
             dist_to_focus,
         );
 
-        let mut pixels = vec![0; width as usize * height as usize];
+        let mut pixels = vec![Pixel::default(); width as usize * height as usize];
 
-        let each_pixel = |rng: &mut SmallRng, i, pixel: &mut u32| {
+        let each_pixel = |rng: &mut SmallRng, i, pixel: &mut Pixel| {
             let y = i % (width as usize);
             let x = i / (width as usize);
             let mut pixel_color = Color::default();
@@ -125,7 +125,7 @@ impl Game {
             right: f32,
             top: f32,
             bottom: f32,
-            color: u32,
+            color: Pixel,
         }
 
         let width = buffer.width().get() as f32 / scale_factor;
@@ -136,14 +136,14 @@ impl Game {
                 right: width - 10.0,
                 top: height - 90.0,
                 bottom: height - 10.0,
-                color: 0x00eeaaaa,
+                color: Pixel::new_rgb(0xee, 0xaa, 0xaa),
             },
             Rect {
                 left: 30.0,
                 right: 70.0,
                 top: height - 70.0,
                 bottom: height - 30.0,
-                color: 0x00aaaaee,
+                color: Pixel::new_rgb(0xaa, 0xaa, 0xee),
             },
         ];
 
@@ -193,7 +193,7 @@ impl Game {
     }
 }
 
-fn color_to_pixel(pixel_color: Color, samples_per_pixel: i32) -> u32 {
+fn color_to_pixel(pixel_color: Color, samples_per_pixel: i32) -> Pixel {
     let mut r = pixel_color.x;
     let mut g = pixel_color.y;
     let mut b = pixel_color.z;
@@ -203,7 +203,9 @@ fn color_to_pixel(pixel_color: Color, samples_per_pixel: i32) -> u32 {
     g = f32::sqrt(scale * g);
     b = f32::sqrt(scale * b);
 
-    (256.0 * b.clamp(0.0, 0.999)) as u32
-        | (((256.0 * g.clamp(0.0, 0.999)) as u32) << 8)
-        | (((256.0 * r.clamp(0.0, 0.999)) as u32) << 16)
+    Pixel::new_rgb(
+        (256.0 * r.clamp(0.0, 0.999)) as u8,
+        (256.0 * g.clamp(0.0, 0.999)) as u8,
+        (256.0 * b.clamp(0.0, 0.999)) as u8,
+    )
 }

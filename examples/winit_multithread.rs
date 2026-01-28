@@ -4,6 +4,7 @@ mod util;
 
 #[cfg(not(target_family = "wasm"))]
 pub mod ex {
+    use softbuffer::{Context, Pixel};
     use std::num::NonZeroU32;
     use std::sync::{mpsc, Arc, Mutex};
     use winit::event::{KeyEvent, WindowEvent};
@@ -36,7 +37,7 @@ pub mod ex {
                 let red = x % 255;
                 let green = y % 255;
                 let blue = (x * y) % 255;
-                *pixel = blue | (green << 8) | (red << 16);
+                *pixel = Pixel::new_rgb(red as u8, green as u8, blue as u8);
             }
 
             tracing::info!("presenting...");
@@ -48,7 +49,7 @@ pub mod ex {
     }
 
     pub fn entry(event_loop: EventLoop<()>) {
-        let context = softbuffer::Context::new(event_loop.owned_display_handle()).unwrap();
+        let context = Context::new(event_loop.owned_display_handle()).unwrap();
 
         let app = util::WinitAppBuilder::with_init(
             |elwt| {
@@ -71,9 +72,7 @@ pub mod ex {
             },
             move |_elwt, (window, _start_render, _finish_render)| {
                 tracing::info!("making surface...");
-                Arc::new(Mutex::new(
-                    softbuffer::Surface::new(&context, window.clone()).unwrap(),
-                ))
+                Arc::new(Mutex::new(Surface::new(&context, window.clone()).unwrap()))
             },
         )
         .with_event_handler(|state, surface, window_id, event, elwt| {

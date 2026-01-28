@@ -1,6 +1,6 @@
 //! Interface implemented by backends
 
-use crate::{InitError, Rect, SoftBufferError};
+use crate::{InitError, Pixel, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
@@ -29,7 +29,7 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
     /// Get a mutable reference to the buffer.
     fn buffer_mut(&mut self) -> Result<Self::Buffer<'_>, SoftBufferError>;
     /// Fetch the buffer from the window.
-    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)
     }
 }
@@ -37,7 +37,7 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
 pub(crate) trait BufferInterface {
     fn width(&self) -> NonZeroU32;
     fn height(&self) -> NonZeroU32;
-    fn pixels_mut(&mut self) -> &mut [u32];
+    fn pixels_mut(&mut self) -> &mut [Pixel];
     fn age(&self) -> u8;
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError>;
 }

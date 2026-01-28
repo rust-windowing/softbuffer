@@ -13,13 +13,15 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, Raw
 
 use std::collections::HashSet;
 use std::fmt;
+use std::mem::size_of;
 use std::num::NonZeroU32;
 use std::os::unix::io::{AsFd, BorrowedFd};
+use std::slice;
 use std::sync::Arc;
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
-use crate::util;
+use crate::{util, Pixel};
 
 #[derive(Debug, Clone)]
 struct DrmDevice<'a> {
@@ -315,8 +317,13 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
-        bytemuck::cast_slice_mut(self.mapping.as_mut())
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
+        let ptr = self.mapping.as_mut_ptr().cast::<Pixel>();
+        let len = self.mapping.len() / size_of::<Pixel>();
+        debug_assert_eq!(self.mapping.len() % size_of::<Pixel>(), 0);
+        // SAFETY: `&mut [u8]` can be reinterpreted as `&mut [Pixel]`, assuming that the allocation
+        // is aligned to at least a multiple of 4 bytes.
+        unsafe { slice::from_raw_parts_mut(ptr, len) }
     }
 
     #[inline]

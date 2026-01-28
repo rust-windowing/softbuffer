@@ -7,7 +7,7 @@
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{util, Rect, SoftBufferError};
+use crate::{util, Pixel, Rect, SoftBufferError};
 use raw_window_handle::{
     HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, XcbDisplayHandle,
     XcbWindowHandle,
@@ -21,7 +21,8 @@ use std::{
     collections::HashSet,
     fmt,
     fs::File,
-    io, mem,
+    io,
+    mem::{self, size_of},
     num::{NonZeroU16, NonZeroU32},
     ptr::{null_mut, NonNull},
     slice,
@@ -358,7 +359,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         })
     }
 
-    fn fetch(&mut self) -> Result<Vec<u32>, SoftBufferError> {
+    fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         tracing::trace!("fetch: window={:X}", self.window);
 
         let (width, height) = self
@@ -383,8 +384,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             .swbuf_err("Failed to fetch image from window")?;
 
         if reply.depth == self.depth && reply.visual == self.visual_id {
-            let mut out = vec![0u32; reply.data.len() / 4];
-            bytemuck::cast_slice_mut::<u32, u8>(&mut out).copy_from_slice(&reply.data);
+            let mut out = vec![Pixel::default(); reply.data.len() / size_of::<Pixel>()];
+            // SAFETY: `Pixel` can be re-interpreted as `[u8; 4]`.
+            let out_u8s = unsafe {
+                slice::from_raw_parts_mut(
+                    out.as_mut_ptr().cast::<u8>(),
+                    out.len() * size_of::<Pixel>(),
+                )
+            };
+            out_u8s.copy_from_slice(&reply.data);
             Ok(out)
         } else {
             Err(SoftBufferError::PlatformError(
@@ -417,7 +425,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     #[inline]
-    fn pixels_mut(&mut self) -> &mut [u32] {
+    fn pixels_mut(&mut self) -> &mut [Pixel] {
         // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer_mut`.
         unsafe { self.buffer.buffer_mut() }
     }
@@ -443,6 +451,14 @@ impl BufferInterface for BufferImpl<'_> {
                 // This is a suboptimal strategy, raise a stink in the debug logs.
                 tracing::debug!("Falling back to non-SHM method for window drawing.");
 
+                // SAFETY: `Pixel` can be re-interpreted as `[u8; 4]`.
+                let data = unsafe {
+                    slice::from_raw_parts(
+                        wire.as_ptr().cast::<u8>(),
+                        wire.len() * size_of::<Pixel>(),
+                    )
+                };
+
                 self.connection
                     .put_image(
                         xproto::ImageFormat::Z_PIXMAP,
@@ -454,7 +470,7 @@ impl BufferInterface for BufferImpl<'_> {
                         0,
                         0,
                         self.depth,
-                        bytemuck::cast_slice(wire),
+                        data,
                     )
                     .map(|c| c.ignore_error())
                     .push_err()
@@ -529,7 +545,10 @@ impl Buffer {
         match self {
             Buffer::Shm(ref mut shm) => shm.alloc_segment(conn, total_len(width, height)),
             Buffer::Wire(wire) => {
-                wire.resize(total_len(width, height) / 4, 0);
+                wire.resize(
+                    total_len(width, height) / size_of::<Pixel>(),
+                    Pixel::default(),
+                );
                 Ok(())
             }
         }
@@ -551,7 +570,7 @@ impl Buffer {
     ///
     /// `finish_wait()` must be called in between `shm::PutImage` requests and this function.
     #[inline]
-    unsafe fn buffer_mut(&mut self) -> &mut [u32] {
+    unsafe fn buffer_mut(&mut self) -> &mut [Pixel] {
         match self {
             Buffer::Shm(ref mut shm) => unsafe { shm.as_mut() },
             Buffer::Wire(wire) => wire,
@@ -592,13 +611,20 @@ impl ShmBuffer {
     ///
     /// `finish_wait()` must be called before this function is.
     #[inline]
-    unsafe fn as_mut(&mut self) -> &mut [u32] {
+    unsafe fn as_mut(&mut self) -> &mut [Pixel] {
         match self.seg.as_mut() {
             Some((seg, _)) => {
                 let buffer_size = seg.buffer_size();
 
                 // SAFETY: No other code should be able to access the segment.
-                bytemuck::cast_slice_mut(unsafe { &mut seg.as_mut()[..buffer_size] })
+                let segment = unsafe { &mut seg.as_mut()[..buffer_size] };
+
+                let ptr = segment.as_mut_ptr().cast::<Pixel>();
+                let len = segment.len() / size_of::<Pixel>();
+                debug_assert_eq!(segment.len() % size_of::<Pixel>(), 0);
+                // SAFETY: The segment buffer is a multiple of `Pixel`, and we assume that the
+                // memmap allocation is aligned to at least a multiple of 4 bytes.
+                unsafe { slice::from_raw_parts_mut(ptr, len) }
             }
             None => {
                 // Nothing has been allocated yet.
@@ -967,6 +993,6 @@ fn total_len(width: u16, height: u16) -> usize {
 
     width
         .checked_mul(height)
-        .and_then(|len| len.checked_mul(4))
+        .and_then(|len| len.checked_mul(size_of::<Pixel>()))
         .unwrap_or_else(|| panic!("Dimensions are too large: ({} x {})", width, height))
 }
