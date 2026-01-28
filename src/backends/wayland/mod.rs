@@ -1,7 +1,7 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    Rect, SoftBufferError,
+    util, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
@@ -262,10 +262,10 @@ impl BufferInterface for BufferImpl<'_> {
             for rect in damage {
                 // Damage that falls outside the surface is ignored.
                 // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_surface
-                let x = rect.x.try_into().unwrap_or(i32::MAX);
-                let y = rect.y.try_into().unwrap_or(i32::MAX);
-                let width = rect.width.get().try_into().unwrap_or(i32::MAX);
-                let height = rect.height.get().try_into().unwrap_or(i32::MAX);
+                let x = util::to_i32_saturating(rect.x);
+                let y = util::to_i32_saturating(rect.y);
+                let width = util::to_i32_saturating(rect.width.get());
+                let height = util::to_i32_saturating(rect.height.get());
 
                 // Introduced in version 4, it is an error to use this request in version 3 or lower.
                 self.surface.damage_buffer(x, y, width, height);

@@ -65,3 +65,18 @@ impl ops::DerefMut for PixelBuffer {
         &mut self.0
     }
 }
+
+/// Convert a `u32` to `u16`, and saturate if it overflows.
+pub(crate) fn to_u16_saturating(val: u32) -> u16 {
+    val.try_into().unwrap_or(u16::MAX)
+}
+
+/// Convert a `u32` to `i16`, and saturate if it overflows.
+pub(crate) fn to_i16_saturating(val: u32) -> i16 {
+    val.try_into().unwrap_or(i16::MAX)
+}
+
+/// Convert a `u32` to `i32`, and saturate if it overflows.
+pub(crate) fn to_i32_saturating(val: u32) -> i32 {
+    val.try_into().unwrap_or(i32::MAX)
+}

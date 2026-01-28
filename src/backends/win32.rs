@@ -3,7 +3,7 @@
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
 use crate::backend_interface::*;
-use crate::{Rect, SoftBufferError};
+use crate::{util, Rect, SoftBufferError};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
@@ -274,10 +274,10 @@ impl BufferInterface for BufferImpl<'_> {
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         unsafe {
             for rect in damage.iter().copied() {
-                let x = rect.x.try_into().unwrap_or(i32::MAX);
-                let y = rect.y.try_into().unwrap_or(i32::MAX);
-                let width = rect.width.get().try_into().unwrap_or(i32::MAX);
-                let height = rect.height.get().try_into().unwrap_or(i32::MAX);
+                let x = util::to_i32_saturating(rect.x);
+                let y = util::to_i32_saturating(rect.y);
+                let width = util::to_i32_saturating(rect.width.get());
+                let height = util::to_i32_saturating(rect.height.get());
 
                 Gdi::BitBlt(
                     self.dc.0,

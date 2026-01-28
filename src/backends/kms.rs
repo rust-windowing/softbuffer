@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
+use crate::util;
 
 #[derive(Debug, Clone)]
 struct DrmDevice<'a> {
@@ -329,16 +330,10 @@ impl BufferInterface for BufferImpl<'_> {
             .iter()
             .map(|rect| {
                 ClipRect::new(
-                    rect.x.try_into().unwrap_or(u16::MAX),
-                    rect.y.try_into().unwrap_or(u16::MAX),
-                    rect.x
-                        .checked_add(rect.width.get())
-                        .and_then(|x| x.try_into().ok())
-                        .unwrap_or(u16::MAX),
-                    rect.y
-                        .checked_add(rect.height.get())
-                        .and_then(|x| x.try_into().ok())
-                        .unwrap_or(u16::MAX),
+                    util::to_u16_saturating(rect.x),
+                    util::to_u16_saturating(rect.y),
+                    util::to_u16_saturating(rect.x.saturating_add(rect.width.get())),
+                    util::to_u16_saturating(rect.y.saturating_add(rect.height.get())),
                 )
             })
             .collect();
