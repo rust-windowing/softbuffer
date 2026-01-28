@@ -27,35 +27,32 @@ pixels when its GPU-accelerated post-processing effects are not needed.
 This library is dual-licensed under MIT or Apache-2.0, just like minifb and rust. Significant portions of code were taken
 from the minifb library to do platform-specific work.
 
-## Platform support:
+## Platform support
 
-Some, but not all, platforms supported in [raw-window-handle](https://crates.io/crates/raw-window-handle) are supported
-by Softbuffer. Pull requests are welcome to add new platforms! **Nonetheless, all major desktop platforms that winit uses
-on desktop are supported.**
+Softbuffer supports many platforms, some to a higher degree than others. This is codified with a "tier" system. Tier 1 platforms can be thought of as "tested and guaranteed to work", tier 2 as "will likely work", and tier 3 as "builds in CI".
 
-For now, the priority for new platforms is:
+The current status is as follows (based on the list of platforms exposed by [`raw-window-handle`](https://crates.io/crates/raw-window-handle)):
 
-1. to have at least one platform on each OS working (e.g. one of Win32 or WinRT, or one of Xlib, Xcb, and Wayland) and
-2. for that one platform on each OS to be the one that winit uses.
+|  Platform          | Tier | Available |
+| ------------------ | ---- | --------- |
+| AppKit (macOS)     | 1    | ✅ |
+| Wayland            | 1    | ✅ |
+| Win32              | 1    | ✅ |
+| XCB / Xlib (X11)   | 1    | ✅ |
+| Android NDK        | 2    | ✅ |
+| UIKit (iOS)        | 2    | ✅ |
+| WebAssembly        | 2    | ✅ |
+| DRM/KMS            | 3    | ✅ |
+| Orbital            | 3    | ✅ |
+| GBM/KMS            | N/A  | ❌ |
+| Haiku              | N/A  | ❌ |
+| OpenHarmony OS NDK | N/A  | ❌ ([#261](https://github.com/rust-windowing/softbuffer/pull/261)) |
+| WinRT              | N/A  | ❌ |
+| UEFI               | N/A  | ❌ ([#282](https://github.com/rust-windowing/softbuffer/pull/282)) |
 
-(PRs will be accepted for any platform, even if it does not follow the above priority.)
+Beware that big endian targets are much less tested, and may behave incorrectly.
 
-|  Platform ||
-|-----------|--|
-|Android NDK|✅|
-|   AppKit  |✅|
-|  Orbital  |✅|
-|    UIKit  |✅|
-|  Wayland  |✅|
-|    Web    |✅|
-|   Win32   |✅|
-|   WinRT   |❌|
-|    XCB    |✅|
-|   Xlib    |✅|
-
-✅: Present\
-❔: Immature\
-❌: Absent
+Pull requests to add support for new platforms are welcome!
 
 ## WebAssembly
 
