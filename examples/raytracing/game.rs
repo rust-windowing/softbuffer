@@ -112,7 +112,7 @@ impl Game {
         buffer.pixels_iter().for_each(|(x, y, pixel)| {
             let x = (x as f32 / scale_factor) as usize;
             let y = (y as f32 / scale_factor) as usize;
-            if let Some(x) = pixels.get(x * width + y) {
+            if let Some(x) = pixels.get(y * width + x) {
                 *pixel = *x;
             }
         });
