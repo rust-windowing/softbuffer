@@ -1,31 +1,41 @@
 # Softbuffer
 
-Enables software rendering via drawing an image straight to a window.
+Render an image on the CPU and show it on a window in a cross-platform manner.
 
-Softbuffer integrates with the [`raw-window-handle`](https://crates.io/crates/raw-window-handle) crate
-to allow writing pixels to a window in a cross-platform way while using the very high quality dedicated window management
-libraries that are available in the Rust ecosystem.
+There exist many libraries for doing realtime rendering on the GPU, such as `wgpu`, `blade`,
+`ash`, etc. This is often the sensible choice, but there are a few cases where it makes sense to
+render on the CPU, such as for learning purposes, drawing simple 2D scenes or GUIs, or as a
+fallback rendering path when a GPU isn't available. Softbuffer allows you to do this.
 
-## Alternatives
+To use Softbuffer, first create a window using `winit`, `sdl3`, or any other crate that provides a
+[`raw_window_handle::HasWindowHandle`].
 
-[minifb](https://crates.io/crates/minifb) also allows putting a 2D buffer/image on a window in a platform-independent way.
-Minifb's approach to doing window management itself, however, is problematic code duplication. We already have very high quality
-libraries for this in the Rust ecosystem (such as [winit](https://crates.io/crates/winit)), and minifb's implementation
-of window management is not ideal. For example, it occasionally segfaults and is missing key features such as setting
-a window icon on some platforms. While adding these features to minifb would be possible, it makes more sense to use
-the standard window handling systems instead.
+Next, you create a [`Context`] and [`Surface`] from that window, and can now call
+[`Surface::buffer_mut()`] to get a [`Buffer`] that you can draw into. Once you're done drawing, call
+[`Buffer::present()`] to show the buffer on the window.
 
-What about [pixels](https://crates.io/crates/pixels)? Pixels accomplishes a very similar goal to Softbuffer,
-however there are two key differences. Pixels provides some capacity for GPU-accelerated post-processing of what is
-displayed, while Softbuffer does not. Due to not having this post-processing, Softbuffer does not rely on the GPU or
-hardware accelerated graphics stack in any way, and is thus more portable to installations that do not have access to
-hardware acceleration (e.g. VMs, older computers, computers with misconfigured drivers). Softbuffer should be used over
-pixels when its GPU-accelerated post-processing effects are not needed.
+Note that Softbuffer only provides the `&mut [...]` buffer, it does not provide any rendering
+primitives for drawing rectangles, circles, curves and so on. For that, you'll want to use crates
+like [`tiny-skia`](https://docs.rs/tiny-skia/) or [`vello_cpu`](https://docs.rs/vello_cpu/).
 
-## License & Credits
+[`raw_window_handle::HasWindowHandle`]: https://docs.rs/raw-window-handle/0.6.2/raw_window_handle/trait.HasWindowHandle.html
 
-This library is dual-licensed under MIT or Apache-2.0, just like minifb and rust. Significant portions of code were taken
-from the minifb library to do platform-specific work.
+## How it works
+
+Most platforms have a compositor of some sort (WindowServer on macOS, Desktop Window Manager on
+Windows, the Wayland compositor, etc). This is a separate process that applications communicate
+with over IPC, and it is responsible for taking the various surfaces that applications send to it
+and mash ("composite") them together in the right way to render the user's desktop on the
+connected monitors.
+
+The role of Softbuffer then is to create a shared memory region (i.e. [`Buffer`]) that can be
+written to from the CPU, and then handed to the compositor (in [`Buffer::present`]). Softbuffer
+keeps a set of buffers around per surface to implement double-buffering (depending on platform
+requirements).
+
+Softbuffer strives to present buffers in a zero-copy manner. One interesting wrinkle here is that
+the compositor is often GPU-accelerated, so on platforms without a unified memory architecture,
+some copying is inherently necessary (though when possible, it is done in hardware using DMA).
 
 ## Platform support
 
@@ -157,3 +167,24 @@ same MSRV policy.
 ## Changelog
 
 See the [changelog](CHANGELOG.md) for a list of this package's versions and the changes made in each version.
+
+## Alternatives
+
+[minifb](https://crates.io/crates/minifb) also allows putting a 2D buffer/image on a window in a platform-independent way.
+Minifb's approach to doing window management itself, however, is problematic code duplication. We already have very high quality
+libraries for this in the Rust ecosystem (such as [winit](https://crates.io/crates/winit)), and minifb's implementation
+of window management is not ideal. For example, it occasionally segfaults and is missing key features such as setting
+a window icon on some platforms. While adding these features to minifb would be possible, it makes more sense to use
+the standard window handling systems instead.
+
+What about [pixels](https://crates.io/crates/pixels)? Pixels accomplishes a very similar goal to Softbuffer,
+however there are two key differences. Pixels provides some capacity for GPU-accelerated post-processing of what is
+displayed, while Softbuffer does not. Due to not having this post-processing, Softbuffer does not rely on the GPU or
+hardware accelerated graphics stack in any way, and is thus more portable to installations that do not have access to
+hardware acceleration (e.g. VMs, older computers, computers with misconfigured drivers). Softbuffer should be used over
+pixels when its GPU-accelerated post-processing effects are not needed.
+
+## License & Credits
+
+This library is dual-licensed under MIT or Apache-2.0, just like minifb and rust. Significant portions of code were taken
+from the minifb library to do platform-specific work.
