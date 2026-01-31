@@ -104,6 +104,9 @@ objc2-core-graphics = { version = "0.3.2", default-features = false, features = 
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
     "std",
     "CFCGTypes",
+    "CFNumber",
+    "CFString",
+    "CFDictionary",
 ] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = [
     "std",
@@ -120,6 +123,14 @@ objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
     "objc2-core-foundation",
     "CALayer",
     "CATransaction",
+] }
+objc2-io-surface = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "libc",
+    "objc2",
+    "objc2-core-foundation",
+    "IOSurfaceRef",
+    "IOSurfaceTypes",
 ] }
 
 # Web dependencies.
