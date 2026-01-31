@@ -77,47 +77,111 @@ To run the Android-specific example on an Android phone: `cargo apk r --example 
 ```rust,no_run
 use std::num::NonZeroU32;
 use std::rc::Rc;
-use softbuffer::{Context, Pixel, Surface};
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::Window;
 
-#[path = "../examples/util/mod.rs"]
-mod util;
+use softbuffer::{Context, Pixel, Surface};
+use winit::application::ApplicationHandler;
+use winit::event::{StartCause, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, EventLoop, OwnedDisplayHandle};
+use winit::window::{Window, WindowId};
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let context = Context::new(event_loop.owned_display_handle()).unwrap();
+    let mut app = App {
+        context,
+        state: AppState::Initial,
+    };
+    event_loop.run_app(&mut app).unwrap();
+}
 
-    let mut app = util::WinitAppBuilder::with_init(
-        |elwt| {
-            let window = elwt.create_window(Window::default_attributes());
-            Rc::new(window.unwrap())
-        },
-        |_elwt, window| Surface::new(&context, window.clone()).unwrap(),
-    )
-    .with_event_handler(|window, surface, window_id, event, elwt| {
-        elwt.set_control_flow(ControlFlow::Wait);
+#[derive(Debug)]
+struct App {
+    context: Context<OwnedDisplayHandle>,
+    state: AppState,
+}
 
-        if window_id != window.id() {
+#[derive(Debug)]
+enum AppState {
+    Initial,
+    Suspended {
+        window: Rc<Window>,
+    },
+    Running {
+        surface: Surface<OwnedDisplayHandle, Rc<Window>>,
+    },
+}
+
+impl ApplicationHandler for App {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        if let StartCause::Init = cause {
+            // Create window on startup.
+            let window_attrs = Window::default_attributes();
+            let window = event_loop
+                .create_window(window_attrs)
+                .expect("failed creating window");
+            self.state = AppState::Suspended {
+                window: Rc::new(window),
+            };
+        }
+    }
+
+    fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
+        // Create or re-create the surface.
+        let AppState::Suspended { window } = &mut self.state else {
+            unreachable!("got resumed event while not suspended");
+        };
+        let mut surface =
+            Surface::new(&self.context, window.clone()).expect("failed creating surface");
+
+        // TODO: https://github.com/rust-windowing/softbuffer/issues/106
+        let size = window.inner_size();
+        if let (Some(width), Some(height)) =
+            (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+        {
+            // Resize surface
+            surface.resize(width, height).unwrap();
+        }
+
+        self.state = AppState::Running { surface };
+    }
+
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        // Drop the surface.
+        let AppState::Running { surface } = &mut self.state else {
+            unreachable!("got resumed event while not running");
+        };
+        let window = surface.window().clone();
+        self.state = AppState::Suspended { window };
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let AppState::Running { surface } = &mut self.state else {
+            unreachable!("got window event while suspended");
+        };
+
+        if surface.window().id() != window_id {
             return;
         }
 
         match event {
+            WindowEvent::Resized(size) => {
+                if let (Some(width), Some(height)) =
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                {
+                    // Resize surface
+                    surface.resize(width, height).unwrap();
+                }
+            }
             WindowEvent::RedrawRequested => {
-                let Some(surface) = surface else {
-                    tracing::error!("RedrawRequested fired before Resumed or after Suspended");
-                    return;
-                };
-                let size = window.inner_size();
-                surface
-                    .resize(
-                        NonZeroU32::new(size.width).unwrap(),
-                        NonZeroU32::new(size.height).unwrap(),
-                    )
-                    .unwrap();
-
+                // Get the next buffer.
                 let mut buffer = surface.next_buffer().unwrap();
+
+                // Render into the buffer.
                 for (x, y, pixel) in buffer.pixels_iter() {
                     let red = (x % 255) as u8;
                     let green = (y % 255) as u8;
@@ -126,16 +190,15 @@ fn main() {
                     *pixel = Pixel::new_rgb(red, green, blue);
                 }
 
+                // Send the buffer to the compositor.
                 buffer.present().unwrap();
             }
             WindowEvent::CloseRequested => {
-                elwt.exit();
+                event_loop.exit();
             }
             _ => {}
         }
-    });
-
-    event_loop.run_app(&mut app).unwrap();
+    }
 }
 ```
 
