@@ -246,8 +246,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// Buffer copies an channel swizzling happen on:
 /// - Android
 #[derive(Debug)]
-pub struct Buffer<'a> {
-    buffer_impl: BufferDispatch<'a>,
+pub struct Buffer<'surface> {
+    buffer_impl: BufferDispatch<'surface>,
     _marker: PhantomData<Cell<()>>,
 }
 

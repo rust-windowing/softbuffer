@@ -126,10 +126,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> WebImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl<D, W> {
     type Context = WebDisplayImpl<D>;
-    type Buffer<'a>
-        = BufferImpl<'a>
+    type Buffer<'surface>
+        = BufferImpl<'surface>
     where
-        Self: 'a;
+        Self: 'surface;
 
     fn new(window: W, display: &WebDisplayImpl<D>) -> Result<Self, InitError<W>> {
         let raw = window.window_handle()?.as_raw();
@@ -304,10 +304,10 @@ impl Canvas {
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a> {
-    canvas: &'a Canvas,
-    buffer: &'a mut util::PixelBuffer,
-    buffer_presented: &'a mut bool,
+pub struct BufferImpl<'surface> {
+    canvas: &'surface Canvas,
+    buffer: &'surface mut util::PixelBuffer,
+    buffer_presented: &'surface mut bool,
     size: Option<(NonZeroU32, NonZeroU32)>,
 }
 

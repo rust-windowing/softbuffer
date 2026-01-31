@@ -24,10 +24,10 @@ pub struct AndroidImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for AndroidImpl<D, W> {
     type Context = D;
-    type Buffer<'a>
-        = BufferImpl<'a>
+    type Buffer<'surface>
+        = BufferImpl<'surface>
     where
-        Self: 'a;
+        Self: 'surface;
 
     /// Create a new [`AndroidImpl`] from an [`AndroidNdkWindowHandle`].
     fn new(window: W, _display: &Self::Context) -> Result<Self, InitError<W>> {
@@ -115,8 +115,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a> {
-    native_window_buffer: NativeWindowBufferLockGuard<'a>,
+pub struct BufferImpl<'surface> {
+    native_window_buffer: NativeWindowBufferLockGuard<'surface>,
     buffer: util::PixelBuffer,
 }
 

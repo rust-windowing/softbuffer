@@ -189,10 +189,10 @@ struct ShmBuffer {
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for X11Impl<D, W> {
     type Context = Arc<X11DisplayImpl<D>>;
-    type Buffer<'a>
-        = BufferImpl<'a>
+    type Buffer<'surface>
+        = BufferImpl<'surface>
     where
-        Self: 'a;
+        Self: 'surface;
 
     /// Create a new `X11Impl` from a `HasWindowHandle`.
     fn new(window_src: W, display: &Arc<X11DisplayImpl<D>>) -> Result<Self, InitError<W>> {
@@ -407,14 +407,14 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a> {
+pub struct BufferImpl<'surface> {
     // Various fields that reference data in `X11Impl`.
-    connection: &'a XCBConnection,
+    connection: &'surface XCBConnection,
     window: xproto::Window,
     gc: xproto::Gcontext,
     depth: u8,
-    buffer: &'a mut Buffer,
-    buffer_presented: &'a mut bool,
+    buffer: &'surface mut Buffer,
+    buffer_presented: &'surface mut bool,
     size: Option<(NonZeroU16, NonZeroU16)>,
 }
 

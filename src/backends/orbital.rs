@@ -75,10 +75,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> OrbitalImpl<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for OrbitalImpl<D, W> {
     type Context = D;
-    type Buffer<'a>
-        = BufferImpl<'a>
+    type Buffer<'surface>
+        = BufferImpl<'surface>
     where
-        Self: 'a;
+        Self: 'surface;
 
     fn new(window: W, _display: &D) -> Result<Self, InitError<W>> {
         let raw = window.window_handle()?.as_raw();
@@ -144,11 +144,11 @@ enum Pixels {
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a> {
+pub struct BufferImpl<'surface> {
     window_fd: usize,
     width: u32,
     height: u32,
-    presented: &'a mut bool,
+    presented: &'surface mut bool,
     pixels: Pixels,
 }
 
