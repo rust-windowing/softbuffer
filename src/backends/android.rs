@@ -1,6 +1,7 @@
 //! Implementation of software buffering for Android.
 
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 use std::num::{NonZeroI32, NonZeroU32};
 
 use ndk::{
@@ -12,7 +13,9 @@ use raw_window_handle::AndroidNdkWindowHandle;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use crate::error::InitError;
-use crate::{util, BufferInterface, Pixel, Rect, SoftBufferError, SurfaceInterface};
+use crate::{BufferInterface, Pixel, Rect, SoftBufferError, SurfaceInterface};
+
+const PIXEL_SIZE: usize = size_of::<Pixel>();
 
 /// The handle to a window for software buffering.
 #[derive(Debug)]
@@ -52,7 +55,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         &self.window
     }
 
-    /// Also changes the pixel format to [`HardwareBufferFormat::R8G8B8A8_UNORM`].
+    /// Also changes the pixel format to [`HardwareBufferFormat::R8G8B8X8_UNORM`].
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
             let width = NonZeroI32::try_from(width).ok()?;
@@ -77,7 +80,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
     }
 
     fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
-        let native_window_buffer = self.native_window.lock(None).map_err(|err| {
+        let mut native_window_buffer = self.native_window.lock(None).map_err(|err| {
             SoftBufferError::PlatformError(
                 Some("Failed to lock ANativeWindow".to_owned()),
                 Some(Box::new(err)),
@@ -99,12 +102,22 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
             ));
         }
 
-        let buffer =
-            vec![Pixel::default(); native_window_buffer.stride() * native_window_buffer.height()];
+        assert_eq!(
+            native_window_buffer.format().bytes_per_pixel(),
+            Some(PIXEL_SIZE)
+        );
+        let native_buffer = native_window_buffer.bytes().unwrap();
+
+        // Zero-initialize the buffer, allowing it to be cast away from MaybeUninit and mapped as a Pixel slice
+        native_buffer.fill(MaybeUninit::new(0));
+
+        assert_eq!(
+            native_buffer.len(),
+            native_window_buffer.stride() * native_window_buffer.height() * PIXEL_SIZE
+        );
 
         Ok(BufferImpl {
             native_window_buffer,
-            buffer: util::PixelBuffer(buffer),
         })
     }
 
@@ -117,7 +130,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 #[derive(Debug)]
 pub struct BufferImpl<'surface> {
     native_window_buffer: NativeWindowBufferLockGuard<'surface>,
-    buffer: util::PixelBuffer,
 }
 
 // TODO: Move to NativeWindowBufferLockGuard?
@@ -125,7 +137,7 @@ unsafe impl Send for BufferImpl<'_> {}
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.native_window_buffer.stride() as u32 * 4).unwrap()
+        NonZeroU32::new((self.native_window_buffer.stride() * PIXEL_SIZE) as u32).unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {
@@ -138,7 +150,15 @@ impl BufferInterface for BufferImpl<'_> {
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        &mut self.buffer
+        let native_buffer = self.native_window_buffer.bytes().unwrap();
+        // SAFETY: The buffer was zero-initialized and its length is always a multiple of the pixel
+        // size (4 bytes), even when stride is applied
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                native_buffer.as_mut_ptr().cast(),
+                native_buffer.len() / PIXEL_SIZE,
+            )
+        }
     }
 
     #[inline]
@@ -147,7 +167,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     // TODO: This function is pretty slow this way
-    fn present_with_damage(mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         // TODO: Android requires the damage rect _at lock time_
         // Since we're faking the backing buffer _anyway_, we could even fake the surface lock
         // and lock it here (if it doesn't influence timings).
@@ -158,18 +178,8 @@ impl BufferInterface for BufferImpl<'_> {
         // when the enlarged damage region is not re-rendered?
         let _ = damage;
 
-        // Unreachable as we checked before that this is a valid, mappable format
-        let native_buffer = self.native_window_buffer.bytes().unwrap();
-
-        // Write RGB(A) to the output.
-        // TODO: Use `slice::write_copy_of_slice` once stable and in MSRV.
-        // TODO(madsmtm): Verify that this compiles down to an efficient copy.
-        for (pixel, output) in self.buffer.iter().zip(native_buffer.chunks_mut(4)) {
-            output[0].write(pixel.r);
-            output[1].write(pixel.g);
-            output[2].write(pixel.b);
-            output[3].write(pixel.a);
-        }
+        // The surface will be presented when it is unlocked, which happens when the owned guard
+        // is dropped.
 
         Ok(())
     }
