@@ -22,7 +22,7 @@ struct State;
 
 #[derive(Debug)]
 pub struct WaylandDisplayImpl<D: ?Sized> {
-    conn: Option<Connection>,
+    conn: Connection,
     event_queue: Mutex<EventQueue<State>>,
     qh: QueueHandle<State>,
     shm: wl_shm::WlShm,
@@ -30,14 +30,10 @@ pub struct WaylandDisplayImpl<D: ?Sized> {
     /// The object that owns the display handle.
     ///
     /// This has to be dropped *after* the `conn` field, because the `conn` field implicitly borrows
-    /// this.
+    /// this. This is done by placing this field last, see:
+    /// <https://doc.rust-lang.org/std/ops/trait.Drop.html#drop-order>
     _display: D,
-}
-
-impl<D: HasDisplayHandle + ?Sized> WaylandDisplayImpl<D> {
-    fn conn(&self) -> &Connection {
-        self.conn.as_ref().unwrap()
-    }
+    // NO FIELDS AFTER THIS!
 }
 
 impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<WaylandDisplayImpl<D>> {
@@ -64,7 +60,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<WaylandDisplayImp
         globals.destroy();
 
         Ok(Arc::new(WaylandDisplayImpl {
-            conn: Some(conn),
+            conn,
             event_queue: Mutex::new(event_queue),
             qh,
             shm,
@@ -78,23 +74,24 @@ impl<D: ?Sized> Drop for WaylandDisplayImpl<D> {
         if self.shm.version() >= 2 {
             self.shm.release();
         }
-        // Make sure the connection is dropped first.
-        self.conn = None;
     }
 }
 
 #[derive(Debug)]
-pub struct WaylandImpl<D: ?Sized, W: ?Sized> {
-    display: Arc<WaylandDisplayImpl<D>>,
-    surface: Option<wl_surface::WlSurface>,
+pub struct WaylandImpl<D: ?Sized, W> {
+    surface: wl_surface::WlSurface,
     buffers: Option<(WaylandBuffer, WaylandBuffer)>,
     size: Option<(NonZeroI32, NonZeroI32)>,
 
     /// The pointer to the window object.
     ///
     /// This has to be dropped *after* the `surface` field, because the `surface` field implicitly
-    /// borrows this.
+    /// borrows this. This is done by placing this field last, see:
+    /// <https://doc.rust-lang.org/std/ops/trait.Drop.html#drop-order>
     window_handle: W,
+    /// Drop the display last.
+    display: Arc<WaylandDisplayImpl<D>>,
+    // NO FIELDS AFTER THIS!
 }
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
@@ -120,11 +117,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
             )
         }
         .swbuf_err("Failed to create proxy for surface ID.")?;
-        let surface = wl_surface::WlSurface::from_id(display.conn(), surface_id)
+        let surface = wl_surface::WlSurface::from_id(&display.conn, surface_id)
             .swbuf_err("Failed to create proxy for surface ID.")?;
         Ok(Self {
             display: display.clone(),
-            surface: Some(surface),
+            surface,
             buffers: Default::default(),
             size: None,
             window_handle: window,
@@ -221,20 +218,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         let age = back.age;
         Ok(BufferImpl {
             event_queue: &self.display.event_queue,
-            surface: self.surface.as_ref().unwrap(),
+            surface: &self.surface,
             front,
             back,
             width,
             height,
             age,
         })
-    }
-}
-
-impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
-    fn drop(&mut self) {
-        // Make sure the surface is dropped first.
-        self.surface = None;
     }
 }
 
