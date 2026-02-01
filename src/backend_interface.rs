@@ -14,9 +14,9 @@ pub(crate) trait ContextInterface<D: HasDisplayHandle + ?Sized> {
 
 pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHandle + ?Sized> {
     type Context: ContextInterface<D>;
-    type Buffer<'a>: BufferInterface
+    type Buffer<'surface>: BufferInterface
     where
-        Self: 'a;
+        Self: 'surface;
 
     fn new(window: W, context: &Self::Context) -> Result<Self, InitError<W>>
     where

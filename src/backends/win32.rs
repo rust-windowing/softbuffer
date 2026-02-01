@@ -161,10 +161,10 @@ struct BitmapInfo {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Impl<D, W> {
     type Context = D;
-    type Buffer<'a>
-        = BufferImpl<'a>
+    type Buffer<'surface>
+        = BufferImpl<'surface>
     where
-        Self: 'a;
+        Self: 'surface;
 
     /// Create a new `Win32Impl` from a `Win32WindowHandle`.
     fn new(window: W, _display: &D) -> Result<Self, crate::error::InitError<W>> {
@@ -240,10 +240,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a> {
-    window: &'a OnlyUsedFromOrigin<HWND>,
-    dc: &'a OnlyUsedFromOrigin<Gdi::HDC>,
-    buffer: &'a mut Buffer,
+pub struct BufferImpl<'surface> {
+    window: &'surface OnlyUsedFromOrigin<HWND>,
+    dc: &'surface OnlyUsedFromOrigin<Gdi::HDC>,
+    buffer: &'surface mut Buffer,
 }
 
 impl BufferInterface for BufferImpl<'_> {

@@ -93,10 +93,10 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
     for WaylandImpl<D, W>
 {
     type Context = Arc<WaylandDisplayImpl<D>>;
-    type Buffer<'a>
-        = BufferImpl<'a>
+    type Buffer<'surface>
+        = BufferImpl<'surface>
     where
-        Self: 'a;
+        Self: 'surface;
 
     fn new(window: W, display: &Arc<WaylandDisplayImpl<D>>) -> Result<Self, InitError<W>> {
         // Get the raw Wayland window.
@@ -208,11 +208,11 @@ impl<D: ?Sized, W: ?Sized> Drop for WaylandImpl<D, W> {
 }
 
 #[derive(Debug)]
-pub struct BufferImpl<'a> {
-    event_queue: &'a Mutex<EventQueue<State>>,
-    surface: &'a wl_surface::WlSurface,
-    front: &'a mut WaylandBuffer,
-    back: &'a mut WaylandBuffer,
+pub struct BufferImpl<'surface> {
+    event_queue: &'surface Mutex<EventQueue<State>>,
+    surface: &'surface wl_surface::WlSurface,
+    front: &'surface mut WaylandBuffer,
+    back: &'surface mut WaylandBuffer,
     width: i32,
     height: i32,
     age: u8,

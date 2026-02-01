@@ -76,7 +76,7 @@ macro_rules! make_dispatch {
 
         impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for SurfaceDispatch<D, W> {
             type Context = ContextDispatch<D>;
-            type Buffer<'a> = BufferDispatch<'a> where Self: 'a;
+            type Buffer<'surface> = BufferDispatch<'surface> where Self: 'surface;
 
             fn new(window: W, display: &Self::Context) -> Result<Self, InitError<W>>
             where
@@ -138,7 +138,7 @@ macro_rules! make_dispatch {
             }
         }
 
-        pub(crate) enum BufferDispatch<'a> {
+        pub(crate) enum BufferDispatch<'surface> {
             $(
                 $(#[$attr])*
                 $name($buffer_inner),
@@ -223,7 +223,7 @@ macro_rules! make_dispatch {
 make_dispatch! {
     <D, W> =>
     #[cfg(target_os = "android")]
-    Android(D, backends::android::AndroidImpl<D, W>, backends::android::BufferImpl<'a>),
+    Android(D, backends::android::AndroidImpl<D, W>, backends::android::BufferImpl<'surface>),
     #[cfg(all(
         feature = "x11",
         not(any(
@@ -234,7 +234,7 @@ make_dispatch! {
             target_os = "windows"
         ))
     ))]
-    X11(std::sync::Arc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'a>),
+    X11(std::sync::Arc<backends::x11::X11DisplayImpl<D>>, backends::x11::X11Impl<D, W>, backends::x11::BufferImpl<'surface>),
     #[cfg(all(
         feature = "wayland",
         not(any(
@@ -245,7 +245,7 @@ make_dispatch! {
             target_os = "windows"
         ))
     ))]
-    Wayland(std::sync::Arc<backends::wayland::WaylandDisplayImpl<D>>, backends::wayland::WaylandImpl<D, W>, backends::wayland::BufferImpl<'a>),
+    Wayland(std::sync::Arc<backends::wayland::WaylandDisplayImpl<D>>, backends::wayland::WaylandImpl<D, W>, backends::wayland::BufferImpl<'surface>),
     #[cfg(all(
         feature = "kms",
         not(any(
@@ -256,13 +256,13 @@ make_dispatch! {
             target_os = "windows"
         ))
     ))]
-    Kms(std::sync::Arc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'a>),
+    Kms(std::sync::Arc<backends::kms::KmsDisplayImpl<D>>, backends::kms::KmsImpl<D, W>, backends::kms::BufferImpl<'surface>),
     #[cfg(target_os = "windows")]
-    Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'a>),
+    Win32(D, backends::win32::Win32Impl<D, W>, backends::win32::BufferImpl<'surface>),
     #[cfg(target_vendor = "apple")]
-    CoreGraphics(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'a>),
+    CoreGraphics(D, backends::cg::CGImpl<D, W>, backends::cg::BufferImpl<'surface>),
     #[cfg(target_family = "wasm")]
-    Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'a>),
+    Web(backends::web::WebDisplayImpl<D>, backends::web::WebImpl<D, W>, backends::web::BufferImpl<'surface>),
     #[cfg(target_os = "redox")]
-    Orbital(D, backends::orbital::OrbitalImpl<D, W>, backends::orbital::BufferImpl<'a>),
+    Orbital(D, backends::orbital::OrbitalImpl<D, W>, backends::orbital::BufferImpl<'surface>),
 }

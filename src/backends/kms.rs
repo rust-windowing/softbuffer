@@ -24,9 +24,9 @@ use crate::error::{InitError, SoftBufferError, SwResultExt};
 use crate::{util, Pixel};
 
 #[derive(Debug, Clone)]
-struct DrmDevice<'a> {
+struct DrmDevice<'surface> {
     /// The underlying raw display file descriptor.
-    fd: BorrowedFd<'a>,
+    fd: BorrowedFd<'surface>,
 }
 
 impl AsFd for DrmDevice<'_> {
@@ -97,9 +97,9 @@ struct Buffers {
 }
 
 /// The buffer implementation.
-pub(crate) struct BufferImpl<'a> {
+pub(crate) struct BufferImpl<'surface> {
     /// The mapping of the dump buffer.
-    mapping: DumbMapping<'a>,
+    mapping: DumbMapping<'surface>,
 
     /// The framebuffer object of the current front buffer.
     front_fb: framebuffer::Handle,
@@ -108,19 +108,19 @@ pub(crate) struct BufferImpl<'a> {
     crtc_handle: crtc::Handle,
 
     /// This is used to change the front buffer.
-    first_is_front: &'a mut bool,
+    first_is_front: &'surface mut bool,
 
     /// The current size.
     size: (NonZeroU32, NonZeroU32),
 
     /// The device file descriptor.
-    device: DrmDevice<'a>,
+    device: DrmDevice<'surface>,
 
     /// Age of the front buffer.
-    front_age: &'a mut u8,
+    front_age: &'surface mut u8,
 
     /// Age of the back buffer.
-    back_age: &'a mut u8,
+    back_age: &'surface mut u8,
 }
 
 impl fmt::Debug for BufferImpl<'_> {
@@ -145,10 +145,10 @@ struct SharedBuffer {
 
 impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> for KmsImpl<D, W> {
     type Context = Arc<KmsDisplayImpl<D>>;
-    type Buffer<'a>
-        = BufferImpl<'a>
+    type Buffer<'surface>
+        = BufferImpl<'surface>
     where
-        Self: 'a;
+        Self: 'surface;
 
     /// Create a new KMS backend.
     fn new(window: W, display: &Arc<KmsDisplayImpl<D>>) -> Result<Self, InitError<W>> {
