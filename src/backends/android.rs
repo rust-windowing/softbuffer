@@ -20,10 +20,15 @@ const PIXEL_SIZE: usize = size_of::<Pixel>();
 /// The handle to a window for software buffering.
 #[derive(Debug)]
 pub struct AndroidImpl<D, W> {
+    // Must be first in the struct to guarantee being dropped and unlocked before the `NativeWindow` reference
+    in_progress_buffer: Option<NativeWindowBufferLockGuard<'static>>,
     native_window: NativeWindow,
     window: W,
     _display: PhantomData<D>,
 }
+
+// TODO: Move to NativeWindowBufferLockGuard?
+unsafe impl<D, W> Send for AndroidImpl<D, W> {}
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for AndroidImpl<D, W> {
     type Context = D;
@@ -44,6 +49,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         let native_window = unsafe { NativeWindow::clone_from_ptr(a.a_native_window.cast()) };
 
         Ok(Self {
+            in_progress_buffer: None,
             native_window,
             _display: PhantomData,
             window,
@@ -80,6 +86,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
     }
 
     fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+        if self.in_progress_buffer.is_some() {
+            return Ok(BufferImpl {
+                native_window_buffer: &mut self.in_progress_buffer,
+            });
+        }
+
         let mut native_window_buffer = self.native_window.lock(None).map_err(|err| {
             SoftBufferError::PlatformError(
                 Some("Failed to lock ANativeWindow".to_owned()),
@@ -116,8 +128,19 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
             native_window_buffer.stride() * native_window_buffer.height() * PIXEL_SIZE
         );
 
+        // SAFETY: We guarantee that the guard isn't actually held longer than this owned handle of
+        // the `NativeWindow` (which is trivially cloneable), by means of having BufferImpl take a
+        // mutable borrow on AndroidImpl which owns the NativeWindow and LockGuard.
+        let native_window_buffer = unsafe {
+            std::mem::transmute::<
+                NativeWindowBufferLockGuard<'_>,
+                NativeWindowBufferLockGuard<'static>,
+            >(native_window_buffer)
+        };
+        self.in_progress_buffer = Some(native_window_buffer);
+
         Ok(BufferImpl {
-            native_window_buffer,
+            native_window_buffer: &mut self.in_progress_buffer,
         })
     }
 
@@ -129,7 +152,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
 
 #[derive(Debug)]
 pub struct BufferImpl<'surface> {
-    native_window_buffer: NativeWindowBufferLockGuard<'surface>,
+    // This Option will always be Some until present_with_damage() is called
+    native_window_buffer: &'surface mut Option<NativeWindowBufferLockGuard<'static>>,
 }
 
 // TODO: Move to NativeWindowBufferLockGuard?
@@ -137,20 +161,21 @@ unsafe impl Send for BufferImpl<'_> {}
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new((self.native_window_buffer.stride() * PIXEL_SIZE) as u32).unwrap()
+        NonZeroU32::new((self.native_window_buffer.as_ref().unwrap().stride() * PIXEL_SIZE) as u32)
+            .unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.native_window_buffer.width() as u32).unwrap()
+        NonZeroU32::new(self.native_window_buffer.as_ref().unwrap().width() as u32).unwrap()
     }
 
     fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.native_window_buffer.height() as u32).unwrap()
+        NonZeroU32::new(self.native_window_buffer.as_ref().unwrap().height() as u32).unwrap()
     }
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        let native_buffer = self.native_window_buffer.bytes().unwrap();
+        let native_buffer = self.native_window_buffer.as_mut().unwrap().bytes().unwrap();
         // SAFETY: The buffer was zero-initialized and its length is always a multiple of the pixel
         // size (4 bytes), even when stride is applied
         unsafe {
@@ -180,6 +205,7 @@ impl BufferInterface for BufferImpl<'_> {
 
         // The surface will be presented when it is unlocked, which happens when the owned guard
         // is dropped.
+        self.native_window_buffer.take();
 
         Ok(())
     }
