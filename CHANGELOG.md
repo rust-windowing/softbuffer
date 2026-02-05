@@ -13,6 +13,7 @@
 - **Breaking:** Disable the DRM/KMS backend by default.
 - **Breaking:** Removed `DamageOutOfRange` error case. If the damage value is greater than the backend supports, it is instead clamped to an appropriate value.
 - Fixed `present_with_damage` with bounds out of range on Windows, Web and X11.
+- Reduced flickering when presenting while resizing on macOS.
 
 # 0.4.7
 
