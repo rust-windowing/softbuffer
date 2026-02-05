@@ -107,7 +107,7 @@ pub struct CGImpl<D, W> {
     observer: Retained<Observer>,
     color_space: CFRetained<CGColorSpace>,
     front: Buffer,
-    front2: Option<Buffer>,
+    middle: Option<Buffer>,
     back: Buffer,
     window_handle: W,
     _display: PhantomData<D>,
@@ -256,7 +256,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             color_space,
             front: Buffer::new(&properties),
             // TODO: Allow configuring amount of buffers?
-            front2: Some(Buffer::new(&properties)),
+            middle: Some(Buffer::new(&properties)),
             back: Buffer::new(&properties),
             _display: PhantomData,
             window_handle: window_src,
@@ -289,8 +289,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         );
         self.back = Buffer::new(&properties);
         // Keep a second buffer if it was there before.
-        if self.front2.is_some() {
-            self.front2 = Some(Buffer::new(&properties));
+        if self.middle.is_some() {
+            self.middle = Some(Buffer::new(&properties));
         }
         self.front = Buffer::new(&properties);
 
@@ -323,7 +323,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
         Ok(BufferImpl {
             front: &mut self.front,
-            front2: &mut self.front2,
+            middle: &mut self.middle,
             back: &mut self.back,
             layer: &mut self.layer,
         })
@@ -335,12 +335,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 /// This is triple-buffered because that's what QuartzCore / the compositor seems to require:
 /// - The front buffer is what's currently assigned to `CALayer.contents`, and was submitted to the
 ///   compositor in the previous iteration of the run loop.
-/// - The front2 / middle buffer is what the compositor is currently drawing from.
+/// - The middle buffer is what the compositor is currently drawing from (assuming a 1 frame delay).
 /// - The back buffer is what we'll be drawing into.
 #[derive(Debug)]
 pub struct BufferImpl<'a> {
     front: &'a mut Buffer,
-    front2: &'a mut Option<Buffer>,
+    middle: &'a mut Option<Buffer>,
     back: &'a mut Buffer,
     layer: &'a mut SendCALayer,
 }
@@ -392,7 +392,7 @@ impl BufferInterface for BufferImpl<'_> {
         // Would be prettier with https://github.com/rust-lang/rfcs/pull/3466.
         let this = &mut *ManuallyDrop::new(self);
         let front = &mut *this.front;
-        let front2 = &mut this.front2;
+        let middle = &mut this.middle;
         let back = &mut *this.back;
         let layer = &mut *this.layer;
         // Note that unlocking effectively flushes the changes, without this, the contents might not
@@ -400,9 +400,9 @@ impl BufferInterface for BufferImpl<'_> {
         back.unlock();
 
         back.age = 1;
-        if let Some(front2) = front2 {
-            if front2.age != 0 {
-                front2.age += 1;
+        if let Some(middle) = middle {
+            if middle.age != 0 {
+                middle.age += 1;
             }
         }
         if front.age != 0 {
@@ -410,9 +410,9 @@ impl BufferInterface for BufferImpl<'_> {
         }
 
         // Rotate buffers such that the back buffer is now the front buffer.
-        if let Some(front2) = front2 {
-            std::mem::swap(back, front2);
-            std::mem::swap(front2, front);
+        if let Some(middle) = middle {
+            std::mem::swap(back, middle);
+            std::mem::swap(middle, front);
         } else {
             std::mem::swap(back, front);
         }
