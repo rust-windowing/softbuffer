@@ -85,7 +85,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     ///
     /// # Platform Dependent Behavior
     ///
-    /// - Web: If the handle is a [`WebOffscreenCanvasWindowHandle`], this will error if a another
+    /// - Web: If the handle is a [`WebOffscreenCanvasWindowHandle`], this will error if another
     ///   context than "2d" was already created for the canvas. If the handle is a
     ///   [`WebCanvasWindowHandle`], this will additionally error if the canvas was already
     ///   controlled by an `OffscreenCanvas`.
