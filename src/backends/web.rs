@@ -11,7 +11,7 @@ use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{util, NoDisplayHandle, NoWindowHandle, Pixel, Rect, SoftBufferError};
+use crate::{util, Pixel, Rect, SoftBufferError};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
@@ -213,45 +213,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
                 a: 0,
             })
             .collect())
-    }
-}
-
-/// Extension methods for the Wasm target on [`Surface`](crate::Surface).
-pub trait SurfaceExtWeb: Sized {
-    /// Creates a new instance of this struct, using the provided [`HtmlCanvasElement`].
-    ///
-    /// # Errors
-    /// - If the canvas was already controlled by an `OffscreenCanvas`.
-    /// - If a another context then "2d" was already created for this canvas.
-    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError>;
-
-    /// Creates a new instance of this struct, using the provided [`OffscreenCanvas`].
-    ///
-    /// # Errors
-    /// If a another context then "2d" was already created for this canvas.
-    fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError>;
-}
-
-impl SurfaceExtWeb for crate::Surface<NoDisplayHandle, NoWindowHandle> {
-    fn from_canvas(canvas: HtmlCanvasElement) -> Result<Self, SoftBufferError> {
-        let imple = crate::SurfaceDispatch::Web(WebImpl::from_canvas(canvas, NoWindowHandle(()))?);
-
-        Ok(Self {
-            surface_impl: Box::new(imple),
-            _marker: PhantomData,
-        })
-    }
-
-    fn from_offscreen_canvas(offscreen_canvas: OffscreenCanvas) -> Result<Self, SoftBufferError> {
-        let imple = crate::SurfaceDispatch::Web(WebImpl::from_offscreen_canvas(
-            offscreen_canvas,
-            NoWindowHandle(()),
-        )?);
-
-        Ok(Self {
-            surface_impl: Box::new(imple),
-            _marker: PhantomData,
-        })
     }
 }
 

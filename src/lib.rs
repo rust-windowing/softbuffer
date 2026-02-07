@@ -23,8 +23,6 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, Raw
 
 use self::backend_dispatch::*;
 use self::backend_interface::*;
-#[cfg(target_family = "wasm")]
-pub use self::backends::web::SurfaceExtWeb;
 use self::error::InitError;
 pub use self::error::SoftBufferError;
 pub use self::format::PixelFormat;
@@ -84,6 +82,16 @@ pub struct Surface<D, W> {
 
 impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// Creates a new surface for the context for the provided window.
+    ///
+    /// # Platform Dependent Behavior
+    ///
+    /// - Web: If the handle is a [`WebOffscreenCanvasWindowHandle`], this will error if another
+    ///   context than "2d" was already created for the canvas. If the handle is a
+    ///   [`WebCanvasWindowHandle`], this will additionally error if the canvas was already
+    ///   controlled by an `OffscreenCanvas`.
+    ///
+    /// [`WebCanvasWindowHandle`]: raw_window_handle::WebCanvasWindowHandle
+    /// [`WebOffscreenCanvasWindowHandle`]: raw_window_handle::WebCanvasWindowHandle
     pub fn new(context: &Context<D>, window: W) -> Result<Self, SoftBufferError> {
         match SurfaceDispatch::new(window, &context.context_impl) {
             Ok(surface_dispatch) => Ok(Self {
@@ -502,31 +510,6 @@ impl Buffer<'_> {
                 .enumerate()
                 .map(move |(x, pixel)| (x as u32, y as u32, pixel))
         })
-    }
-}
-
-/// There is no display handle.
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct NoDisplayHandle(core::convert::Infallible);
-
-impl HasDisplayHandle for NoDisplayHandle {
-    fn display_handle(
-        &self,
-    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
-        match self.0 {}
-    }
-}
-
-/// There is no window handle.
-#[derive(Debug)]
-pub struct NoWindowHandle(());
-
-impl HasWindowHandle for NoWindowHandle {
-    fn window_handle(
-        &self,
-    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
-        Err(raw_window_handle::HandleError::NotSupported)
     }
 }
 
