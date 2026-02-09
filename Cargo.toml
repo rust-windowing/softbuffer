@@ -199,7 +199,7 @@ wasm-bindgen-test = "0.3"
 console_error_panic_hook = "0.1"
 tracing-web = "0.1"
 # Allow `rand` crate to compile.
-getrandom = { version = "0.3.4", features = ["wasm_js"] }
+getrandom = { version = "0.4.1", features = ["wasm_js"] }
 
 # DRM example.
 [target.'cfg(not(any(target_os = "android", target_vendor = "apple", target_os = "redox", target_family = "wasm", target_os = "windows")))'.dev-dependencies]
