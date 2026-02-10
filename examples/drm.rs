@@ -127,7 +127,7 @@ mod imple {
             tracing::info!("Drawing tick {tick}");
 
             // Start drawing.
-            let mut buffer = surface.buffer_mut()?;
+            let mut buffer = surface.next_buffer()?;
             draw_to_buffer(buffer.pixels(), tick);
             buffer.present()?;
 

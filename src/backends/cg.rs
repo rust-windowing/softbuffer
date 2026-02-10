@@ -258,7 +258,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer_size = util::byte_stride(self.width as u32) as usize * self.height / 4;
         Ok(BufferImpl {
             buffer: util::PixelBuffer(vec![Pixel::default(); buffer_size]),

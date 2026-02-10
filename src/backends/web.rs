@@ -181,7 +181,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         Ok(BufferImpl {
             canvas: &self.canvas,
             buffer: &mut self.buffer,

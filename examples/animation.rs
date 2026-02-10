@@ -59,7 +59,7 @@ fn main() {
 
                 let elapsed = start.elapsed().as_secs_f64() % 1.0;
 
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
 
                 let size = (buffer.width().get(), buffer.height().get());
                 if size != *old_size {

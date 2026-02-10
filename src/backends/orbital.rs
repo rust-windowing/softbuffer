@@ -112,7 +112,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let (window_width, window_height) = window_size(self.window_fd());
         let pixels = if self.width as usize == window_width && self.height as usize == window_height
         {

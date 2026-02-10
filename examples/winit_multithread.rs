@@ -32,7 +32,7 @@ pub mod ex {
             tracing::info!("resizing...");
             surface.resize(width, height).unwrap();
 
-            let mut buffer = surface.buffer_mut().unwrap();
+            let mut buffer = surface.next_buffer().unwrap();
             for (x, y, pixel) in buffer.pixels_iter() {
                 let red = x % 255;
                 let green = y % 255;

@@ -122,7 +122,7 @@ mod example {
                             NonZeroU32::new(height.into()).unwrap(),
                         )
                         .unwrap();
-                    let mut buffer = surface.buffer_mut().unwrap();
+                    let mut buffer = surface.next_buffer().unwrap();
                     buffer.pixels().fill(Pixel::new_rgb(0xff, 0, 0));
                     buffer.present().unwrap();
                 }

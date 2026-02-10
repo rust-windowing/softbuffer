@@ -108,11 +108,11 @@ macro_rules! make_dispatch {
                 }
             }
 
-            fn buffer_mut(&mut self) -> Result<BufferDispatch<'_>, SoftBufferError> {
+            fn next_buffer(&mut self) -> Result<BufferDispatch<'_>, SoftBufferError> {
                 match self {
                     $(
                         $(#[$attr])*
-                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.buffer_mut()?)),
+                        Self::$name(inner) => Ok(BufferDispatch::$name(inner.next_buffer()?)),
                     )*
                 }
             }

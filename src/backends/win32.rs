@@ -220,11 +220,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer = self
             .buffer
             .as_mut()
-            .expect("Must set size of surface before calling `buffer_mut()`");
+            .expect("Must set size of surface before calling `next_buffer()`");
 
         Ok(BufferImpl {
             window: &self.window,

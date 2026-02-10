@@ -167,7 +167,7 @@ name = "winit_multithread_android"
 crate-type = ["cdylib"]
 
 [[bench]]
-name = "buffer_mut"
+name = "buffer"
 harness = false
 
 [dev-dependencies]
