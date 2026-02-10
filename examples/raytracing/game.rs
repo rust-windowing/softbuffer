@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::rngs::{SmallRng, SysRng};
+use rand::{RngExt, SeedableRng};
 use softbuffer::{Buffer, Pixel};
 
 use crate::camera::Camera;
@@ -27,7 +27,7 @@ const DURATION_BETWEEN_TICKS: Duration = Duration::from_millis(10);
 
 impl Game {
     pub fn new() -> Self {
-        let mut rng = SmallRng::from_os_rng();
+        let mut rng = SmallRng::try_from_rng(&mut SysRng).unwrap();
         let position = Point3::new(13.0, 2.0, 3.0);
         let looking_at = Point3::new(0.0, 0.0, 0.0);
         let camera_direction = (looking_at - position).normalize();
@@ -91,16 +91,14 @@ impl Game {
         {
             use rayon::prelude::*;
 
-            pixels
-                .par_iter_mut()
-                .enumerate()
-                .for_each_init(SmallRng::from_os_rng, move |rng, (i, pixel)| {
-                    each_pixel(rng, i, pixel)
-                });
+            pixels.par_iter_mut().enumerate().for_each_init(
+                || SmallRng::try_from_rng(&mut SysRng).unwrap(),
+                move |rng, (i, pixel)| each_pixel(rng, i, pixel),
+            );
         };
         #[cfg(target_family = "wasm")]
         {
-            let mut rng = SmallRng::from_os_rng();
+            let mut rng = SmallRng::try_from_rng(&mut SysRng).unwrap();
             pixels
                 .iter_mut()
                 .enumerate()

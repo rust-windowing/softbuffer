@@ -1,8 +1,16 @@
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 pub use glam::Vec3;
 pub type Point3 = Vec3;
 pub type Color = Vec3;
+
+pub fn random_color(rng: &mut impl Rng) -> Color {
+    Vec3::new(
+        rng.random_range(0.0..=1.0),
+        rng.random_range(0.0..=1.0),
+        rng.random_range(0.0..=1.0),
+    )
+}
 
 pub fn random_in_unit_sphere(rng: &mut impl Rng) -> Vec3 {
     loop {

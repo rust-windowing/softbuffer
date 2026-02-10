@@ -175,8 +175,8 @@ colorous = "1.0.12"
 web-time = "1.0.0"
 winit = { version = "0.30.0", default-features = false, features = ["rwh_06"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-glam = { version = "0.31.0", features = ["rand"] }
-rand = "0.9.2"
+glam = "0.31.0"
+rand = "0.10.0"
 # Disable unnecessary formats.
 image = { version = "0.25.0", default-features = false, features = ["jpeg"] }
 
@@ -199,7 +199,7 @@ wasm-bindgen-test = "0.3"
 console_error_panic_hook = "0.1"
 tracing-web = "0.1"
 # Allow `rand` crate to compile.
-getrandom = { version = "0.3.4", features = ["wasm_js"] }
+getrandom = { version = "0.4.1", features = ["wasm_js"] }
 
 # DRM example.
 [target.'cfg(not(any(target_os = "android", target_vendor = "apple", target_os = "redox", target_family = "wasm", target_os = "windows")))'.dev-dependencies]

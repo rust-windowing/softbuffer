@@ -1,11 +1,11 @@
 use std::ops::Range;
 
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 use crate::material::{Dielectric, Lambertian, Material, Metal};
 use crate::objects::{Hit, Sphere};
 use crate::ray::Ray;
-use crate::vec3::{Color, Point3, Vec3};
+use crate::vec3::{random_color, Color, Point3, Vec3};
 
 #[derive(Default, Debug)]
 pub struct World {
@@ -35,7 +35,7 @@ impl World {
                 if (center - Point3::new(4.0, 0.2, 0.0)).length() > 0.9 {
                     if choose_mat < 0.8 {
                         // Diffuse
-                        let albedo = rng.random::<Color>() * rng.random::<Color>();
+                        let albedo = random_color(rng) * random_color(rng);
                         let sphere_material = Material::Lambertian(Lambertian::new(albedo));
                         spheres.push(Sphere::new(center, 0.2, sphere_material));
                     } else if choose_mat < 0.95 {
