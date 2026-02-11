@@ -344,13 +344,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         Ok(())
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
-        tracing::trace!("buffer_mut: window={:X}", self.window);
+    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+        tracing::trace!("next_buffer: window={:X}", self.window);
 
         // Finish waiting on the previous `shm::PutImage` request, if any.
         self.buffer.finish_wait(self.display.connection())?;
 
-        // We can now safely call `buffer_mut` on the buffer.
+        // We can now safely call `next_buffer` on the buffer.
         Ok(BufferImpl {
             connection: self.display.connection(),
             window: self.window,
@@ -433,8 +433,8 @@ impl BufferInterface for BufferImpl<'_> {
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        // SAFETY: We called `finish_wait` on the buffer, so it is safe to call `buffer_mut`.
-        unsafe { self.buffer.buffer_mut() }
+        // SAFETY: We called `finish_wait` on the buffer.
+        unsafe { self.buffer.as_mut() }
     }
 
     fn age(&self) -> u8 {
@@ -569,7 +569,7 @@ impl Buffer {
     ///
     /// `finish_wait()` must be called in between `shm::PutImage` requests and this function.
     #[inline]
-    unsafe fn buffer_mut(&mut self) -> &mut [Pixel] {
+    unsafe fn as_mut(&mut self) -> &mut [Pixel] {
         match self {
             Buffer::Shm(ref mut shm) => unsafe { shm.as_mut() },
             Buffer::Wire(wire) => wire,

@@ -5,7 +5,7 @@
     all(target_vendor = "apple", not(target_os = "macos")),
     target_os = "redox"
 )))]
-fn buffer_mut(c: &mut criterion::Criterion) {
+fn buffer(c: &mut criterion::Criterion) {
     use criterion::black_box;
     use softbuffer::{Context, Pixel, Surface};
     use std::num::NonZeroU32;
@@ -34,14 +34,14 @@ fn buffer_mut(c: &mut criterion::Criterion) {
                 )
                 .unwrap();
 
-            c.bench_function("buffer_mut()", |b| {
+            c.bench_function("next_buffer()", |b| {
                 b.iter(|| {
-                    black_box(surface.buffer_mut().unwrap());
+                    black_box(surface.next_buffer().unwrap());
                 });
             });
 
             c.bench_function("pixels()", |b| {
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
                 b.iter(|| {
                     let pixels: &mut [Pixel] = buffer.pixels();
                     black_box(pixels);
@@ -49,7 +49,7 @@ fn buffer_mut(c: &mut criterion::Criterion) {
             });
 
             c.bench_function("fill pixels", |b| {
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
                 b.iter(|| {
                     let buffer = black_box(&mut buffer);
                     buffer.pixels().fill(Pixel::default());
@@ -57,7 +57,7 @@ fn buffer_mut(c: &mut criterion::Criterion) {
             });
 
             c.bench_function("render pixels_iter", |b| {
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
                 b.iter(|| {
                     let buffer = black_box(&mut buffer);
                     for (x, y, pixel) in buffer.pixels_iter() {
@@ -78,7 +78,7 @@ fn buffer_mut(c: &mut criterion::Criterion) {
     all(target_vendor = "apple", not(target_os = "macos")),
     target_os = "redox"
 )))]
-criterion::criterion_group!(benches, buffer_mut);
+criterion::criterion_group!(benches, buffer);
 
 #[cfg(not(any(
     target_family = "wasm",

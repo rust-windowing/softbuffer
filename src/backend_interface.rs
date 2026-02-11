@@ -26,8 +26,8 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
     fn window(&self) -> &W;
     /// Resize the internal buffer to the given width and height.
     fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError>;
-    /// Get a mutable reference to the buffer.
-    fn buffer_mut(&mut self) -> Result<Self::Buffer<'_>, SoftBufferError>;
+    /// Get the next buffer to render into.
+    fn next_buffer(&mut self) -> Result<Self::Buffer<'_>, SoftBufferError>;
     /// Fetch the buffer from the window.
     fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)

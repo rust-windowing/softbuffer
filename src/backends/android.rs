@@ -76,7 +76,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
             })
     }
 
-    fn buffer_mut(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(&mut self) -> Result<BufferImpl<'_>, SoftBufferError> {
         let native_window_buffer = self.native_window.lock(None).map_err(|err| {
             SoftBufferError::PlatformError(
                 Some("Failed to lock ANativeWindow".to_owned()),

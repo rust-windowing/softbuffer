@@ -11,7 +11,7 @@ To use Softbuffer, first create a window using `winit`, `sdl3`, or any other cra
 [`raw_window_handle::HasWindowHandle`].
 
 Next, you create a [`Context`] and [`Surface`] from that window, and can now call
-[`Surface::buffer_mut()`] to get a [`Buffer`] that you can draw into. Once you're done drawing, call
+[`Surface::next_buffer()`] to get a [`Buffer`] that you can draw into. Once you're done drawing, call
 [`Buffer::present()`] to show the buffer on the window.
 
 Note that Softbuffer only provides the `&mut [...]` buffer, it does not provide any rendering
@@ -117,7 +117,7 @@ fn main() {
                     )
                     .unwrap();
 
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
                 for (x, y, pixel) in buffer.pixels_iter() {
                     let red = (x % 255) as u8;
                     let green = (y % 255) as u8;

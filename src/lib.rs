@@ -115,7 +115,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.window()
     }
 
-    /// Set the size of the buffer that will be returned by [`Surface::buffer_mut`].
+    /// Set the size of the buffer that will be returned by [`Surface::next_buffer()`].
     ///
     /// If the size of the buffer does not match the size of the window, the buffer is drawn
     /// in the upper-left corner of the window. It is recommended in most production use cases
@@ -153,8 +153,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     /// - On DRM/KMS, there is no reliable and sound way to wait for the page flip to happen from within
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
-    pub fn buffer_mut(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
-        let mut buffer_impl = self.surface_impl.buffer_mut()?;
+    pub fn next_buffer(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
+        let mut buffer_impl = self.surface_impl.next_buffer()?;
 
         debug_assert_eq!(
             buffer_impl.byte_stride().get() % 4,
@@ -175,6 +175,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
             buffer_impl,
             _marker: PhantomData,
         })
+    }
+
+    /// Rename to [`Surface::next_buffer()`].
+    #[deprecated = "renamed to `next_buffer()`"]
+    pub fn buffer_mut(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
+        self.next_buffer()
     }
 }
 
@@ -369,7 +375,7 @@ impl Buffer<'_> {
     ///
     /// # let buffer: softbuffer::Buffer<'_> = todo!();
     /// # #[cfg(false)]
-    /// let buffer = surface.buffer_mut();
+    /// let buffer = surface.next_buffer();
     ///
     /// let width = buffer.width().get();
     /// let height = buffer.height().get();

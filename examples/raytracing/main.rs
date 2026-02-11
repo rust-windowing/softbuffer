@@ -68,7 +68,7 @@ fn main() {
 
                 game.update();
 
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
                 game.draw(&mut buffer, window.scale_factor() as f32);
                 buffer.present().unwrap();
                 window.request_redraw();

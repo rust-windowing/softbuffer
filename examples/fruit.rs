@@ -51,7 +51,7 @@ fn main() {
                     return;
                 };
 
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
                 let stride = buffer.byte_stride().get() / 4;
                 for (x, y, pixel) in fruit.pixels() {
                     let pixel = Pixel::new_rgb(pixel.0[0], pixel.0[1], pixel.0[2]);

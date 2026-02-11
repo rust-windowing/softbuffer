@@ -68,7 +68,7 @@ fn main() {
                     return;
                 };
                 // Draw something in the window
-                let mut buffer = surface.buffer_mut().unwrap();
+                let mut buffer = surface.next_buffer().unwrap();
                 redraw(&mut buffer, *flag);
                 buffer.present().unwrap();
             }

@@ -5,6 +5,7 @@
 - Added `Buffer::pixel_rows()` for iterating over rows of the buffer data.
 - Added `Buffer::pixels_iter()` for iterating over each pixel with its associated `x`/`y` coordinate.
 - Added `Buffer::byte_stride()` for pixel buffers whose rows are aligned and may contain padding bytes at the end. Prefer to use the above helpers instead of accessing pixel data directly.
+- Renamed `Surface::buffer_mut()` to `Surface::next_buffer()`.
 - **Breaking:** Add `Pixel` struct, and use that for pixels instead of `u32`.
 - **Breaking:** The pixel format is now target-dependent. Access `PixelFormat::default()` to see which format is used on the current platform.
 - **Breaking:** Removed generic type parameters `D` and `W` from `Buffer<'_>` struct.
