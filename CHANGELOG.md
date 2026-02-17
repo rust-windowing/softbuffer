@@ -16,7 +16,7 @@
 - **Breaking:** Removed `SurfaceExtWeb` and the associated `NoDisplayHandle` and `NoWindowHandle` helpers. Use `RawWindowHandle::WebCanvas` or `RawWindowHandle::WebOffscreenCanvas` instead.
 - Fixed `present_with_damage` with bounds out of range on Windows, Web and X11.
 
-# 0.4.7
+# 0.4.8
 
 - Fix documentation building on `docs.rs`.
 
