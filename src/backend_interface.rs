@@ -1,6 +1,6 @@
 //! Interface implemented by backends
 
-use crate::{InitError, Pixel, Rect, SoftBufferError};
+use crate::{AlphaMode, InitError, Pixel, Rect, SoftBufferError};
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::num::NonZeroU32;
@@ -22,12 +22,23 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
     where
         W: Sized,
         Self: Sized;
+
     /// Get the inner window handle.
     fn window(&self) -> &W;
-    /// Resize the internal buffer to the given width and height.
-    fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError>;
+
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool;
+
+    /// Reconfigure the internal buffer(s).
+    fn configure(
+        &mut self,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        alpha_mode: AlphaMode,
+    ) -> Result<(), SoftBufferError>;
+
     /// Get the next buffer to render into.
-    fn next_buffer(&mut self) -> Result<Self::Buffer<'_>, SoftBufferError>;
+    fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<Self::Buffer<'_>, SoftBufferError>;
+
     /// Fetch the buffer from the window.
     fn fetch(&mut self) -> Result<Vec<Pixel>, SoftBufferError> {
         Err(SoftBufferError::Unimplemented)

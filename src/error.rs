@@ -3,6 +3,8 @@ use std::error::Error;
 use std::fmt;
 use std::num::NonZeroU32;
 
+use crate::AlphaMode;
+
 #[derive(Debug)]
 #[non_exhaustive]
 /// A sum type of all of the errors that can occur during the operation of this crate.
@@ -86,6 +88,12 @@ pub enum SoftBufferError {
         height: NonZeroU32,
     },
 
+    /// The provided alpha mode is not supported by the backend.
+    UnsupportedAlphaMode {
+        /// The alpha mode that was not supported.
+        alpha_mode: AlphaMode,
+    },
+
     /// A platform-specific backend error occurred.
     ///
     /// The first field provides a human-readable description of the error. The second field
@@ -124,6 +132,10 @@ impl fmt::Display for SoftBufferError {
             Self::SizeOutOfRange { width, height } => write!(
                 f,
                 "Surface size {width}x{height} out of range for backend.",
+            ),
+            Self::UnsupportedAlphaMode { alpha_mode } => write!(
+                f,
+                "Alpha mode {alpha_mode:?} is not supported by the backend.",
             ),
             Self::PlatformError(msg, None) => write!(f, "Platform error: {msg:?}"),
             Self::PlatformError(msg, Some(err)) => write!(f, "Platform error: {msg:?}: {err}"),
