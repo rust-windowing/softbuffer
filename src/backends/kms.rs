@@ -238,6 +238,29 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         let front_buffer = SharedBuffer::new(&self.display, width, height)?;
         let back_buffer = SharedBuffer::new(&self.display, width, height)?;
 
+        // Iterate over all modes of all the connectors,
+        // and pick one that is compatible with the size given by the user.
+        let mode = self
+            .connectors
+            .iter()
+            .flat_map(|con| self.display.get_modes(*con).unwrap())
+            .find(|mode| {
+                mode.size().0 as u32 == u32::from(width)
+                    && mode.size().1 as u32 == u32::from(height)
+            })
+            .swbuf_err("No mode found")?;
+
+        // When changing the display resolution, we need to modeset
+        self.display
+            .set_crtc(
+                self.crtc.handle(),
+                Some(front_buffer.fb),
+                (0, 0),
+                &self.connectors,
+                Some(mode),
+            )
+            .swbuf_err("Failed to modeset")?;
+
         self.buffer = Some(Buffers {
             first_is_front: true,
             buffers: [front_buffer, back_buffer],
