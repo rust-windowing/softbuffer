@@ -79,12 +79,19 @@ pub(super) struct WaylandBuffer {
     buffer: wl_buffer::WlBuffer,
     pub width: i32,
     pub height: i32,
+    format: wl_shm::Format,
     released: Arc<AtomicBool>,
     pub age: u8,
 }
 
 impl WaylandBuffer {
-    pub fn new(shm: &wl_shm::WlShm, width: i32, height: i32, qh: &QueueHandle<State>) -> Self {
+    pub fn new(
+        shm: &wl_shm::WlShm,
+        width: i32,
+        height: i32,
+        format: wl_shm::Format,
+        qh: &QueueHandle<State>,
+    ) -> Self {
         // Calculate size to use for shm pool
         let pool_size = get_pool_size(width, height);
 
@@ -101,9 +108,7 @@ impl WaylandBuffer {
             width,
             height,
             util::byte_stride(width as u32) as i32,
-            // This is documented as `0xXXRRGGBB` on a little-endian machine, which means a byte
-            // order of `[B, G, R, X]`.
-            wl_shm::Format::Xrgb8888,
+            format,
             qh,
             released.clone(),
         );
@@ -117,14 +122,15 @@ impl WaylandBuffer {
             buffer,
             width,
             height,
+            format,
             released,
             age: 0,
         }
     }
 
-    pub fn resize(&mut self, width: i32, height: i32) {
-        // If size is the same, there's nothing to do
-        if self.width != width || self.height != height {
+    pub fn configure(&mut self, width: i32, height: i32, format: wl_shm::Format) {
+        // If info is the same, there's nothing to do
+        if self.width != width || self.height != height || self.format != format {
             // Destroy old buffer
             self.buffer.destroy();
 
@@ -143,12 +149,13 @@ impl WaylandBuffer {
                 width,
                 height,
                 util::byte_stride(width as u32) as i32,
-                wl_shm::Format::Xrgb8888,
+                format,
                 &self.qh,
                 self.released.clone(),
             );
             self.width = width;
             self.height = height;
+            self.format = format;
         }
     }
 
