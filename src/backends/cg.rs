@@ -20,7 +20,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::ffi::c_void;
 use std::marker::PhantomData;
-use std::mem::{self, size_of};
+use std::mem::size_of;
 use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::ptr::{self, slice_from_raw_parts_mut, NonNull};
@@ -105,9 +105,26 @@ pub struct CGImpl<D, W> {
     root_layer: SendCALayer,
     observer: Retained<Observer>,
     color_space: CFRetained<CGColorSpace>,
-    front: Buffer,
-    middle: Option<Buffer>,
-    back: Buffer,
+    /// The buffers that we may render into.
+    ///
+    /// This contains an unbounded number of buffers, since we don't get any feedback from
+    /// QuartzCore about when it's done using the buffer, other than the retain count of the data
+    /// provider (which is a weak signal). It shouldn't be needed (QuartzCore seems to copy the data
+    /// from `CGImage` once), though theoretically there might be cases where it would have a
+    /// multi-stage pipeline where it processes the image once, retains it, and sends it onwards to
+    /// be processed again later (and such things might change depending on OS version), so we do
+    /// this to be safe.
+    ///
+    /// Anecdotally, if the user renders 3 times within a single frame (which they probably
+    /// shouldn't do, but would be safe), we need 4 buffers according to the retain counts.
+    ///
+    /// Note that having more buffers here shouldn't add any presentation delay, since we still go
+    /// directly from drawing to the back buffer and presenting the front buffer.
+    buffers: Vec<Buffer>,
+    /// The width of the current buffers.
+    width: u32,
+    /// The height of the current buffers.
+    height: u32,
     window_handle: W,
     _display: PhantomData<D>,
 }
@@ -244,9 +261,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             root_layer: SendCALayer(root_layer),
             observer,
             color_space,
-            front: Buffer::new(width, height),
-            middle: Some(Buffer::new(width, height)),
-            back: Buffer::new(width, height),
+            // We'll usually do double-buffering, but might end up needing more buffers if the user
+            // renders multiple times per frame.
+            buffers: vec![Buffer::new(width, height), Buffer::new(width, height)],
+            width,
+            height,
             _display: PhantomData,
             window_handle: window_src,
         })
@@ -277,34 +296,34 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         let height = height.get();
 
         // TODO: Is this check desirable?
-        if self.front.width == width && self.front.height == height {
+        if self.width == width && self.height == height {
             return Ok(());
         }
 
         // Recreate buffers. It's fine to release the old ones, `CALayer.contents` is going to keep
         // a reference if they're still in use.
-        self.front = Buffer::new(width, height);
-        self.back = Buffer::new(width, height);
+        self.buffers = vec![Buffer::new(width, height), Buffer::new(width, height)];
+        self.width = width;
+        self.height = height;
 
         Ok(())
     }
 
     fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
-        // Block until back buffer is no longer being used by the compositor.
+        // If the backmost buffer might be in use, allocate a new buffer.
         //
-        // TODO: Allow configuring this? https://github.com/rust-windowing/softbuffer/issues/29
-        // TODO: Is this actually the check we want to do? It feels overly restrictive.
-        // TODO: Should we instead keep a boundless queue, and use the latest available buffer?
-        tracing::warn!("next_buffer");
-        while self.back.is_in_use() {
-            tracing::warn!("in use");
-            std::thread::yield_now();
+        // TODO: Add an `unsafe` option to disable this, and always assume 2 buffers?
+        if self.buffers.last().unwrap().might_be_in_use() {
+            self.buffers.push(Buffer::new(self.width, self.height));
+            // This should have no effect on latency, but it will affect the `buffer.age()` that
+            // users see, and unbounded allocation is undesirable too, so we should try to avoid it.
+            tracing::warn!("had to allocate extra buffer in `next_buffer`, you might be rendering faster than the display rate?");
         }
 
         Ok(BufferImpl {
-            front: &mut self.front,
-            middle: &mut self.middle,
-            back: &mut self.back,
+            buffers: &mut self.buffers,
+            width: self.width,
+            height: self.height,
             color_space: &self.color_space,
             alpha_info: match (alpha_mode, cfg!(target_endian = "little")) {
                 (AlphaMode::Opaque | AlphaMode::Ignored, true) => CGImageAlphaInfo::NoneSkipFirst,
@@ -320,19 +339,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 }
 
 /// The implementation used for presenting the back buffer to the surface.
-///
-/// This is triple-buffered because that's what QuartzCore / the compositor seems to require:
-/// - The front buffer is what's currently assigned to `CALayer.contents`, and was submitted to the
-///   compositor in the previous iteration of the run loop.
-/// - The middle buffer is what the compositor is currently drawing from (assuming a 1 frame delay).
-/// - The back buffer is what we'll be drawing into.
-///
-/// This is especially important because `softbuffer::Surface` may be used from different threads.
 #[derive(Debug)]
 pub struct BufferImpl<'surface> {
-    front: &'surface mut Buffer,
-    middle: &'surface mut Option<Buffer>,
-    back: &'surface mut Buffer,
+    buffers: &'surface mut Vec<Buffer>,
+    width: u32,
+    height: u32,
     color_space: &'surface CGColorSpace,
     alpha_info: CGImageAlphaInfo,
     layer: &'surface mut SendCALayer,
@@ -340,43 +351,47 @@ pub struct BufferImpl<'surface> {
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new(util::byte_stride(self.back.width)).unwrap()
+        NonZeroU32::new(util::byte_stride(self.width)).unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.back.width).unwrap()
+        NonZeroU32::new(self.width).unwrap()
     }
 
     fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.back.height).unwrap()
+        NonZeroU32::new(self.height).unwrap()
     }
 
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        // SAFETY: Called on the back buffer.
-        unsafe { self.back.data() }
+        let back = self.buffers.last_mut().unwrap();
+
+        // Should've been verified by `next_buffer` above.
+        debug_assert!(!back.might_be_in_use());
+
+        let num_bytes = util::byte_stride(self.width) as usize * (self.height as usize);
+        // SAFETY: The pointer is valid, and we know that we're the only owners of the back buffer's
+        // data provider. This, combined with taking `&mut self` in this function, means that we can
+        // safely write to the buffer.
+        unsafe { slice::from_raw_parts_mut(back.data_ptr, num_bytes / size_of::<Pixel>()) }
     }
 
     fn age(&self) -> u8 {
-        self.back.age
+        let back = self.buffers.last().unwrap();
+        back.age
     }
 
     fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        self.back.age = 1;
-        if let Some(middle) = self.middle {
-            if middle.age != 0 {
-                middle.age += 1;
-            }
-        }
-        if self.front.age != 0 {
-            self.front.age += 1;
-        }
-
         // Rotate buffers such that the back buffer is now the front buffer.
-        if let Some(middle) = self.middle {
-            mem::swap(self.back, middle);
-            mem::swap(middle, self.front);
-        } else {
-            mem::swap(self.back, self.front);
+        self.buffers.rotate_right(1);
+
+        let (front, rest) = self.buffers.split_first_mut().unwrap();
+        front.age = 1; // This buffer (previously the back buffer) was just rendered into.
+
+        // Bump the age of the other buffers.
+        for buffer in rest {
+            if buffer.age != 0 {
+                buffer.age += 1;
+            }
         }
 
         // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
@@ -390,17 +405,18 @@ impl BufferInterface for BufferImpl<'_> {
                 | CGImagePixelFormatInfo::Packed.0,
         );
 
-        // CGImage is immutable, so we re-create it
+        // CGImage is (intended to be) immutable, so we re-create it on each present.
+        // SAFETY: The `decode` pointer is NULL.
         let image = unsafe {
             CGImage::new(
-                self.front.width as usize,
-                self.front.height as usize,
+                self.width as usize,
+                self.height as usize,
                 8,
                 32,
-                util::byte_stride(self.front.width) as usize,
+                util::byte_stride(self.width) as usize,
                 Some(self.color_space),
                 bitmap_info,
-                Some(&self.front.data_provider),
+                Some(&front.data_provider),
                 ptr::null(),
                 false,
                 CGColorRenderingIntent::RenderingIntentDefault,
@@ -427,13 +443,11 @@ impl BufferInterface for BufferImpl<'_> {
 struct Buffer {
     data_provider: CFRetained<CGDataProvider>,
     data_ptr: *mut Pixel,
-    width: u32,
-    height: u32,
     age: u8,
 }
 
-// SAFETY: We only mutate the `CGDataProvider` when we know it's the back buffer, and only then
-// behind `&mut`.
+// SAFETY: We only mutate the `CGDataProvider` when we know it's not referenced by anything else,
+// and only then behind `&mut`.
 unsafe impl Send for Buffer {}
 // SAFETY: Same as above.
 unsafe impl Sync for Buffer {}
@@ -466,29 +480,16 @@ impl Buffer {
         Self {
             data_provider,
             data_ptr: data_ptr.cast(),
-            width,
-            height,
             age: 0,
         }
     }
 
-    /// Hint for whether the data provider is currently being used.
+    /// Whether the buffer might currently be in use.
     ///
-    /// Might return `false`, but if this returns `true`, the provider is definitely not in use.
-    fn is_in_use(&self) -> bool {
+    /// Might return `false` even if the buffer is unused (such as if it ended up in an autorelease
+    /// pool), but if this returns `true`, the provider is definitely not in use.
+    fn might_be_in_use(&self) -> bool {
         self.data_provider.retain_count() != 1
-    }
-
-    /// # Safety
-    ///
-    /// Must only be called on the back buffer.
-    unsafe fn data(&mut self) -> &mut [Pixel] {
-        // Check that nobody else is using the data provider.
-        debug_assert!(!self.is_in_use());
-
-        let num_bytes = util::byte_stride(self.width) as usize * (self.height as usize);
-        // SAFETY: The pointer is valid, and ownership rules are upheld by caller.
-        unsafe { slice::from_raw_parts_mut(self.data_ptr, num_bytes / size_of::<Pixel>()) }
     }
 }
 
