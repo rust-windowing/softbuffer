@@ -3,7 +3,7 @@
 //! This module converts the input buffer into a bitmap and then stretches it to the window.
 
 use crate::backend_interface::*;
-use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
+use crate::{util, AlphaMode, Pixel, PixelFormat, Rect, SoftBufferError};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::io;
@@ -232,9 +232,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        // TODO: Support transparency.
-        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored)
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        if matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored) {
+            &[PixelFormat::Bgra8]
+        } else {
+            // TODO: Support transparency.
+            &[]
+        }
     }
 
     fn configure(
@@ -242,6 +246,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         width: NonZeroU32,
         height: NonZeroU32,
         alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
             let width = NonZeroI32::try_from(width).ok()?;
@@ -266,7 +271,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         Ok(())
     }
 
-    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer = self
             .buffer
             .as_mut()

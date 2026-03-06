@@ -102,7 +102,7 @@ pub(crate) fn to_i32_saturating(val: u32) -> i32 {
 /// TODO(madsmtm): This should take the pixel format / bit depth as input after:
 /// <https://github.com/rust-windowing/softbuffer/issues/98>
 #[inline]
-pub(crate) fn byte_stride(width: u32) -> u32 {
+pub(crate) fn byte_stride(width: u32, bits_per_pixel: u8) -> u32 {
     let row_alignment = if cfg!(debug_assertions) {
         16 // Use a higher alignment to help users catch issues with their stride calculations.
     } else {
@@ -110,5 +110,5 @@ pub(crate) fn byte_stride(width: u32) -> u32 {
     };
     // TODO: Use `next_multiple_of` when in MSRV.
     let mask = row_alignment * 4 - 1;
-    ((width * 32 + mask) & !mask) >> 3
+    ((width * bits_per_pixel as u32 + mask) & !mask) >> 3
 }

@@ -1,7 +1,7 @@
 use crate::{
     backend_interface::*,
     error::{InitError, SwResultExt},
-    util, AlphaMode, Pixel, Rect, SoftBufferError,
+    util, AlphaMode, Pixel, PixelFormat, Rect, SoftBufferError,
 };
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::{
@@ -143,11 +143,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        matches!(
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        if matches!(
             alpha_mode,
             AlphaMode::Opaque | AlphaMode::Ignored | AlphaMode::Premultiplied
-        )
+        ) {
+            &[PixelFormat::Bgra8]
+        } else {
+            &[]
+        }
     }
 
     fn configure(
@@ -155,6 +159,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         width: NonZeroU32,
         height: NonZeroU32,
         _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         self.size = Some(
             (|| {
@@ -167,7 +172,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         Ok(())
     }
 
-    fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         // This is documented as `0xXXRRGGBB` on a little-endian machine, which means a byte
         // order of `[B, G, R, X]`.
         let format = match alpha_mode {

@@ -141,7 +141,7 @@ fn main() {
                     _ => return,
                 };
 
-                if !surface.supports_alpha_mode(alpha_mode) {
+                if surface.supported_pixel_formats(alpha_mode).is_empty() {
                     tracing::warn!(?alpha_mode, "not supported by the backend");
                     return;
                 }
@@ -150,7 +150,9 @@ fn main() {
                 let size = window.inner_size();
                 let width = NonZeroU32::new(size.width).unwrap();
                 let height = NonZeroU32::new(size.height).unwrap();
-                surface.configure(width, height, alpha_mode).unwrap();
+                surface
+                    .configure(width, height, alpha_mode, surface.pixel_format())
+                    .unwrap();
                 assert_eq!(surface.alpha_mode(), alpha_mode);
 
                 window.set_transparent(matches!(

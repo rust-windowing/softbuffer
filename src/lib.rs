@@ -79,6 +79,8 @@ pub struct Surface<D, W> {
     surface_impl: Box<SurfaceDispatch<D, W>>,
     /// The current alpha mode that the surface is configured with.
     alpha_mode: AlphaMode,
+    /// The current pixel format that the surface is configured with.
+    pixel_format: PixelFormat,
     _marker: PhantomData<Cell<()>>,
 }
 
@@ -99,6 +101,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
             Ok(surface_dispatch) => Ok(Self {
                 alpha_mode: AlphaMode::default(),
                 surface_impl: Box::new(surface_dispatch),
+                pixel_format: PixelFormat::default(),
                 _marker: PhantomData,
             }),
             Err(InitError::Unsupported(window)) => {
@@ -124,15 +127,25 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.alpha_mode
     }
 
+    /// The current pixel format of the surface.
+    pub fn pixel_format(&self) -> PixelFormat {
+        self.pixel_format
+    }
+
     /// Set the size of the buffer.
     ///
     /// This is a convenience method for reconfiguring when only the size changes, it is equivalent
     /// to:
-    /// ```ignore
-    /// surface.configure(width, height, surface.alpha_mode());
-    /// ````
+    /// ```
+    /// # use std::num::NonZeroU32;
+    /// # use softbuffer::Surface;
+    /// # use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+    /// # fn wrapper(mut surface: Surface<impl HasDisplayHandle, impl HasWindowHandle>, width: NonZeroU32, height: NonZeroU32) {
+    /// surface.configure(width, height, surface.alpha_mode(), surface.pixel_format());
+    /// # }
+    /// ```
     pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) -> Result<(), SoftBufferError> {
-        self.configure(width, height, self.alpha_mode())
+        self.configure(width, height, self.alpha_mode, self.pixel_format)
     }
 
     /// Reconfigure the surface's properties.
@@ -152,34 +165,57 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         width: NonZeroU32,
         height: NonZeroU32,
         alpha_mode: AlphaMode,
+        pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         if u32::MAX / 4 < width.get() {
             // Stride would be too large.
             return Err(SoftBufferError::SizeOutOfRange { width, height });
         }
 
-        if !self.supports_alpha_mode(alpha_mode) {
+        let supported_pixel_formats = self.supported_pixel_formats(alpha_mode);
+
+        if supported_pixel_formats.is_empty() {
             return Err(SoftBufferError::UnsupportedAlphaMode { alpha_mode });
         }
 
-        self.surface_impl.configure(width, height, alpha_mode)?;
+        if !supported_pixel_formats.contains(&pixel_format) {
+            return Err(SoftBufferError::UnsupportedPixelFormat {
+                alpha_mode,
+                pixel_format,
+            });
+        }
+
+        self.surface_impl
+            .configure(width, height, alpha_mode, pixel_format)?;
 
         self.alpha_mode = alpha_mode;
+        self.pixel_format = pixel_format;
 
         Ok(())
     }
 
-    /// Query if the given alpha mode is supported.
+    /// The pixel modes that are supported for a given alpha mode.
     ///
-    /// See [`AlphaMode`] for documentation on what this will (currently) return on each platform.
+    /// This returns an empty list if the alpha mode isn't supported.
     #[inline]
-    pub fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        // TODO: Once we get pixel formats, replace this with something like:
-        // fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat];
-        //
-        // And return an empty list from that if the alpha mode isn't supported.
-        self.surface_impl.supports_alpha_mode(alpha_mode)
+    pub fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        let formats = self.surface_impl.supported_pixel_formats(alpha_mode);
+
+        debug_assert!(
+            formats.is_empty() || formats.contains(&PixelFormat::default()),
+            "must support at least default pixel format",
+        );
+
+        debug_assert!(
+            alpha_mode != AlphaMode::Opaque || !formats.is_empty(),
+            "opaque alpha mode must be supported",
+        );
+
+        formats
     }
+
+    // TODO: Add `fn supports_pixel_format(&self, alpha_mode: AlphaMode, pixel_format: PixelFormat) -> bool`?
+    // TODO: Add `fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool`?
 
     /// Copies the window contents into a buffer.
     ///
@@ -206,28 +242,31 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     ///   `softbuffer`. Therefore it is the responsibility of the user to wait for the page flip before
     ///   sending another frame.
     pub fn next_buffer(&mut self) -> Result<Buffer<'_>, SoftBufferError> {
-        let alpha_mode = self.alpha_mode();
-
-        let mut buffer_impl = self.surface_impl.next_buffer(alpha_mode)?;
+        let mut buffer_impl = self
+            .surface_impl
+            .next_buffer(self.alpha_mode, self.pixel_format)?;
 
         debug_assert_eq!(
             buffer_impl.byte_stride().get() % 4,
             0,
-            "stride must be a multiple of 4"
+            "stride must be a multiple of 4",
+            // Required for a row of `&mut [u32]` to be sound.
         );
         debug_assert_eq!(
             buffer_impl.height().get() as usize * buffer_impl.byte_stride().get() as usize,
             buffer_impl.pixels_mut().len() * 4,
-            "buffer must be sized correctly"
+            "buffer must be sized correctly",
         );
         debug_assert!(
-            buffer_impl.width().get() * 4 <= buffer_impl.byte_stride().get(),
-            "width * 4 must be less than or equal to stride"
+            buffer_impl.width().get() as usize * self.pixel_format.bits_per_pixel() as usize / 8
+                <= buffer_impl.byte_stride().get() as usize,
+            "width * bpp / 8 must be less than or equal to stride",
         );
 
         Ok(Buffer {
             buffer_impl,
-            alpha_mode,
+            alpha_mode: self.alpha_mode,
+            pixel_format: self.pixel_format,
             _marker: PhantomData,
         })
     }
@@ -318,19 +357,22 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 pub struct Buffer<'surface> {
     buffer_impl: BufferDispatch<'surface>,
     alpha_mode: AlphaMode,
+    pixel_format: PixelFormat,
     _marker: PhantomData<Cell<()>>,
 }
 
 impl Buffer<'_> {
     /// The number of bytes wide each row in the buffer is.
     ///
-    /// On some platforms, the buffer is slightly larger than `width * height * 4`, usually for
-    /// performance reasons to align each row such that they are never split across cache lines.
+    /// On some platforms, the buffer is slightly larger than
+    /// `width * height * pixel_format.bits_per_pixel() / 8`, usually for performance reasons to
+    /// align each row such that they are never split across cache lines.
     ///
     /// In your code, prefer to use [`Buffer::pixel_rows`] (which handles this correctly), or
     /// failing that, make sure to chunk rows by the stride instead of the width.
     ///
-    /// This is guaranteed to be `>= width * 4`, and is guaranteed to be a multiple of 4.
+    /// This is guaranteed to be `>= width * pixel_format.bits_per_pixel() / 8`, and is guaranteed
+    /// to be a multiple of 4.
     #[doc(alias = "pitch")] // SDL and Direct3D
     #[doc(alias = "bytes_per_row")] // WebGPU
     #[doc(alias = "row_stride")]
@@ -352,6 +394,11 @@ impl Buffer<'_> {
     /// The alpha mode that the buffer uses.
     pub fn alpha_mode(&self) -> AlphaMode {
         self.alpha_mode
+    }
+
+    /// The pixel format that the buffer uses.
+    pub fn pixel_format(&self) -> PixelFormat {
+        self.pixel_format
     }
 
     /// `age` is the number of frames ago this buffer was last presented. So if the value is
@@ -402,7 +449,10 @@ impl Buffer<'_> {
     /// Otherwise this is equivalent to [`Self::present`].
     pub fn present_with_damage(mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         // Verify that pixels are set as opaque if the alpha mode requires it.
-        if cfg!(debug_assertions) && self.alpha_mode == AlphaMode::Opaque {
+        if cfg!(debug_assertions)
+            && self.alpha_mode == AlphaMode::Opaque
+            && self.pixel_format == PixelFormat::default()
+        {
             // Only check inside `width`, pixels outside are allowed to be anything.
             let width = self.width().get() as usize;
             for (y, row) in self.pixel_rows().enumerate() {
@@ -456,13 +506,9 @@ impl Buffer<'_> {
     /// # let width = std::num::NonZero::new(1).unwrap();
     /// # let height = std::num::NonZero::new(1).unwrap();
     ///
-    /// // At surface creation:
-    /// if surface.supports_alpha_mode(AlphaMode::Ignored) {
-    ///     // Try to use `AlphaMode::Ignored` if possible.
-    ///     surface.configure(width, height, AlphaMode::Ignored);
-    /// } else {
-    ///     // Fall back to `AlphaMode::Opaque` if not.
-    ///     surface.configure(width, height, AlphaMode::Opaque);
+    /// // After surface creation, try to configure RGBX if possible:
+    /// if surface.supported_pixel_formats(AlphaMode::Ignored).contains(&PixelFormat::Rgba8) {
+    ///     surface.configure(width, height, AlphaMode::Ignored, PixelFormat::Rgba8).unwrap();
     /// }
     ///
     /// // Each draw:
@@ -471,7 +517,7 @@ impl Buffer<'_> {
     /// let width = buffer.width().get();
     /// let height = buffer.height().get();
     ///
-    /// if PixelFormat::Rgba.is_default()
+    /// if buffer.pixel_format() == PixelFormat::Rgba8
     ///     && buffer.byte_stride().get() == width * 4
     ///     && buffer.alpha_mode() == AlphaMode::Ignored
     /// {
@@ -480,7 +526,7 @@ impl Buffer<'_> {
     ///     // SAFETY: `Pixel` can be reinterpreted as `[u8; 4]`.
     ///     let pixels = unsafe { std::mem::transmute::<&mut [Pixel], &mut [[u8; 4]]>(buffer.pixels()) };
     ///     // CORRECTNESS: We just checked that:
-    ///     // - The format is RGBA.
+    ///     // - The format is `Rgba8`.
     ///     // - The `stride == width * 4`.
     ///     // - The alpha channel is ignored (A -> X).
     ///     //
@@ -630,8 +676,8 @@ impl Buffer<'_> {
 /// See [the WhatWG spec][whatwg-premultiplied] for a good description of the difference between
 /// premultiplied and postmultiplied alpha.
 ///
-/// Query [`Surface::supports_alpha_mode`] to figure out supported modes for the current platform /
-/// surface.
+/// Query [`Surface::supported_pixel_formats`] to figure out supported modes for the current
+/// platform / surface.
 ///
 /// [whatwg-premultiplied]: https://html.spec.whatwg.org/multipage/canvas.html#premultiplied-alpha-and-the-2d-rendering-context
 #[doc(alias = "Transparency")]

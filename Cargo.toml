@@ -180,6 +180,9 @@ glam = "0.32.0"
 rand = "0.10.0"
 # Disable unnecessary formats.
 image = { version = "0.25.0", default-features = false, features = ["jpeg"] }
+# For f16 support. TODO: Use standard library's f16 once stable:
+# https://github.com/rust-lang/rust/issues/116909
+half = "2.7.1"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 # Use rayon in raytracing example on non-web platforms.
