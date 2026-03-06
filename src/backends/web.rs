@@ -11,7 +11,7 @@ use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
+use crate::{util, AlphaMode, Pixel, PixelFormat, Rect, SoftBufferError};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 
@@ -167,8 +167,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Postmultiplied)
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        if matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Postmultiplied) {
+            &[PixelFormat::Rgba8]
+        } else {
+            &[]
+        }
     }
 
     /// De-duplicates the error handling between `HtmlCanvasElement` and `OffscreenCanvas`.
@@ -178,6 +182,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         width: NonZeroU32,
         height: NonZeroU32,
         _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
@@ -193,7 +198,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         Ok(())
     }
 
-    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         Ok(BufferImpl {
             canvas: &self.canvas,
             buffer: &mut self.buffer,

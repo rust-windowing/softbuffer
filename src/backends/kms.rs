@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SoftBufferError, SwResultExt};
-use crate::{util, AlphaMode, Pixel};
+use crate::{util, AlphaMode, Pixel, PixelFormat};
 
 #[derive(Debug, Clone)]
 struct DrmDevice<'surface> {
@@ -226,11 +226,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        matches!(
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        if matches!(
             alpha_mode,
             AlphaMode::Opaque | AlphaMode::Ignored | AlphaMode::Premultiplied
-        )
+        ) {
+            &[PixelFormat::Bgra8]
+        } else {
+            &[]
+        }
     }
 
     fn configure(
@@ -238,6 +242,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         width: NonZeroU32,
         height: NonZeroU32,
         alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         // Don't resize if we don't have to.
         if let Some(buffer) = &self.buffer {
@@ -271,7 +276,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
     */
 
-    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         // Map the dumb buffer.
         let set = self
             .buffer

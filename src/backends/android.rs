@@ -12,7 +12,9 @@ use raw_window_handle::AndroidNdkWindowHandle;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use crate::error::InitError;
-use crate::{util, AlphaMode, BufferInterface, Pixel, Rect, SoftBufferError, SurfaceInterface};
+use crate::{
+    util, AlphaMode, BufferInterface, Pixel, PixelFormat, Rect, SoftBufferError, SurfaceInterface,
+};
 
 /// The handle to a window for software buffering.
 #[derive(Debug)]
@@ -53,8 +55,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored)
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        if matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored) {
+            &[PixelFormat::Rgba8]
+        } else {
+            &[]
+        }
     }
 
     /// Also changes the pixel format.
@@ -63,6 +69,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         width: NonZeroU32,
         height: NonZeroU32,
         alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         let (width, height) = (|| {
             let width = NonZeroI32::try_from(width).ok()?;
@@ -90,7 +97,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         Ok(())
     }
 
-    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         let native_window_buffer = self.native_window.lock(None).map_err(|err| {
             SoftBufferError::PlatformError(
                 Some("Failed to lock ANativeWindow".to_owned()),

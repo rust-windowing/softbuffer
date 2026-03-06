@@ -1,6 +1,6 @@
 //! Softbuffer implementation using CoreGraphics.
 use crate::error::InitError;
-use crate::{backend_interface::*, AlphaMode};
+use crate::{backend_interface::*, AlphaMode, PixelFormat};
 use crate::{util, Pixel, Rect, SoftBufferError};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
@@ -256,8 +256,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, _alpha_mode: AlphaMode) -> bool {
-        true
+    fn supported_pixel_formats(&self, _alpha_mode: AlphaMode) -> &[PixelFormat] {
+        // All alpha modes supported (ish).
+        &[PixelFormat::Bgra8]
     }
 
     fn configure(
@@ -265,6 +266,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         width: NonZeroU32,
         height: NonZeroU32,
         alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         let opaque = matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored);
         self.layer.setOpaque(opaque);
@@ -276,7 +278,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         Ok(())
     }
 
-    fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer_size = util::byte_stride(self.width as u32) as usize * self.height / 4;
         Ok(BufferImpl {
             buffer: util::PixelBuffer(vec![Pixel::default(); buffer_size]),

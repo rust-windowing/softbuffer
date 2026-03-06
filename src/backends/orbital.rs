@@ -3,7 +3,7 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, 
 use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::backend_interface::*;
-use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
+use crate::{util, AlphaMode, Pixel, PixelFormat, Rect, SoftBufferError};
 
 #[derive(Debug)]
 struct OrbitalMap {
@@ -102,8 +102,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored)
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        if matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored) {
+            &[PixelFormat::Bgra8]
+        } else {
+            &[]
+        }
     }
 
     fn configure(
@@ -111,6 +115,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         width: NonZeroU32,
         height: NonZeroU32,
         _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         let width = width.get();
         let height = height.get();
@@ -122,7 +127,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
         Ok(())
     }
 
-    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         let (window_width, window_height) = window_size(self.window_fd());
         let pixels = if self.width as usize == window_width && self.height as usize == window_height
         {

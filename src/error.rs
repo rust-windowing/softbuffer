@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt;
 use std::num::NonZeroU32;
 
-use crate::AlphaMode;
+use crate::{AlphaMode, PixelFormat};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -94,6 +94,14 @@ pub enum SoftBufferError {
         alpha_mode: AlphaMode,
     },
 
+    /// The provided alpha mode and pixel format is not supported by the backend.
+    UnsupportedPixelFormat {
+        /// The alpha mode that it was not supported with.
+        alpha_mode: AlphaMode,
+        /// The pixel format that was not supported.
+        pixel_format: PixelFormat,
+    },
+
     /// A platform-specific backend error occurred.
     ///
     /// The first field provides a human-readable description of the error. The second field
@@ -136,6 +144,10 @@ impl fmt::Display for SoftBufferError {
             Self::UnsupportedAlphaMode { alpha_mode } => write!(
                 f,
                 "Alpha mode {alpha_mode:?} is not supported by the backend.",
+            ),
+            Self::UnsupportedPixelFormat { alpha_mode, pixel_format } => write!(
+                f,
+                "pixel format {pixel_format:?} is not supported by the backend with alpha mode {alpha_mode:?}",
             ),
             Self::PlatformError(msg, None) => write!(f, "Platform error: {msg:?}"),
             Self::PlatformError(msg, Some(err)) => write!(f, "Platform error: {msg:?}: {err}"),

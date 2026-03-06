@@ -7,7 +7,7 @@
 
 use crate::backend_interface::*;
 use crate::error::{InitError, SwResultExt};
-use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
+use crate::{util, AlphaMode, Pixel, PixelFormat, Rect, SoftBufferError};
 use raw_window_handle::{
     HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, XcbDisplayHandle,
     XcbWindowHandle,
@@ -312,8 +312,12 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
-        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored)
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
+        if matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored) {
+            &[PixelFormat::Bgra8]
+        } else {
+            &[]
+        }
     }
 
     fn configure(
@@ -321,6 +325,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         width: NonZeroU32,
         height: NonZeroU32,
         _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
     ) -> Result<(), SoftBufferError> {
         tracing::trace!(
             "resize: window={:X}, size={}x{}",
@@ -354,7 +359,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         Ok(())
     }
 
-    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+    fn next_buffer(
+        &mut self,
+        _alpha_mode: AlphaMode,
+        _pixel_format: PixelFormat,
+    ) -> Result<BufferImpl<'_>, SoftBufferError> {
         tracing::trace!("next_buffer: window={:X}", self.window);
 
         // Finish waiting on the previous `shm::PutImage` request, if any.
