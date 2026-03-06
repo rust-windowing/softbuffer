@@ -103,7 +103,8 @@ pub struct CGImpl<D, W> {
     /// Can also be retrieved from `layer.superlayer()`.
     root_layer: SendCALayer,
     observer: Retained<Observer>,
-    color_space: CFRetained<CGColorSpace>,
+    rgb_color_space: CFRetained<CGColorSpace>,
+    gray_color_space: CFRetained<CGColorSpace>,
     /// The width of the underlying buffer.
     width: usize,
     /// The height of the underlying buffer.
@@ -229,7 +230,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         layer.setOpaque(true);
 
         // Initialize color space here, to reduce work later on.
-        let color_space = CGColorSpace::new_device_rgb().unwrap();
+        let rgb_color_space = CGColorSpace::new_device_rgb().unwrap();
+        let gray_color_space = CGColorSpace::new_device_gray().unwrap();
 
         // Grab initial width and height from the layer (whose properties have just been initialized
         // by the observer using `NSKeyValueObservingOptionInitial`).
@@ -242,7 +244,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             layer: SendCALayer(layer),
             root_layer: SendCALayer(root_layer),
             observer,
-            color_space,
+            rgb_color_space,
+            gray_color_space,
             width,
             height,
             _display: PhantomData,
@@ -256,9 +259,73 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     #[inline]
-    fn supported_pixel_formats(&self, _alpha_mode: AlphaMode) -> &[PixelFormat] {
+    fn supported_pixel_formats(&self, alpha_mode: AlphaMode) -> &[PixelFormat] {
         // All alpha modes supported (ish).
-        &[PixelFormat::Bgra8]
+        //
+        // <https://developer.apple.com/library/archive/documentation/GraphicsImaging/Conceptual/drawingwithquartz2d/dq_context/dq_context.html#//apple_ref/doc/uid/TP30001066-CH203-BCIBHHBB>
+        // <https://developer.apple.com/library/archive/qa/qa1501/_index.html#//apple_ref/doc/uid/DTS10004198>
+        match alpha_mode {
+            AlphaMode::Ignored | AlphaMode::Opaque | AlphaMode::Postmultiplied => {
+                &[
+                    // Some of these probably depend on host endianess?
+                    PixelFormat::Rgb8,
+                    PixelFormat::Bgra8,
+                    PixelFormat::Rgba8,
+                    PixelFormat::Abgr8,
+                    PixelFormat::Argb8,
+                    PixelFormat::Rgb16,
+                    PixelFormat::Rgba16,
+                    PixelFormat::Argb16,
+                    // Grayscale formats are supported.
+                    PixelFormat::R1,
+                    PixelFormat::R2,
+                    PixelFormat::R4,
+                    PixelFormat::R8,
+                    PixelFormat::R16,
+                    // Packed formats only support RGB, and not `R3g3b2`. `Bgra4` etc. also seems to instead
+                    // support the ordering `[G, B, A, R]`, `[B, A, R, G]` etc., which we can't use.
+                    PixelFormat::R5g6b5,
+                    PixelFormat::Rgb5a1, // TODO: Doesn't support premul alpha?
+                    PixelFormat::A1rgb5, // TODO: Doesn't support premul alpha?
+                    PixelFormat::Rgb10a2,
+                    PixelFormat::A2rgb10,
+                    // *BGR* versions of floats just produce black?
+                    PixelFormat::Rgb16f,
+                    PixelFormat::Rgba16f,
+                    PixelFormat::Argb16f,
+                    PixelFormat::Rgb32f,
+                    PixelFormat::Rgba32f,
+                    PixelFormat::Argb32f,
+                ]
+            }
+            AlphaMode::Premultiplied => {
+                // Same table as above, except for `PixelFormat::Rgb5a1` and `PixelFormat::A1rgb5`.
+                &[
+                    PixelFormat::Rgb8,
+                    PixelFormat::Bgra8,
+                    PixelFormat::Rgba8,
+                    PixelFormat::Abgr8,
+                    PixelFormat::Argb8,
+                    PixelFormat::Rgb16,
+                    PixelFormat::Rgba16,
+                    PixelFormat::Argb16,
+                    PixelFormat::R1,
+                    PixelFormat::R2,
+                    PixelFormat::R4,
+                    PixelFormat::R8,
+                    PixelFormat::R16,
+                    PixelFormat::R5g6b5,
+                    PixelFormat::Rgb10a2,
+                    PixelFormat::A2rgb10,
+                    PixelFormat::Rgb16f,
+                    PixelFormat::Rgba16f,
+                    PixelFormat::Argb16f,
+                    PixelFormat::Rgb32f,
+                    PixelFormat::Rgba32f,
+                    PixelFormat::Argb32f,
+                ]
+            }
+        }
     }
 
     fn configure(
@@ -281,22 +348,42 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     fn next_buffer(
         &mut self,
         alpha_mode: AlphaMode,
-        _pixel_format: PixelFormat,
+        pixel_format: PixelFormat,
     ) -> Result<BufferImpl<'_>, SoftBufferError> {
-        let buffer_size = util::byte_stride(self.width as u32) as usize * self.height / 4;
+        let num_bytes = util::byte_stride(self.width as u32, pixel_format.bits_per_pixel())
+            as usize
+            * self.height;
+        // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
+        // `CGImageByteOrderInfo` and `CGImagePixelFormatInfo`, see `CGBitmapInfoMake`.
+        //
+        // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
+        let bitmap_info = CGBitmapInfo(
+            alpha_info(alpha_mode, pixel_format).0
+                | component_info(pixel_format).0
+                | byte_order_info(pixel_format).0
+                | pixel_format_info(pixel_format).0,
+        );
+        // Required that we use a different color space when using grayscale colors.
+        let color_space = if matches!(
+            pixel_format,
+            PixelFormat::R1
+                | PixelFormat::R2
+                | PixelFormat::R4
+                | PixelFormat::R8
+                | PixelFormat::R16
+        ) {
+            &self.gray_color_space
+        } else {
+            &self.rgb_color_space
+        };
         Ok(BufferImpl {
-            buffer: util::PixelBuffer(vec![Pixel::default(); buffer_size]),
+            buffer: util::PixelBuffer(vec![Pixel::default(); num_bytes / size_of::<Pixel>()]),
             width: self.width,
             height: self.height,
-            color_space: &self.color_space,
-            alpha_info: match (alpha_mode, cfg!(target_endian = "little")) {
-                (AlphaMode::Opaque | AlphaMode::Ignored, true) => CGImageAlphaInfo::NoneSkipFirst,
-                (AlphaMode::Opaque | AlphaMode::Ignored, false) => CGImageAlphaInfo::NoneSkipLast,
-                (AlphaMode::Premultiplied, true) => CGImageAlphaInfo::PremultipliedFirst,
-                (AlphaMode::Premultiplied, false) => CGImageAlphaInfo::PremultipliedLast,
-                (AlphaMode::Postmultiplied, true) => CGImageAlphaInfo::First,
-                (AlphaMode::Postmultiplied, false) => CGImageAlphaInfo::Last,
-            },
+            color_space,
+            bitmap_info,
+            bits_per_component: bits_per_component(pixel_format),
+            bits_per_pixel: pixel_format.bits_per_pixel(),
             layer: &mut self.layer,
         })
     }
@@ -308,13 +395,15 @@ pub struct BufferImpl<'surface> {
     height: usize,
     color_space: &'surface CGColorSpace,
     buffer: util::PixelBuffer,
-    alpha_info: CGImageAlphaInfo,
+    bitmap_info: CGBitmapInfo,
+    bits_per_component: u8,
+    bits_per_pixel: u8,
     layer: &'surface mut SendCALayer,
 }
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new(util::byte_stride(self.width as u32)).unwrap()
+        NonZeroU32::new(util::byte_stride(self.width as u32, self.bits_per_pixel)).unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {
@@ -359,26 +448,15 @@ impl BufferInterface for BufferImpl<'_> {
             }
         };
 
-        // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
-        // `CGImageByteOrderInfo` and `CGImagePixelFormatInfo` (see e.g. `CGBitmapInfoMake`).
-        //
-        // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
-        let bitmap_info = CGBitmapInfo(
-            self.alpha_info.0
-                | CGImageComponentInfo::Integer.0
-                | CGImageByteOrderInfo::Order32Host.0
-                | CGImagePixelFormatInfo::Packed.0,
-        );
-
         let image = unsafe {
             CGImage::new(
                 self.width,
                 self.height,
-                8,
-                32,
-                util::byte_stride(self.width as u32) as usize,
+                self.bits_per_component as usize,
+                self.bits_per_pixel as usize,
+                util::byte_stride(self.width as u32, self.bits_per_pixel) as usize,
                 Some(self.color_space),
-                bitmap_info,
+                self.bitmap_info,
                 Some(&data_provider),
                 ptr::null(),
                 false,
@@ -421,3 +499,179 @@ impl Deref for SendCALayer {
         &self.0
     }
 }
+
+fn alpha_info(alpha_mode: AlphaMode, pixel_format: PixelFormat) -> CGImageAlphaInfo {
+    let first = match alpha_mode {
+        AlphaMode::Opaque | AlphaMode::Ignored => CGImageAlphaInfo::NoneSkipFirst,
+        AlphaMode::Premultiplied => CGImageAlphaInfo::PremultipliedFirst,
+        AlphaMode::Postmultiplied => CGImageAlphaInfo::First,
+    };
+    let last = match alpha_mode {
+        AlphaMode::Opaque | AlphaMode::Ignored => CGImageAlphaInfo::NoneSkipLast,
+        AlphaMode::Premultiplied => CGImageAlphaInfo::PremultipliedLast,
+        AlphaMode::Postmultiplied => CGImageAlphaInfo::Last,
+    };
+
+    match pixel_format {
+        // Byte-aligned RGB formats.
+        PixelFormat::Bgr8 | PixelFormat::Bgr16 => CGImageAlphaInfo::None,
+        PixelFormat::Rgb8 | PixelFormat::Rgb16 => CGImageAlphaInfo::None,
+        PixelFormat::Bgra8 | PixelFormat::Bgra16 => first,
+        PixelFormat::Rgba8 | PixelFormat::Rgba16 => last,
+        PixelFormat::Abgr8 | PixelFormat::Abgr16 => last,
+        PixelFormat::Argb8 | PixelFormat::Argb16 => first,
+        // Grayscale formats.
+        PixelFormat::R1
+        | PixelFormat::R2
+        | PixelFormat::R4
+        | PixelFormat::R8
+        | PixelFormat::R16 => CGImageAlphaInfo::None,
+        // Packed formats.
+        PixelFormat::B2g3r3 | PixelFormat::R3g3b2 => CGImageAlphaInfo::None,
+        PixelFormat::B5g6r5 | PixelFormat::R5g6b5 => CGImageAlphaInfo::None,
+        PixelFormat::Bgra4 | PixelFormat::Bgr5a1 | PixelFormat::Bgr10a2 => first,
+        PixelFormat::Rgba4 | PixelFormat::Rgb5a1 | PixelFormat::Rgb10a2 => last,
+        PixelFormat::Abgr4 | PixelFormat::A1bgr5 | PixelFormat::A2bgr10 => last,
+        PixelFormat::Argb4 | PixelFormat::A1rgb5 | PixelFormat::A2rgb10 => first,
+        // Floating point formats.
+        PixelFormat::Bgr16f | PixelFormat::Bgr32f => CGImageAlphaInfo::None,
+        PixelFormat::Rgb16f | PixelFormat::Rgb32f => CGImageAlphaInfo::None,
+        PixelFormat::Bgra16f | PixelFormat::Bgra32f => first,
+        PixelFormat::Rgba16f | PixelFormat::Rgba32f => last,
+        PixelFormat::Abgr16f | PixelFormat::Abgr32f => last,
+        PixelFormat::Argb16f | PixelFormat::Argb32f => first,
+    }
+}
+
+fn component_info(pixel_format: PixelFormat) -> CGImageComponentInfo {
+    if matches!(
+        pixel_format,
+        PixelFormat::Bgr16f
+            | PixelFormat::Rgb16f
+            | PixelFormat::Bgra16f
+            | PixelFormat::Rgba16f
+            | PixelFormat::Abgr16f
+            | PixelFormat::Argb16f
+            | PixelFormat::Bgr32f
+            | PixelFormat::Rgb32f
+            | PixelFormat::Bgra32f
+            | PixelFormat::Rgba32f
+            | PixelFormat::Abgr32f
+            | PixelFormat::Argb32f
+    ) {
+        CGImageComponentInfo::Float
+    } else {
+        CGImageComponentInfo::Integer
+    }
+}
+
+fn byte_order_info(pixel_format: PixelFormat) -> CGImageByteOrderInfo {
+    match pixel_format {
+        // Byte-aligned RGB formats.
+        PixelFormat::Bgr8 => unimplemented!(),
+        PixelFormat::Rgb8 => CGImageByteOrderInfo::OrderDefault,
+        PixelFormat::Bgra8 | PixelFormat::Abgr8 => CGImageByteOrderInfo::Order32Little,
+        PixelFormat::Rgba8 | PixelFormat::Argb8 => CGImageByteOrderInfo::Order32Big,
+        PixelFormat::Bgr16 | PixelFormat::Bgra16 | PixelFormat::Abgr16 => {
+            CGImageByteOrderInfo::Order16Big
+        }
+        PixelFormat::Rgb16 | PixelFormat::Rgba16 | PixelFormat::Argb16 => {
+            CGImageByteOrderInfo::Order16Little
+        }
+
+        // Grayscale formats.
+        PixelFormat::R1 | PixelFormat::R2 | PixelFormat::R4 | PixelFormat::R8 => {
+            CGImageByteOrderInfo::OrderDefault
+        }
+        PixelFormat::R16 => CGImageByteOrderInfo::Order16Little,
+
+        // Packed formats.
+        PixelFormat::B2g3r3 | PixelFormat::R3g3b2 => CGImageByteOrderInfo::OrderDefault,
+        PixelFormat::B5g6r5 => CGImageByteOrderInfo::Order16Big,
+        PixelFormat::R5g6b5 => CGImageByteOrderInfo::Order16Little,
+        PixelFormat::Bgra4 | PixelFormat::Abgr4 | PixelFormat::Bgr5a1 | PixelFormat::A1bgr5 => {
+            CGImageByteOrderInfo::Order16Big
+        }
+        PixelFormat::Rgba4 | PixelFormat::Argb4 | PixelFormat::Rgb5a1 | PixelFormat::A1rgb5 => {
+            CGImageByteOrderInfo::Order16Little
+        }
+        PixelFormat::Bgr10a2 | PixelFormat::A2bgr10 => CGImageByteOrderInfo::Order32Big,
+        PixelFormat::Rgb10a2 | PixelFormat::A2rgb10 => CGImageByteOrderInfo::Order32Little,
+
+        // Floating point formats.
+        PixelFormat::Bgr16f | PixelFormat::Bgra16f | PixelFormat::Abgr16f => {
+            CGImageByteOrderInfo::Order16Big
+        }
+        PixelFormat::Rgb16f | PixelFormat::Rgba16f | PixelFormat::Argb16f => {
+            CGImageByteOrderInfo::Order16Little
+        }
+        PixelFormat::Bgr32f | PixelFormat::Bgra32f | PixelFormat::Abgr32f => {
+            CGImageByteOrderInfo::Order32Big
+        }
+        PixelFormat::Rgb32f | PixelFormat::Rgba32f | PixelFormat::Argb32f => {
+            CGImageByteOrderInfo::Order32Little
+        }
+    }
+}
+
+fn pixel_format_info(pixel_format: PixelFormat) -> CGImagePixelFormatInfo {
+    match pixel_format {
+        PixelFormat::R5g6b5 => CGImagePixelFormatInfo::RGB565,
+        PixelFormat::Rgb5a1 | PixelFormat::A1rgb5 => CGImagePixelFormatInfo::RGB555,
+        PixelFormat::Rgb10a2 | PixelFormat::A2rgb10 => CGImagePixelFormatInfo::RGB101010,
+        // Probably not correct for some formats, but it's the best we can do.
+        _ => CGImagePixelFormatInfo::Packed,
+    }
+}
+
+fn bits_per_component(pixel_format: PixelFormat) -> u8 {
+    match pixel_format {
+        // Byte-aligned RGB formats.
+        PixelFormat::Bgr8
+        | PixelFormat::Rgb8
+        | PixelFormat::Bgra8
+        | PixelFormat::Rgba8
+        | PixelFormat::Abgr8
+        | PixelFormat::Argb8 => 8,
+        PixelFormat::Bgr16
+        | PixelFormat::Rgb16
+        | PixelFormat::Bgra16
+        | PixelFormat::Rgba16
+        | PixelFormat::Abgr16
+        | PixelFormat::Argb16 => 16,
+
+        // Grayscale formats.
+        PixelFormat::R1 => 1,
+        PixelFormat::R2 => 2,
+        PixelFormat::R4 => 4,
+        PixelFormat::R8 => 8,
+        PixelFormat::R16 => 16,
+
+        // Packed formats.
+        PixelFormat::B2g3r3 | PixelFormat::R3g3b2 => 3,
+        PixelFormat::B5g6r5 | PixelFormat::R5g6b5 => 5,
+        PixelFormat::Bgra4 | PixelFormat::Rgba4 | PixelFormat::Abgr4 | PixelFormat::Argb4 => 4,
+        PixelFormat::Bgr5a1 | PixelFormat::Rgb5a1 | PixelFormat::A1bgr5 | PixelFormat::A1rgb5 => 5,
+        PixelFormat::Bgr10a2
+        | PixelFormat::Rgb10a2
+        | PixelFormat::A2bgr10
+        | PixelFormat::A2rgb10 => 10,
+
+        // Floating point formats.
+        PixelFormat::Bgr16f
+        | PixelFormat::Rgb16f
+        | PixelFormat::Bgra16f
+        | PixelFormat::Rgba16f
+        | PixelFormat::Abgr16f
+        | PixelFormat::Argb16f => 16,
+        PixelFormat::Bgr32f
+        | PixelFormat::Rgb32f
+        | PixelFormat::Bgra32f
+        | PixelFormat::Rgba32f
+        | PixelFormat::Abgr32f
+        | PixelFormat::Argb32f => 32,
+    }
+}
+
+#[cfg(target_endian = "big")]
+compile_error!("softbuffer's Apple implementation has not been tested on big endian");
