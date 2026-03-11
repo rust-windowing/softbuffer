@@ -317,7 +317,15 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             self.buffers.push(Buffer::new(self.width, self.height));
             // This should have no effect on latency, but it will affect the `buffer.age()` that
             // users see, and unbounded allocation is undesirable too, so we should try to avoid it.
-            tracing::warn!("had to allocate extra buffer in `next_buffer`, you might be rendering faster than the display rate?");
+
+            if self.buffers.len() <= 3 {
+                // Winit currently might emit redraw events twice in a single frame, so we need an
+                // extra buffer there, see https://github.com/rust-windowing/winit/issues/2640.
+                // TODO(madsmtm): Always issue a warning once the Winit issue is fixed.
+                tracing::debug!("had to allocate extra buffer in `next_buffer`, this is probably a bug in Winit's RedrawRequested");
+            } else {
+                tracing::warn!("had to allocate extra buffer in `next_buffer`, you might be rendering faster than the event loop can handle?");
+            }
         }
 
         Ok(BufferImpl {
