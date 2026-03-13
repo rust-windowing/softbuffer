@@ -190,7 +190,7 @@ impl BufferInterface for BufferImpl<'_> {
         }
     }
 
-    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         match self.pixels {
             Pixels::Mapping(mapping) => {
                 drop(mapping);
@@ -198,7 +198,7 @@ impl BufferInterface for BufferImpl<'_> {
                 *self.presented = true;
             }
             Pixels::Buffer(buffer) => {
-                set_buffer(self.window_fd, &buffer, self.width, self.height);
+                set_buffer(self.window_fd, &buffer, self.width, self.height, damage);
             }
         }
 
@@ -226,7 +226,13 @@ fn window_size(window_fd: usize) -> (usize, usize) {
     (window_width, window_height)
 }
 
-fn set_buffer(window_fd: usize, buffer: &[Pixel], width_u32: u32, height_u32: u32) {
+fn set_buffer(
+    window_fd: usize,
+    buffer: &[Pixel],
+    width_u32: u32,
+    height_u32: u32,
+    damage: &[Rect],
+) {
     // Read the current width and size
     let (window_width, window_height) = window_size(window_fd);
 
@@ -243,13 +249,63 @@ fn set_buffer(window_fd: usize, buffer: &[Pixel], width_u32: u32, height_u32: u3
         // Copy each line, cropping to fit
         let width = width_u32 as usize;
         let height = height_u32 as usize;
-        let min_width = cmp::min(width, window_width);
-        let min_height = cmp::min(height, window_height);
-        for y in 0..min_height {
-            let offset_buffer = y * width;
-            let offset_data = y * window_width;
-            window_data[offset_data..offset_data + min_width]
-                .copy_from_slice(&buffer[offset_buffer..offset_buffer + min_width]);
+        // let min_width = cmp::min(width, window_width);
+        // let min_height = cmp::min(height, window_height);
+
+        // if width == window_width {
+        //     let pixels = width * min_height;
+        //     window_data[..pixels].copy_from_slice(&buffer[..pixels]);
+        // } else {
+        //     for y in 0..min_height {
+        //         let offset_buffer = y * width;
+        //         let offset_data = y * window_width;
+        //         window_data[offset_data..offset_data + min_width]
+        //             .copy_from_slice(&buffer[offset_buffer..offset_buffer + min_width]);
+        //     }
+        // }
+
+        // If window size hasn't changed (memory size is same) and we update everything,
+        // or if at least one damage rect covers the full window, copy everything at once.
+        if width == window_width && (damage.is_empty() || is_full_damage(damage, width, height)) {
+            let total_pixels = width * min_height;
+            window_data[..total_pixels].copy_from_slice(&buffer[..total_pixels]);
+        } else {
+            // Even if width is same, damaged areas can be anywhere inside the window.
+            // If they don't cover the full width, we must jump over pixels to copy.
+            for rect in damage {
+                let start_y = rect.y as usize;
+                let rect_height = rect.height.get() as usize;
+                let end_y = cmp::min(start_y + rect_height, window_height);
+
+                let rect_x = rect.x as usize;
+                let rect_width = rect.width.get() as usize;
+                let copy_width = cmp::min(rect_width, window_width.saturating_sub(rect_x));
+
+                // If the rect is exactly the window width and our width hasn't changed,
+                // we can copy the rect block without jumping over pixels.
+                if copy_width == width && width == window_width {
+                    let start_index = start_y * width + rect_x;
+                    let total_len = (end_y - start_y) * width;
+                    window_data[start_index..start_index + total_len]
+                        .copy_from_slice(&buffer[start_index..start_index + total_len]);
+                    continue;
+                }
+
+                let mut current_buffer_offset = start_y * width + rect_x;
+                let mut current_data_offset = start_y * window_width + rect_x;
+
+                // We visit each row of the rect one by one and copy only the specific column range.
+                for _ in start_y..end_y {
+                    let src = &buffer[current_buffer_offset..current_buffer_offset + copy_width];
+                    let dst =
+                        &mut window_data[current_data_offset..current_data_offset + copy_width];
+
+                    dst.copy_from_slice(src);
+
+                    current_buffer_offset += width;
+                    current_data_offset += window_width;
+                }
+            }
         }
 
         // Window buffer map is dropped here
@@ -257,4 +313,10 @@ fn set_buffer(window_fd: usize, buffer: &[Pixel], width_u32: u32, height_u32: u3
 
     // Tell orbital to show the latest window data
     syscall::fsync(window_fd).expect("failed to sync orbital window");
+}
+
+fn is_full_damage(damage: &[Rect], width: usize, height: usize) -> bool {
+    damage.iter().any(|r| {
+        r.x == 0 && r.y == 0 && r.width.get() as usize >= width && r.height.get() as usize >= height
+    })
 }
