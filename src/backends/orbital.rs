@@ -267,7 +267,7 @@ fn set_buffer(
         // If window size hasn't changed (memory size is same) and we update everything,
         // or if at least one damage rect covers the full window, copy everything at once.
         if width == window_width && (damage.is_empty() || is_full_damage(damage, width, height)) {
-            let total_pixels = width * min_height;
+            let total_pixels = width * height;
             window_data[..total_pixels].copy_from_slice(&buffer[..total_pixels]);
         } else {
             // Even if width is same, damaged areas can be anywhere inside the window.
