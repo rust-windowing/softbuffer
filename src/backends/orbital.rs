@@ -236,6 +236,11 @@ fn set_buffer(
     // Read the current width and size
     let (window_width, window_height) = window_size(window_fd);
 
+    let Some(urect) = util::union_damage(damage) else {
+        syscall::fsync(window_fd).expect("failed to sync orbital window");
+        return;
+    };
+
     {
         // Map window buffer
         let mut window_map =
@@ -246,32 +251,21 @@ fn set_buffer(
         // https://docs.rs/orbclient/0.3.48/src/orbclient/color.rs.html#25-29
         let window_data = unsafe { window_map.data_mut() };
 
-        // Copy each line, cropping to fit
         let width = width_u32 as usize;
-        let height = height_u32 as usize;
 
-        // If window size hasn't changed (memory size is same) and we update everything,
-        // or if at least one damage rect covers the full window, copy everything at once.
-        if width == window_width && (damage.is_empty() || is_full_damage(damage, width, height)) {
-            let total_pixels = width * height;
-            window_data[..total_pixels].copy_from_slice(&buffer[..total_pixels]);
-        } else {
-            // Even if width is same, damaged areas can be anywhere inside the window.
-            // If they don't cover the full width, we must jump over pixels to copy.
-            if let Some(urect) = util::union_damage(damage) {
-                let x = urect.x as usize;
-                let y = urect.y as usize;
-                let w = (urect.width.get() as usize).min(window_width.saturating_sub(x));
-                let h = (urect.height.get() as usize).min(window_height.saturating_sub(y));
+        let x = urect.x as usize;
+        let y = urect.y as usize;
+        let w = (urect.width.get() as usize).min(window_width.saturating_sub(x));
+        let h = (urect.height.get() as usize).min(window_height.saturating_sub(y));
 
-                for (src_row, dst_row) in buffer
-                    .chunks_exact(width)
-                    .zip(window_data.chunks_exact_mut(window_width))
-                    .skip(y)
-                    .take(h)
-                {
-                    dst_row[x..x + w].copy_from_slice(&src_row[x..x + w]);
-                }
+        if let Some(urect) = util::union_damage(damage) {
+            for (src_row, dst_row) in buffer
+                .chunks_exact(width)
+                .zip(window_data.chunks_exact_mut(window_width))
+                .skip(y)
+                .take(h)
+            {
+                dst_row[x..x + w].copy_from_slice(&src_row[x..x + w]);
             }
         }
 
@@ -280,10 +274,4 @@ fn set_buffer(
 
     // Tell orbital to show the latest window data
     syscall::fsync(window_fd).expect("failed to sync orbital window");
-}
-
-fn is_full_damage(damage: &[Rect], width: usize, height: usize) -> bool {
-    damage.iter().any(|r| {
-        r.x == 0 && r.y == 0 && r.width.get() as usize >= width && r.height.get() as usize >= height
-    })
 }
