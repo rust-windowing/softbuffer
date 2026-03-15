@@ -258,38 +258,19 @@ fn set_buffer(
         } else {
             // Even if width is same, damaged areas can be anywhere inside the window.
             // If they don't cover the full width, we must jump over pixels to copy.
-            for rect in damage {
-                let start_y = rect.y as usize;
-                let rect_height = rect.height.get() as usize;
-                let end_y = cmp::min(start_y + rect_height, window_height);
+            if let Some(urect) = util::union_damage(damage) {
+                let x = urect.x as usize;
+                let y = urect.y as usize;
+                let w = (urect.width.get() as usize).min(window_width.saturating_sub(x));
+                let h = (urect.height.get() as usize).min(window_height.saturating_sub(y));
 
-                let rect_x = rect.x as usize;
-                let rect_width = rect.width.get() as usize;
-                let copy_width = cmp::min(rect_width, window_width.saturating_sub(rect_x));
-
-                // If the rect is exactly the window width and our width hasn't changed,
-                // we can copy the rect block without jumping over pixels.
-                if copy_width == width && width == window_width {
-                    let start_index = start_y * width + rect_x;
-                    let total_len = (end_y - start_y) * width;
-                    window_data[start_index..start_index + total_len]
-                        .copy_from_slice(&buffer[start_index..start_index + total_len]);
-                    continue;
-                }
-
-                let mut current_buffer_offset = start_y * width + rect_x;
-                let mut current_data_offset = start_y * window_width + rect_x;
-
-                // We visit each row of the rect one by one and copy only the specific column range.
-                for _ in start_y..end_y {
-                    let src = &buffer[current_buffer_offset..current_buffer_offset + copy_width];
-                    let dst =
-                        &mut window_data[current_data_offset..current_data_offset + copy_width];
-
-                    dst.copy_from_slice(src);
-
-                    current_buffer_offset += width;
-                    current_data_offset += window_width;
+                for (src_row, dst_row) in buffer
+                    .chunks_exact(width)
+                    .zip(window_data.chunks_exact_mut(window_width))
+                    .skip(y)
+                    .take(h)
+                {
+                    dst_row[x..x + w].copy_from_slice(&src_row[x..x + w]);
                 }
             }
         }
