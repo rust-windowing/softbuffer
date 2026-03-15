@@ -362,8 +362,8 @@ impl BufferInterface for BufferImpl<'_> {
                 ClipRect::new(
                     util::to_u16_saturating(rect.x),
                     util::to_u16_saturating(rect.y),
-                    util::to_u16_saturating(rect.x.saturating_add(rect.width.get())),
-                    util::to_u16_saturating(rect.y.saturating_add(rect.height.get())),
+                    util::to_u16_saturating(rect.x.saturating_add(rect.width)),
+                    util::to_u16_saturating(rect.y.saturating_add(rect.height)),
                 )
             })
             .collect();

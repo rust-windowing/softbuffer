@@ -236,10 +236,7 @@ fn set_buffer(
     // Read the current width and size
     let (window_width, window_height) = window_size(window_fd);
 
-    let Some(urect) = util::union_damage(damage) else {
-        syscall::fsync(window_fd).expect("failed to sync orbital window");
-        return;
-    };
+    let urect = util::union_damage(damage);
 
     {
         // Map window buffer
@@ -255,8 +252,8 @@ fn set_buffer(
 
         let x = urect.x as usize;
         let y = urect.y as usize;
-        let w = (urect.width.get() as usize).min(window_width.saturating_sub(x));
-        let h = (urect.height.get() as usize).min(window_height.saturating_sub(y));
+        let w = (urect.width as usize).min(window_width.saturating_sub(x));
+        let h = (urect.height as usize).min(window_height.saturating_sub(y));
 
         for (src_row, dst_row) in buffer
             .chunks_exact(width)

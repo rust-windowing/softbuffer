@@ -329,8 +329,8 @@ impl BufferInterface for BufferImpl<'_> {
                 );
                 let x = util::to_i32_saturating(rect.x);
                 let y = util::to_i32_saturating(rect.y);
-                let width = util::to_i32_saturating(rect.width.get());
-                let height = util::to_i32_saturating(rect.height.get());
+                let width = util::to_i32_saturating(rect.width);
+                let height = util::to_i32_saturating(rect.height);
 
                 // TODO: Draw with something else to make transparency work.
                 Gdi::BitBlt(
