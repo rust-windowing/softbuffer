@@ -230,7 +230,7 @@ fn set_buffer(
     window_fd: usize,
     buffer: &[Pixel],
     width_u32: u32,
-    height_u32: u32,
+    _height_u32: u32,
     damage: &[Rect],
 ) {
     // Read the current width and size
@@ -258,15 +258,13 @@ fn set_buffer(
         let w = (urect.width.get() as usize).min(window_width.saturating_sub(x));
         let h = (urect.height.get() as usize).min(window_height.saturating_sub(y));
 
-        if let Some(urect) = util::union_damage(damage) {
-            for (src_row, dst_row) in buffer
-                .chunks_exact(width)
-                .zip(window_data.chunks_exact_mut(window_width))
-                .skip(y)
-                .take(h)
-            {
-                dst_row[x..x + w].copy_from_slice(&src_row[x..x + w]);
-            }
+        for (src_row, dst_row) in buffer
+            .chunks_exact(width)
+            .zip(window_data.chunks_exact_mut(window_width))
+            .skip(y)
+            .take(h)
+        {
+            dst_row[x..x + w].copy_from_slice(&src_row[x..x + w]);
         }
 
         // Window buffer map is dropped here
