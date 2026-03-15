@@ -1,29 +1,31 @@
 //! Softbuffer implementation using CoreGraphics.
 use crate::error::InitError;
 use crate::{backend_interface::*, AlphaMode};
-use crate::{util, Pixel, Rect, SoftBufferError};
+use crate::{Pixel, Rect, SoftBufferError};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
-use objc2_core_foundation::{CFRetained, CGPoint};
-use objc2_core_graphics::{
-    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage, CGImageAlphaInfo,
-    CGImageByteOrderInfo, CGImageComponentInfo, CGImagePixelFormatInfo,
-};
+use objc2_core_foundation::{CFMutableDictionary, CFNumber, CFRetained, CFString, CFType, CGPoint};
+use objc2_core_graphics::CGColorSpace;
 use objc2_foundation::{
     ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
     NSKeyValueObservingOptions, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
     NSString, NSValue,
+};
+use objc2_io_surface::{
+    kIOSurfaceBytesPerElement, kIOSurfaceCacheMode, kIOSurfaceColorSpace, kIOSurfaceHeight,
+    kIOSurfaceMapWriteCombineCache, kIOSurfacePixelFormat, kIOSurfaceWidth, IOSurfaceLockOptions,
+    IOSurfaceRef,
 };
 use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
 
 use std::ffi::c_void;
 use std::marker::PhantomData;
-use std::mem::size_of;
+use std::mem::{size_of, ManuallyDrop};
 use std::num::NonZeroU32;
 use std::ops::Deref;
-use std::ptr::{self, slice_from_raw_parts_mut, NonNull};
+use std::ptr;
 use std::slice;
 
 define_class!(
@@ -108,18 +110,19 @@ pub struct CGImpl<D, W> {
     /// The buffers that we may render into.
     ///
     /// This contains an unbounded number of buffers, since we don't get any feedback from
-    /// QuartzCore about when it's done using the buffer, other than the retain count of the data
-    /// provider (which is a weak signal). It shouldn't be needed (QuartzCore seems to copy the data
-    /// from `CGImage` once), though theoretically there might be cases where it would have a
-    /// multi-stage pipeline where it processes the image once, retains it, and sends it onwards to
-    /// be processed again later (and such things might change depending on OS version), so we do
-    /// this to be safe.
+    /// QuartzCore about when it's done using the buffer, other than the IOSurface's `is_in_use`
+    /// (which is a weak signal). Three buffers should be enough, though theoretically there might
+    /// be cases where QuartzCore would have a multi-stage pipeline where it processes the surface
+    /// in more steps (and such things might change depending on OS version), so we do this to be
+    /// safe.
     ///
     /// Anecdotally, if the user renders 3 times within a single frame (which they probably
-    /// shouldn't do, but would be safe), we need 4 buffers according to the retain counts.
+    /// shouldn't do, but would be safe), we end up needing 5 buffers.
     ///
     /// Note that having more buffers here shouldn't add any presentation delay, since we still go
     /// directly from drawing to the back buffer and presenting the front buffer.
+    ///
+    /// <https://github.com/commercial-emacs/commercial-emacs/blob/68f5a28a316ea0c553d4274ce86e95fc4a5a701a/src/nsterm.m#L10552-L10571>
     buffers: Vec<Buffer>,
     /// The width of the current buffers.
     width: u32,
@@ -256,14 +259,37 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         let width = (size.width * scale_factor) as u32;
         let height = (size.height * scale_factor) as u32;
 
+        // FIXME(madsmtm): Allow setting this:
+        // https://github.com/rust-windowing/softbuffer/pull/320
+        let write_combine_cache = false;
+        let properties = Buffer::properties(
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            4,
+            &color_space,
+            write_combine_cache,
+        );
+
         Ok(Self {
             layer: SendCALayer(layer),
             root_layer: SendCALayer(root_layer),
             observer,
             color_space,
-            // We'll usually do double-buffering, but might end up needing more buffers if the user
-            // renders multiple times per frame.
-            buffers: vec![Buffer::new(width, height), Buffer::new(width, height)],
+            // This is triple-buffered because that's what QuartzCore / the compositor seems to
+            // require:
+            // - The front buffer is what's currently assigned to `CALayer.contents`, and was
+            //   submitted to the compositor in the previous iteration of the run loop.
+            // - The middle buffer is what the compositor is currently drawing from (assuming a 1
+            //   frame delay).
+            // - The back buffer is what we'll be drawing into.
+            //
+            // TODO: Would it ever make sense to control this so it's just double-buffered?
+            buffers: vec![
+                Buffer::new(&properties),
+                Buffer::new(&properties),
+                Buffer::new(&properties),
+            ],
             width,
             height,
             _display: PhantomData,
@@ -277,8 +303,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, _alpha_mode: AlphaMode) -> bool {
-        true
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        // IOSurface doesn't support `Ignored` nor `Postmultiplied`.
+        matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Premultiplied)
     }
 
     fn configure(
@@ -287,7 +314,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         height: NonZeroU32,
         alpha_mode: AlphaMode,
     ) -> Result<(), SoftBufferError> {
-        let opaque = matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored);
+        let opaque = match alpha_mode {
+            AlphaMode::Opaque => true,
+            AlphaMode::Premultiplied => false,
+            AlphaMode::Ignored | AlphaMode::Postmultiplied => {
+                unreachable!("unsupported alpha mode")
+            }
+        };
         self.layer.setOpaque(opaque);
         // TODO: Set opaque-ness on root layer too? Is that our responsibility, or Winit's?
         // self.root_layer.setOpaque(opaque);
@@ -300,21 +333,52 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             return Ok(());
         }
 
-        // Recreate buffers. It's fine to release the old ones, `CALayer.contents` is going to keep
-        // a reference if they're still in use.
-        self.buffers = vec![Buffer::new(width, height), Buffer::new(width, height)];
+        // Recreate buffers. It's fine to release the old ones, `CALayer.contents` and/or the
+        // compositor is going to keep a reference if they're still in use.
+        let properties = Buffer::properties(
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            4,
+            &self.color_space,
+            false, // write_combine_cache
+        );
+        self.buffers = vec![
+            Buffer::new(&properties),
+            Buffer::new(&properties),
+            Buffer::new(&properties),
+        ];
         self.width = width;
         self.height = height;
 
         Ok(())
     }
 
-    fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
-        // If the backmost buffer might be in use, allocate a new buffer.
+    fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+        // If the back buffer might be in use by the compositor, allocate a new buffer.
         //
-        // TODO: Add an `unsafe` option to disable this, and always assume 2 buffers?
-        if self.buffers.last().unwrap().might_be_in_use() {
-            self.buffers.push(Buffer::new(self.width, self.height));
+        // TODO: Add an `unsafe` option to disable this, and always assume 2 (or 3?) buffers?
+        // TODO: Is this actually the check we want to do? It seems like the compositor doesn't
+        // properly set the usage state when the application loses focus, even if you continue
+        // rendering there?
+        //
+        // Should we instead set up a `CVDisplayLink`, and only allow using the back buffer once a
+        // certain number of frames have passed since it was presented? Would be better though not
+        // perfect, `CVDisplayLink` isn't guaranteed to actually match the display's refresh rate:
+        // https://developer.apple.com/library/archive/documentation/GraphicsImaging/Conceptual/CoreVideo/CVProg_Concepts/CVProg_Concepts.html#//apple_ref/doc/uid/TP40001536-CH202-DontLinkElementID_2
+        //
+        // Another option would be to block here waiting for the buffer to no longer be in use.
+        if self.buffers.last().unwrap().surface.is_in_use() {
+            let write_combine_cache = false;
+            let properties = Buffer::properties(
+                self.width,
+                self.height,
+                kCVPixelFormatType_32BGRA,
+                4,
+                &self.color_space,
+                write_combine_cache,
+            );
+            self.buffers.push(Buffer::new(&properties));
             // This should have no effect on latency, but it will affect the `buffer.age()` that
             // users see, and unbounded allocation is undesirable too, so we should try to avoid it.
 
@@ -328,19 +392,13 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             }
         }
 
+        // Lock the back buffer to allow writing to it.
+        //
+        // Either unlocked in `BufferImpl`s `Drop` or `present_with_damage`.
+        self.buffers.last().unwrap().lock();
+
         Ok(BufferImpl {
             buffers: &mut self.buffers,
-            width: self.width,
-            height: self.height,
-            color_space: &self.color_space,
-            alpha_info: match (alpha_mode, cfg!(target_endian = "little")) {
-                (AlphaMode::Opaque | AlphaMode::Ignored, true) => CGImageAlphaInfo::NoneSkipFirst,
-                (AlphaMode::Opaque | AlphaMode::Ignored, false) => CGImageAlphaInfo::NoneSkipLast,
-                (AlphaMode::Premultiplied, true) => CGImageAlphaInfo::PremultipliedFirst,
-                (AlphaMode::Premultiplied, false) => CGImageAlphaInfo::PremultipliedLast,
-                (AlphaMode::Postmultiplied, true) => CGImageAlphaInfo::First,
-                (AlphaMode::Postmultiplied, false) => CGImageAlphaInfo::Last,
-            },
             layer: &mut self.layer,
         })
     }
@@ -350,37 +408,38 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 #[derive(Debug)]
 pub struct BufferImpl<'surface> {
     buffers: &'surface mut Vec<Buffer>,
-    width: u32,
-    height: u32,
-    color_space: &'surface CGColorSpace,
-    alpha_info: CGImageAlphaInfo,
     layer: &'surface mut SendCALayer,
+}
+
+impl Drop for BufferImpl<'_> {
+    fn drop(&mut self) {
+        // Unlock the buffer we locked above.
+        self.buffers.last().unwrap().unlock();
+    }
 }
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        NonZeroU32::new(util::byte_stride(self.width)).unwrap()
+        let back = self.buffers.last().unwrap();
+        // A multiple of the cache line size, which is `64` on x86_64 and `128` on Aarch64.
+        // Check with `sysctl hw.cachelinesize`.
+        NonZeroU32::new(back.surface.bytes_per_row() as u32).unwrap()
     }
 
     fn width(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.width).unwrap()
+        let back = self.buffers.last().unwrap();
+        NonZeroU32::new(back.surface.width() as u32).unwrap()
     }
 
     fn height(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.height).unwrap()
+        let back = self.buffers.last().unwrap();
+        NonZeroU32::new(back.surface.height() as u32).unwrap()
     }
 
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        let back = self.buffers.last_mut().unwrap();
-
-        // Should've been verified by `next_buffer` above.
-        debug_assert!(!back.might_be_in_use());
-
-        let num_bytes = util::byte_stride(self.width) as usize * (self.height as usize);
-        // SAFETY: The pointer is valid, and we know that we're the only owners of the back buffer's
-        // data provider. This, combined with taking `&mut self` in this function, means that we can
-        // safely write to the buffer.
-        unsafe { slice::from_raw_parts_mut(back.data_ptr, num_bytes / size_of::<Pixel>()) }
+        let back_buffer = self.buffers.last_mut().unwrap();
+        // SAFETY: Called on the back buffer.
+        unsafe { back_buffer.data() }
     }
 
     fn age(&self) -> u8 {
@@ -389,10 +448,21 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        // Rotate buffers such that the back buffer is now the front buffer.
-        self.buffers.rotate_right(1);
+        // Unlock the buffer now, and avoid the `unlock` in `Drop`.
+        //
+        // Note that unlocking effectively flushes the changes, without this, the contents might not
+        // be visible to the compositor.
+        //
+        // The code here would be prettier with https://github.com/rust-lang/rfcs/pull/3466.
+        let this = &mut *ManuallyDrop::new(self);
+        let buffers = &mut *this.buffers;
+        let layer = &mut *this.layer;
+        buffers.last().unwrap().unlock();
 
-        let (front, rest) = self.buffers.split_first_mut().unwrap();
+        // Rotate buffers such that the back buffer is now the front buffer.
+        buffers.rotate_right(1);
+
+        let (front, rest) = buffers.split_first_mut().unwrap();
         front.age = 1; // This buffer (previously the back buffer) was just rendered into.
 
         // Bump the age of the other buffers.
@@ -402,44 +472,17 @@ impl BufferInterface for BufferImpl<'_> {
             }
         }
 
-        // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
-        // `CGImageByteOrderInfo` and `CGImagePixelFormatInfo` (see e.g. `CGBitmapInfoMake`).
-        //
-        // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
-        let bitmap_info = CGBitmapInfo(
-            self.alpha_info.0
-                | CGImageComponentInfo::Integer.0
-                | CGImageByteOrderInfo::Order32Host.0
-                | CGImagePixelFormatInfo::Packed.0,
-        );
-
-        // CGImage is (intended to be) immutable, so we re-create it on each present.
-        // SAFETY: The `decode` pointer is NULL.
-        let image = unsafe {
-            CGImage::new(
-                self.width as usize,
-                self.height as usize,
-                8,
-                32,
-                util::byte_stride(self.width) as usize,
-                Some(self.color_space),
-                bitmap_info,
-                Some(&front.data_provider),
-                ptr::null(),
-                false,
-                CGColorRenderingIntent::RenderingIntentDefault,
-            )
-        }
-        .unwrap();
-
         // The CALayer has a default action associated with a change in the layer contents, causing
         // a quarter second fade transition to happen every time a new buffer is applied. This can
         // be avoided by wrapping the operation in a transaction and disabling all actions.
         CATransaction::begin();
         CATransaction::setDisableActions(true);
 
-        // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
-        unsafe { self.layer.setContents(Some(image.as_ref())) };
+        // SAFETY: We set `CALayer.contents` to an `IOSurface`, which is an undocumented option, but
+        // it's done in browsers and GDK:
+        // https://gitlab.gnome.org/GNOME/gtk/-/blob/4266c3c7b15299736df16c9dec57cd8ec7c7ebde/gdk/macos/GdkMacosTile.c#L44
+        // And tested to work at least as far back as macOS 10.12.
+        unsafe { layer.setContents(Some(front.surface.as_ref())) };
 
         CATransaction::commit();
         Ok(())
@@ -447,57 +490,141 @@ impl BufferInterface for BufferImpl<'_> {
 }
 
 /// A single buffer in Softbuffer.
+///
+/// Buffers are backed by an `IOSurface`, which is a shared memory buffer that can be passed to the
+/// compositor without copying. The best official documentation I've found for how this works is
+/// probably this keynote:
+/// <https://nonstrict.eu/wwdcindex/wwdc2010/422/>
+///
+/// The first ~10mins of this keynote is also pretty good, it describes CA and the render server:
+/// <https://nonstrict.eu/wwdcindex/wwdc2014/419/>
+/// <https://wwdcnotes.com/documentation/wwdcnotes/wwdc14-419-advanced-graphics-and-animations-for-ios-apps/>
+///
+/// See also these links:
+/// - <https://developer.apple.com/library/archive/documentation/Performance/Conceptual/OpenCL_MacProgGuide/SynchronizingIOSurfacesAcrossProcessors/SynchronizingIOSurfacesAcrossProcessors.html>
+/// - <http://russbishop.net/cross-process-rendering>
+/// - <https://www.chromium.org/developers/design-documents/iosurface-meeting-notes/>
+/// - <https://github.com/gpuweb/gpuweb/issues/2535>
+/// - <https://github.com/Me1000/out-of-process-calayer-rendering>
 #[derive(Debug)]
 struct Buffer {
-    data_provider: CFRetained<CGDataProvider>,
-    data_ptr: *mut Pixel,
+    surface: CFRetained<IOSurfaceRef>,
     age: u8,
 }
 
-// SAFETY: We only mutate the `CGDataProvider` when we know it's not referenced by anything else,
+// SAFETY: `IOSurface` is marked `NS_SWIFT_SENDABLE`, and we only mutate it when we know it's not referenced by anything else,
 // and only then behind `&mut`.
 unsafe impl Send for Buffer {}
 // SAFETY: Same as above.
 unsafe impl Sync for Buffer {}
 
 impl Buffer {
-    fn new(width: u32, height: u32) -> Self {
-        unsafe extern "C-unwind" fn release(
-            _info: *mut c_void,
-            data: NonNull<c_void>,
-            size: usize,
-        ) {
-            let data = data.cast::<Pixel>();
-            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<Pixel>());
-            // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
-            drop(unsafe { Box::from_raw(slice) })
+    fn new(properties: &CFMutableDictionary<CFString, CFType>) -> Self {
+        let surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }.unwrap();
+        Self { surface, age: 0 }
+    }
+
+    fn properties(
+        width: u32,
+        height: u32,
+        pixel_format: u32,
+        bytes_per_pixel: u32,
+        color_space: &CGColorSpace,
+        write_combine_cache: bool,
+    ) -> CFRetained<CFMutableDictionary<CFString, CFType>> {
+        let properties = CFMutableDictionary::<CFString, CFType>::empty();
+
+        // Set properties of the surface.
+        properties.add(
+            unsafe { kIOSurfaceWidth },
+            &CFNumber::new_isize(width as isize),
+        );
+        properties.add(
+            unsafe { kIOSurfaceHeight },
+            &CFNumber::new_isize(height as isize),
+        );
+        // NOTE: If an unsupported pixel format is provided, the compositor usually won't render
+        // anything (which means it'll render whatever was there before, very glitchy).
+        //
+        // The list of formats is hardware- and OS-dependent, see e.g. the following link:
+        // https://developer.apple.com/forums/thread/673868
+        //
+        // Basically only `kCVPixelFormatType_32BGRA` is guaranteed to work, though from testing,
+        // there's a few more that we might be able to use; see the following repository:
+        // https://github.com/madsmtm/iosurface-calayer-formats
+        properties.add(
+            unsafe { kIOSurfacePixelFormat },
+            &CFNumber::new_i32(pixel_format as i32),
+        );
+        properties.add(
+            unsafe { kIOSurfaceBytesPerElement },
+            &CFNumber::new_i32(bytes_per_pixel as i32),
+        );
+
+        // TODO: Doesn't seem to do anything?
+        properties.add(
+            unsafe { kIOSurfaceColorSpace },
+            &*color_space.property_list().unwrap(),
+        );
+
+        // We probably don't need to set `kIOSurfaceICCProfile`, the color space information set
+        // above should contain this.
+
+        // Be a bit more strict about usage of the surface in debug mode.
+        #[cfg(debug_assertions)]
+        properties.add(
+            unsafe { objc2_io_surface::kIOSurfacePixelSizeCastingAllowed },
+            &**objc2_core_foundation::CFBoolean::new(false),
+        );
+
+        if write_combine_cache {
+            properties.add(
+                unsafe { kIOSurfaceCacheMode },
+                &**CFNumber::new_i32(kIOSurfaceMapWriteCombineCache as _),
+            );
         }
 
-        let num_bytes = util::byte_stride(width) as usize * (height as usize);
+        properties
+    }
 
-        let buffer = vec![Pixel::default(); num_bytes / size_of::<Pixel>()].into_boxed_slice();
-        let data_ptr = Box::into_raw(buffer).cast::<c_void>();
+    // The compositor shouldn't be writing to our surface, let's ensure that with this flag.
+    const LOCK_OPTIONS: IOSurfaceLockOptions = IOSurfaceLockOptions::AvoidSync;
 
-        // SAFETY: The data pointer and length are valid.
-        // The info pointer can safely be NULL, we don't use it in the `release` callback.
-        let data_provider = unsafe {
-            CGDataProvider::with_data(ptr::null_mut(), data_ptr, num_bytes, Some(release))
-        }
-        .unwrap();
-
-        Self {
-            data_provider,
-            data_ptr: data_ptr.cast(),
-            age: 0,
+    #[track_caller]
+    fn lock(&self) {
+        let ret = unsafe { self.surface.lock(Self::LOCK_OPTIONS, ptr::null_mut()) };
+        if ret != 0 {
+            panic!("failed locking buffer: {ret}");
         }
     }
 
-    /// Whether the buffer might currently be in use.
+    #[track_caller]
+    fn unlock(&self) {
+        let ret = unsafe { self.surface.unlock(Self::LOCK_OPTIONS, ptr::null_mut()) };
+        if ret != 0 {
+            panic!("failed unlocking buffer: {ret}");
+        }
+    }
+
+    /// # Safety
     ///
-    /// Might return `false` even if the buffer is unused (such as if it ended up in an autorelease
-    /// pool), but if this returns `true`, the provider is definitely not in use.
-    fn might_be_in_use(&self) -> bool {
-        self.data_provider.retain_count() != 1
+    /// Must only be called on the back buffer.
+    unsafe fn data(&mut self) -> &mut [Pixel] {
+        // Should've been verified by `next_buffer` above.
+        debug_assert!(!self.surface.is_in_use());
+
+        let num_bytes = self.surface.bytes_per_row() * self.surface.height();
+        let ptr = self.surface.base_address().cast::<Pixel>();
+
+        // SAFETY: `IOSurface` is a kernel-managed buffer, which means it's page-aligned, which is
+        // plenty for the 4 byte alignment required here.
+        //
+        // Additionally, the buffer is owned by us, and we're the only ones that are going to write
+        // to it. Since we re-use buffers, the buffer _might_ be read by the compositor while we write
+        // to it - this is still sound on our side, though it might cause tearing, depending on when
+        // the memory is flushed by the kernel, so we try to prevent it by checking `is_in_use`, and
+        // allocating new buffers in that case.
+        unsafe { slice::from_raw_parts_mut(ptr.as_ptr(), num_bytes / size_of::<Pixel>()) }
     }
 }
 
@@ -521,3 +648,7 @@ impl Deref for SendCALayer {
         &self.0
     }
 }
+
+// Grabbed from `objc2-core-video` to avoid having to depend on that (for now at least).
+#[allow(non_upper_case_globals)]
+const kCVPixelFormatType_32BGRA: u32 = 0x42475241;

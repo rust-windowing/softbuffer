@@ -306,11 +306,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 /// - X, when XShm is available
 /// - Win32
 /// - Orbital, when buffer size matches window size
+/// - macOS/iOS
 ///
 /// Currently [`Buffer::present`] must block copying image data on:
 /// - Web
-/// - AppKit
-/// - UIKit
 ///
 /// Buffer copies an channel swizzling happen on:
 /// - Android
@@ -657,16 +656,14 @@ pub enum AlphaMode {
     ///
     /// ## Platform Dependent Behavior
     ///
-    /// - Android, macOS/iOS, DRM/KMS, Orbital, Wayland, Windows, X11: Supported.
-    /// - Web: Cannot be supported in a zero-copy manner.
+    /// - Android, DRM/KMS, Orbital, Wayland, Windows, X11: Supported.
+    /// - macOS/iOS and Web: Cannot be supported in a zero-copy manner.
     Ignored,
     /// The non-alpha channels are expected to already have been multiplied by the alpha channel.
     ///
     /// ## Platform Dependent Behavior
     ///
-    /// - Wayland and DRM/KMS: Supported.
-    /// - macOS/iOS: Supported, but currently doesn't work with additive values (maybe only as the
-    ///   root layer?). Will be fixed by <https://github.com/rust-windowing/softbuffer/pull/329>.
+    /// - Wayland, macOS/iOS and DRM/KMS: Supported.
     /// - Web: Not yet supported (TODO `ImageBitmap`).
     /// - Android, Orbital, Windows and X11: Not supported (yet unknown if they can be, feel
     ///   free to open an issue about it).
@@ -680,9 +677,10 @@ pub enum AlphaMode {
     ///
     /// ## Platform Dependent Behavior
     ///
-    /// - Web and macOS/iOS: Supported.
+    /// - Web: Supported.
     /// - Android, DRM/KMS, Orbital, Wayland, Windows, X11: Not supported (yet unknown if they can
     ///   be, feel free to open an issue about it).
+    /// - macOS/iOS: Cannot be supported in a zero-copy manner.
     #[doc(alias = "Straight")]
     #[doc(alias = "Unassociated")]
     #[doc(alias = "Unpremultiplied")]
