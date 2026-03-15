@@ -1,6 +1,6 @@
 use crate::error::InitError;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, RawWindowHandle};
-use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
+use std::{marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::backend_interface::*;
 use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
