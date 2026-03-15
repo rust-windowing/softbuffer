@@ -17,6 +17,7 @@
 - **Breaking:** Removed `DamageOutOfRange` error case. If the damage value is greater than the backend supports, it is instead clamped to an appropriate value.
 - **Breaking:** Removed `SurfaceExtWeb` and the associated `NoDisplayHandle` and `NoWindowHandle` helpers. Use `RawWindowHandle::WebCanvas` or `RawWindowHandle::WebOffscreenCanvas` instead.
 - Fixed `present_with_damage` with bounds out of range on Windows, Web and X11.
+- **Breaking:** Changed `Rect.width` and `Rect.height` from `NonZeroU32` to `u32`.
 
 # 0.4.8
 

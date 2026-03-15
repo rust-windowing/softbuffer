@@ -62,14 +62,14 @@ impl<D: HasDisplayHandle> Context<D> {
 /// A rectangular region of the buffer coordinate space.
 #[derive(Clone, Copy, Debug)]
 pub struct Rect {
-    /// x coordinate of top left corner
+    /// X coordinate of top left corner.
     pub x: u32,
-    /// y coordinate of top left corner
+    /// Y coordinate of top left corner.
     pub y: u32,
-    /// width
-    pub width: NonZeroU32,
-    /// height
-    pub height: NonZeroU32,
+    /// Width of the rectangle.
+    pub width: u32,
+    /// Height of the rectangle.
+    pub height: u32,
 }
 
 /// A surface for drawing to a window with software buffers.
@@ -382,14 +382,18 @@ impl Buffer<'_> {
         self.present_with_damage(&[Rect {
             x: 0,
             y: 0,
-            width: NonZeroU32::MAX,
-            height: NonZeroU32::MAX,
+            width: u32::MAX,
+            height: u32::MAX,
         }])
     }
 
     /// Presents buffer to the window, with damage regions.
     ///
     /// Damage regions that fall outside the surface are ignored.
+    ///
+    /// Zero-sized damage regions (rectangles with `width` or `height` equal to `0`) may be
+    /// completely ignored, or may end up increasing the "union" damage region to contain the
+    /// zero-sized rectangle too. This is platform-specific, and should not be relied upon.
     ///
     /// # Platform dependent behavior
     ///
