@@ -249,20 +249,6 @@ fn set_buffer(
         // Copy each line, cropping to fit
         let width = width_u32 as usize;
         let height = height_u32 as usize;
-        // let min_width = cmp::min(width, window_width);
-        // let min_height = cmp::min(height, window_height);
-
-        // if width == window_width {
-        //     let pixels = width * min_height;
-        //     window_data[..pixels].copy_from_slice(&buffer[..pixels]);
-        // } else {
-        //     for y in 0..min_height {
-        //         let offset_buffer = y * width;
-        //         let offset_data = y * window_width;
-        //         window_data[offset_data..offset_data + min_width]
-        //             .copy_from_slice(&buffer[offset_buffer..offset_buffer + min_width]);
-        //     }
-        // }
 
         // If window size hasn't changed (memory size is same) and we update everything,
         // or if at least one damage rect covers the full window, copy everything at once.
