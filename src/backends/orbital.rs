@@ -132,7 +132,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Orbital
             )
         } else {
             Pixels::Buffer(util::PixelBuffer(vec![
-                Pixel::default();
+                Pixel::INIT;
                 self.width as usize
                     * self.height as usize
             ]))

@@ -397,7 +397,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             .swbuf_err("Failed to fetch image from window")?;
 
         if reply.depth == self.depth && reply.visual == self.visual_id {
-            let mut out = vec![Pixel::default(); reply.data.len() / size_of::<Pixel>()];
+            let mut out = vec![Pixel::INIT; reply.data.len() / size_of::<Pixel>()];
             // SAFETY: `Pixel` can be re-interpreted as `[u8; 4]`.
             let out_u8s = unsafe {
                 slice::from_raw_parts_mut(
@@ -557,7 +557,7 @@ impl Buffer {
         match self {
             Buffer::Shm(ref mut shm) => shm.alloc_segment(conn, num_bytes),
             Buffer::Wire(wire) => {
-                wire.resize(num_bytes / size_of::<Pixel>(), Pixel::default());
+                wire.resize(num_bytes / size_of::<Pixel>(), Pixel::INIT);
                 Ok(())
             }
         }
