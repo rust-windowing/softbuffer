@@ -279,7 +279,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer_size = util::byte_stride(self.width as u32) as usize * self.height / 4;
         Ok(BufferImpl {
-            buffer: util::PixelBuffer(vec![Pixel::default(); buffer_size]),
+            buffer: util::PixelBuffer(vec![Pixel::INIT; buffer_size]),
             width: self.width,
             height: self.height,
             color_space: &self.color_space,
