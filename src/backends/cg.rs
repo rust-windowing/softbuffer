@@ -354,8 +354,7 @@ impl BufferInterface for BufferImpl<'_> {
     fn pixels_mut(&mut self) -> &mut [Pixel] {
         let info = self.buffer.info();
         // SAFETY: The data is locked in `next_buffer`, so we know it's not being used elsewhere.
-        let data = unsafe { &mut *info.data.get() };
-        &mut **data
+        unsafe { &mut *info.data.get() }
     }
 
     fn age(&self) -> u8 {
