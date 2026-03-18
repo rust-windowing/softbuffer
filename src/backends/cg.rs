@@ -7,8 +7,9 @@ use objc2::runtime::{AnyObject, Bool};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
 use objc2_core_foundation::{CFRetained, CGPoint};
 use objc2_core_graphics::{
-    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage, CGImageAlphaInfo,
-    CGImageByteOrderInfo, CGImageComponentInfo, CGImagePixelFormatInfo,
+    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider,
+    CGDataProviderDirectCallbacks, CGImage, CGImageAlphaInfo, CGImageByteOrderInfo,
+    CGImageComponentInfo, CGImagePixelFormatInfo,
 };
 use objc2_foundation::{
     ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
@@ -17,14 +18,17 @@ use objc2_foundation::{
 };
 use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
+use tracing::warn;
 
+use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::marker::PhantomData;
-use std::mem::size_of;
+use std::mem::{size_of, ManuallyDrop};
 use std::num::NonZeroU32;
 use std::ops::Deref;
-use std::ptr::{self, slice_from_raw_parts_mut, NonNull};
-use std::slice;
+use std::ptr::{self, NonNull};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 define_class!(
     #[unsafe(super(NSObject))]
@@ -107,23 +111,12 @@ pub struct CGImpl<D, W> {
     color_space: CFRetained<CGColorSpace>,
     /// The buffers that we may render into.
     ///
-    /// This contains an unbounded number of buffers, since we don't get any feedback from
-    /// QuartzCore about when it's done using the buffer, other than the retain count of the data
-    /// provider (which is a weak signal). It shouldn't be needed (QuartzCore seems to copy the data
-    /// from `CGImage` once), though theoretically there might be cases where it would have a
-    /// multi-stage pipeline where it processes the image once, retains it, and sends it onwards to
-    /// be processed again later (and such things might change depending on OS version), so we do
-    /// this to be safe.
-    ///
-    /// Anecdotally, if the user renders 3 times within a single frame (which they probably
-    /// shouldn't do, but would be safe), we need 4 buffers according to the retain counts.
-    ///
-    /// Note that having more buffers here shouldn't add any presentation delay, since we still go
-    /// directly from drawing to the back buffer and presenting the front buffer.
-    buffers: Vec<Buffer>,
-    /// The width of the current buffers.
+    /// We use single-buffering because QuartzCore copies internally before sending the buffer to
+    /// the compositor (so we wouldn't gain anything by double-buffering).
+    buffer: Buffer,
+    /// The width of the buffer.
     width: u32,
-    /// The height of the current buffers.
+    /// The height of the buffer.
     height: u32,
     window_handle: W,
     _display: PhantomData<D>,
@@ -261,9 +254,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             root_layer: SendCALayer(root_layer),
             observer,
             color_space,
-            // We'll usually do double-buffering, but might end up needing more buffers if the user
-            // renders multiple times per frame.
-            buffers: vec![Buffer::new(width, height), Buffer::new(width, height)],
+            buffer: Buffer::new(width, height),
             width,
             height,
             _display: PhantomData,
@@ -300,9 +291,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             return Ok(());
         }
 
-        // Recreate buffers. It's fine to release the old ones, `CALayer.contents` is going to keep
-        // a reference if they're still in use.
-        self.buffers = vec![Buffer::new(width, height), Buffer::new(width, height)];
+        // Recreate buffer. It's fine to release the old one, `CALayer.contents` is going to keep
+        // a reference to it around as long as it's still in use.
+        self.buffer = Buffer::new(width, height);
         self.width = width;
         self.height = height;
 
@@ -310,26 +301,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
-        // If the backmost buffer might be in use, allocate a new buffer.
-        //
-        // TODO: Add an `unsafe` option to disable this, and always assume 2 buffers?
-        if self.buffers.last().unwrap().might_be_in_use() {
-            self.buffers.push(Buffer::new(self.width, self.height));
-            // This should have no effect on latency, but it will affect the `buffer.age()` that
-            // users see, and unbounded allocation is undesirable too, so we should try to avoid it.
-
-            if self.buffers.len() <= 3 {
-                // Winit currently might emit redraw events twice in a single frame, so we need an
-                // extra buffer there, see https://github.com/rust-windowing/winit/issues/2640.
-                // TODO(madsmtm): Always issue a warning once the Winit issue is fixed.
-                tracing::debug!("had to allocate extra buffer in `next_buffer`, this is probably a bug in Winit's RedrawRequested");
-            } else {
-                tracing::warn!("had to allocate extra buffer in `next_buffer`, you might be rendering faster than the event loop can handle?");
-            }
-        }
+        self.buffer.info().lock();
 
         Ok(BufferImpl {
-            buffers: &mut self.buffers,
+            buffer: &mut self.buffer,
             width: self.width,
             height: self.height,
             color_space: &self.color_space,
@@ -349,12 +324,18 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 /// The implementation used for presenting the back buffer to the surface.
 #[derive(Debug)]
 pub struct BufferImpl<'surface> {
-    buffers: &'surface mut Vec<Buffer>,
+    buffer: &'surface mut Buffer,
     width: u32,
     height: u32,
     color_space: &'surface CGColorSpace,
     alpha_info: CGImageAlphaInfo,
     layer: &'surface mut SendCALayer,
+}
+
+impl Drop for BufferImpl<'_> {
+    fn drop(&mut self) {
+        self.buffer.info().unlock();
+    }
 }
 
 impl BufferInterface for BufferImpl<'_> {
@@ -371,43 +352,37 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        let back = self.buffers.last_mut().unwrap();
-
-        // Should've been verified by `next_buffer` above.
-        debug_assert!(!back.might_be_in_use());
-
-        let num_bytes = util::byte_stride(self.width) as usize * (self.height as usize);
-        // SAFETY: The pointer is valid, and we know that we're the only owners of the back buffer's
-        // data provider. This, combined with taking `&mut self` in this function, means that we can
-        // safely write to the buffer.
-        unsafe { slice::from_raw_parts_mut(back.data_ptr, num_bytes / size_of::<Pixel>()) }
+        let info = self.buffer.info();
+        // SAFETY: The data is locked in `next_buffer`, so we know it's not being used elsewhere.
+        let data = unsafe { &mut *info.data.get() };
+        &mut **data
     }
 
     fn age(&self) -> u8 {
-        let back = self.buffers.last().unwrap();
-        back.age
+        self.buffer.age
     }
 
     fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        // Rotate buffers such that the back buffer is now the front buffer.
-        self.buffers.rotate_right(1);
+        // Unlock the buffer now.
+        let Self {
+            buffer,
+            width,
+            height,
+            color_space,
+            alpha_info,
+            layer,
+        } = &mut *ManuallyDrop::new(self);
+        buffer.info().unlock();
 
-        let (front, rest) = self.buffers.split_first_mut().unwrap();
-        front.age = 1; // This buffer (previously the back buffer) was just rendered into.
-
-        // Bump the age of the other buffers.
-        for buffer in rest {
-            if buffer.age != 0 {
-                buffer.age += 1;
-            }
-        }
+        // The buffer's contents has been set by the user.
+        buffer.age = 1;
 
         // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
         // `CGImageByteOrderInfo` and `CGImagePixelFormatInfo` (see e.g. `CGBitmapInfoMake`).
         //
         // TODO: Use `CGBitmapInfo::new` once the next version of objc2-core-graphics is released.
         let bitmap_info = CGBitmapInfo(
-            self.alpha_info.0
+            alpha_info.0
                 | CGImageComponentInfo::Integer.0
                 | CGImageByteOrderInfo::Order32Host.0
                 | CGImagePixelFormatInfo::Packed.0,
@@ -417,14 +392,14 @@ impl BufferInterface for BufferImpl<'_> {
         // SAFETY: The `decode` pointer is NULL.
         let image = unsafe {
             CGImage::new(
-                self.width as usize,
-                self.height as usize,
+                *width as usize,
+                *height as usize,
                 8,
                 32,
-                util::byte_stride(self.width) as usize,
-                Some(self.color_space),
+                util::byte_stride(*width) as usize,
+                Some(color_space),
                 bitmap_info,
-                Some(&front.data_provider),
+                Some(&buffer.data_provider),
                 ptr::null(),
                 false,
                 CGColorRenderingIntent::RenderingIntentDefault,
@@ -439,9 +414,10 @@ impl BufferInterface for BufferImpl<'_> {
         CATransaction::setDisableActions(true);
 
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
-        unsafe { self.layer.setContents(Some(image.as_ref())) };
+        unsafe { layer.setContents(Some(image.as_ref())) };
 
         CATransaction::commit();
+
         Ok(())
     }
 }
@@ -450,54 +426,149 @@ impl BufferInterface for BufferImpl<'_> {
 #[derive(Debug)]
 struct Buffer {
     data_provider: CFRetained<CGDataProvider>,
-    data_ptr: *mut Pixel,
     age: u8,
 }
 
-// SAFETY: We only mutate the `CGDataProvider` when we know it's not referenced by anything else,
-// and only then behind `&mut`.
+// SAFETY: We only mutate the `CGDataProvider`'s info when we know it's not referenced by anything
+// else, and only then behind `&mut`.
 unsafe impl Send for Buffer {}
 // SAFETY: Same as above.
 unsafe impl Sync for Buffer {}
 
 impl Buffer {
     fn new(width: u32, height: u32) -> Self {
-        unsafe extern "C-unwind" fn release(
-            _info: *mut c_void,
-            data: NonNull<c_void>,
-            size: usize,
-        ) {
-            let data = data.cast::<Pixel>();
-            let slice = slice_from_raw_parts_mut(data.as_ptr(), size / size_of::<Pixel>());
-            // SAFETY: This is the same slice that we passed to `Box::into_raw` below.
-            drop(unsafe { Box::from_raw(slice) })
+        let num_bytes = util::byte_stride(width) as usize * (height as usize);
+        let data = vec![Pixel::default(); num_bytes / size_of::<Pixel>()].into_boxed_slice();
+
+        unsafe extern "C-unwind" fn get_byte_pointer(info: *mut c_void) -> *const c_void {
+            // SAFETY: The `info` pointer was set to `BufferInfo` on creation.
+            let info: &BufferInfo = unsafe { &*info.cast() };
+            info.lock();
+            // SAFETY: The buffer is not being accessed elsewhere (because we just locked it).
+            let buffer = unsafe { &*info.data.get() };
+            buffer.as_ptr().cast()
         }
 
-        let num_bytes = util::byte_stride(width) as usize * (height as usize);
+        unsafe extern "C-unwind" fn release_byte_pointer(
+            info: *mut c_void,
+            _data_ptr: NonNull<c_void>,
+        ) {
+            // SAFETY: The `info` pointer was set to `BufferInfo` on creation.
+            let info: &BufferInfo = unsafe { &*info.cast() };
+            // CG will no longer access the pointer, so we can safely unlock it.
+            info.unlock();
+        }
 
-        let buffer = vec![Pixel::default(); num_bytes / size_of::<Pixel>()].into_boxed_slice();
-        let data_ptr = Box::into_raw(buffer).cast::<c_void>();
+        unsafe extern "C-unwind" fn release_info(info: *mut c_void) {
+            // SAFETY: This is the same pointer that we passed to `Box::into_raw` on creation.
+            drop(unsafe { Box::from_raw(info.cast::<BufferInfo>()) });
+        }
 
-        // SAFETY: The data pointer and length are valid.
-        // The info pointer can safely be NULL, we don't use it in the `release` callback.
+        // Wrap `BufferInfo` in a pointer to allow passing it to `CGDataProvider`.
+        let info = Box::new(BufferInfo {
+            data: UnsafeCell::new(data),
+            locked: AtomicBool::new(false),
+        });
+        let callbacks = CGDataProviderDirectCallbacks {
+            version: 0,
+            getBytePointer: Some(get_byte_pointer),
+            releaseBytePointer: Some(release_byte_pointer),
+            // We could provide this instead of `getBytePointer`/`releaseBytePointer`, but the
+            // former are likely to be more performant.
+            getBytesAtPosition: None,
+            releaseInfo: Some(release_info),
+        };
+
+        // SAFETY: The `info` pointer is valid, and our callbacks are correctly implemented.
         let data_provider = unsafe {
-            CGDataProvider::with_data(ptr::null_mut(), data_ptr, num_bytes, Some(release))
+            CGDataProvider::new_direct(
+                // Pass ownership of the `info` pointer. This will be released in `release_info`.
+                Box::into_raw(info).cast(),
+                num_bytes as libc::off_t,
+                &callbacks,
+            )
         }
         .unwrap();
 
         Self {
             data_provider,
-            data_ptr: data_ptr.cast(),
             age: 0,
         }
     }
 
-    /// Whether the buffer might currently be in use.
+    fn info(&self) -> &BufferInfo {
+        let ptr = CGDataProvider::info(Some(&self.data_provider));
+        // SAFETY: The buffer info was passed to our data provider on creation, and the provider is
+        // valid for at least `'self`.
+        unsafe { &*ptr.cast::<BufferInfo>() }
+    }
+}
+
+/// Data contained in the `CGDataProvider`.
+struct BufferInfo {
+    /// The buffer contents.
     ///
-    /// Might return `false` even if the buffer is unused (such as if it ended up in an autorelease
-    /// pool), but if this returns `true`, the provider is definitely not in use.
-    fn might_be_in_use(&self) -> bool {
-        self.data_provider.retain_count() != 1
+    /// This may either be in use by the data provider, or it may be in use by us. Neither
+    /// CoreGraphics nor QuartzCore provide any guarantees (that I could find) on when the
+    /// `CALayer.contents`/`CGImage` is read, which means we must be prepared for:
+    /// 1. It being read when the `CGImage` is created.
+    /// 2. It being read when `layer.setContents()` is called.
+    /// 3. It being read when `CATransaction::commit()` is called.
+    /// 4. It being read when the transaction is actually committed, which usually happens
+    ///    implicitly at the end of the thread's run loop.
+    ///
+    /// In practice, option 4 seems to be what happens (when rendering off-thread, usually you'll
+    /// see option 3, because most off-thread rendering doesn't have a runloop running, so the
+    /// `CATransaction::commit()` will do the actual commit).
+    data: UnsafeCell<Box<[Pixel]>>,
+    /// Whether the data above is currently locked.
+    ///
+    /// Needs to be thread-safe because the user may:
+    /// - Render on thread 1 with a runloop (schedules the buffer to be read at the end, see above).
+    /// - Move `Surface` to thread 2 and continue rendering there.
+    ///
+    /// The release of the buffer would then happen on thread 1, which we'd like to wait for on the
+    /// new thread.
+    ///
+    /// We _could_ use a mutex here to ensure thread priority inversion happens, but it's a bit
+    /// harder to work with those since the Rust standard library doesn't really make it possible to
+    /// lock a mutex in one function and unlock it in another (as needed by `get_byte_pointer` /
+    /// `release_byte_pointer`). In practice, it's very unlikely to be an issue, since rendering
+    /// generally only happens on one thread (it's very rare for it to move between threads as
+    /// described above), and the main thread is heavily prioritized already (even if you were to
+    /// move rendering, you'd usually be moving to/from the main thread).
+    locked: AtomicBool,
+}
+
+/// See <https://mara.nl/atomics/building-spinlock.html> for details on the atomic operations.
+impl BufferInfo {
+    /// Lock the buffer.
+    fn lock(&self) {
+        if self.locked.swap(true, Ordering::Acquire) {
+            // Failing to lock the buffer should only happen in exceptional cases.
+            //
+            // If it keeps failing for > 100ms, it's very likely that the user accidentally leaked
+            // the buffer (and that this will deadlock forever).
+            let now = Instant::now();
+            let mut has_warned = false;
+            while self.locked.swap(true, Ordering::Acquire) {
+                if !has_warned && Duration::from_millis(100) < now.elapsed() {
+                    warn!("probable deadlock: waiting on lock for more than 100ms");
+                    has_warned = true;
+                }
+                std::thread::yield_now();
+            }
+        }
+        // Successfully locked the buffer
+    }
+
+    /// Unlock the buffer.
+    fn unlock(&self) {
+        debug_assert!(
+            self.locked.load(Ordering::Relaxed),
+            "unlocking buffer that wasn't locked"
+        );
+        self.locked.store(false, Ordering::Release);
     }
 }
 

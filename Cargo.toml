@@ -95,9 +95,11 @@ windows-sys = { version = "0.61.2", features = [
 # CoreGraphics (macOS/iOS/...) dependencies.
 [target.'cfg(target_vendor = "apple")'.dependencies]
 objc2 = "0.6.0"
+libc = "0.2.180"
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = [
     "std",
     "objc2",
+    "libc",
     "CGColorSpace",
     "CGDataProvider",
     "CGImage",
