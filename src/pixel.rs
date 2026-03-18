@@ -151,6 +151,20 @@ impl Pixel {
     pub const fn new_bgra(b: u8, g: u8, r: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
+
+    /// A reasonable value to initialize buffers with.
+    ///
+    /// Users should redraw the entire buffer when `buffer.age() == 0`, they shouldn't rely on this.
+    #[allow(unused)] // Only used on some backends.
+    pub(crate) const INIT: Self = if cfg!(debug_assertions) {
+        // Half-transparent mostly-red, this will panic in `Buffer::present` (unless the user
+        // chose a different alpha mode), which is desirable since we don't want this pixel to ever
+        // show up.
+        Self::new_rgba(0xff, 0x11, 0x22, 0x7f)
+    } else {
+        // Zero-initialization is often a lot faster.
+        Self::new_rgba(0x00, 0x00, 0x00, 0x00)
+    };
 }
 
 // TODO: Implement `Add`/`Mul`/similar `std::ops` like `rgb` does?

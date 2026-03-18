@@ -197,7 +197,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
     ///
     /// The size must be set with [`Surface::resize`] or [`Surface::configure`] first.
     ///
-    /// The contents of the buffer may be zeroed, or may contain a previous frame. Call
+    /// The contents of the buffer may be garbage, or may contain a previous frame. Call
     /// [`Buffer::age`] to determine this.
     ///
     /// ## Platform Dependent Behavior

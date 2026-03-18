@@ -114,7 +114,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Android
         }
 
         let buffer =
-            vec![Pixel::default(); native_window_buffer.stride() * native_window_buffer.height()];
+            vec![Pixel::INIT; native_window_buffer.stride() * native_window_buffer.height()];
 
         Ok(BufferImpl {
             native_window_buffer,

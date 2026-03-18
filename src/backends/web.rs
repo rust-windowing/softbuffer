@@ -182,7 +182,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
             self.buffer
-                .resize(total_len(width.get(), height.get()), Pixel::default());
+                .resize(total_len(width.get(), height.get()), Pixel::INIT);
             self.canvas.set_width(width.get());
             self.canvas.set_height(height.get());
             self.size = Some((width, height));

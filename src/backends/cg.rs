@@ -437,7 +437,7 @@ unsafe impl Sync for Buffer {}
 impl Buffer {
     fn new(width: u32, height: u32) -> Self {
         let num_bytes = util::byte_stride(width) as usize * (height as usize);
-        let data = vec![Pixel::default(); num_bytes / size_of::<Pixel>()].into_boxed_slice();
+        let data = vec![Pixel::INIT; num_bytes / size_of::<Pixel>()].into_boxed_slice();
 
         unsafe extern "C-unwind" fn get_byte_pointer(info: *mut c_void) -> *const c_void {
             // SAFETY: The `info` pointer was set to `BufferInfo` on creation.
