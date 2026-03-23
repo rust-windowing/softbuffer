@@ -80,7 +80,7 @@ x11rb = { version = "0.13.0", optional = true, features = [
     "shm",
 ] }
 # KMS/DRM
-drm = { version = "0.14.1", default-features = false, optional = true }
+drm = { version = "0.15.0", default-features = false, optional = true }
 
 # Windows dependencies.
 [target.'cfg(target_os = "windows")'.dependencies]
