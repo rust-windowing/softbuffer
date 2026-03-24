@@ -418,14 +418,30 @@ impl BufferInterface for BufferImpl<'_> {
         }
         .unwrap();
 
-        // Wrap layer modifications in a transaction. Unclear if we should keep doing this, see
-        // <https://github.com/rust-windowing/softbuffer/pull/275> for discussion about this.
-        CATransaction::begin();
+        // Wrap things in a transaction if the event loop isn't currently running.
+        //
+        // The event loop implicitly commits pending layer updates at the end of the current run
+        // loop iteration, as documented in:
+        // <https://developer.apple.com/documentation/quartzcore/catransaction?language=objc>
+        //
+        //
+        //
+        // This is a bit overly conservative; the full check on macOS could. But it doesn't matter _that_ much, if users decide to render in weird ways, we'll still support it when emitting a transaction, it'll just be slightly less efficient.
+        let use_transaction = objc2_core_foundation::CFRunLoop::current()
+            .unwrap()
+            .current_mode()
+            .is_none();
+
+        if use_transaction {
+            CATransaction::begin();
+        }
 
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
         unsafe { layer.setContents(Some(image.as_ref())) };
 
-        CATransaction::commit();
+        if use_transaction {
+            CATransaction::commit();
+        }
 
         Ok(())
     }
