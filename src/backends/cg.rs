@@ -418,6 +418,8 @@ impl BufferInterface for BufferImpl<'_> {
         }
         .unwrap();
 
+        // Wrap layer modifications in a transaction. Unclear if we should keep doing this, see
+        // <https://github.com/rust-windowing/softbuffer/pull/275> for discussion about this.
         CATransaction::begin();
 
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
