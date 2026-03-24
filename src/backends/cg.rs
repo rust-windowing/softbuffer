@@ -3,7 +3,7 @@ use crate::error::InitError;
 use crate::{backend_interface::*, AlphaMode};
 use crate::{util, Pixel, Rect, SoftBufferError};
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, Bool};
+use objc2::runtime::{AnyObject, Bool, ProtocolObject};
 use objc2::{define_class, msg_send, AllocAnyThread, DefinedClass, MainThreadMarker, Message};
 use objc2_core_foundation::{CFRetained, CGPoint};
 use objc2_core_graphics::{
@@ -13,7 +13,7 @@ use objc2_core_graphics::{
 };
 use objc2_foundation::{
     ns_string, NSDictionary, NSKeyValueChangeKey, NSKeyValueChangeNewKey,
-    NSKeyValueObservingOptions, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
+    NSKeyValueObservingOptions, NSNull, NSNumber, NSObject, NSObjectNSKeyValueObserverRegistration,
     NSString, NSValue,
 };
 use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
@@ -238,6 +238,17 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         // Default alpha mode is opaque.
         layer.setOpaque(true);
 
+        // The CALayer has a default action associated with a change in the layer contents, causing
+        // a quarter second fade transition to happen every time a new buffer is applied.
+        //
+        // We avoid this by setting the action for the "contents" key to NULL.
+        //
+        // TODO(madsmtm): Do we want to do the same for bounds/contentsScale for smoother resizing?
+        layer.setActions(Some(&NSDictionary::from_slices(
+            &[ns_string!("contents")],
+            &[ProtocolObject::from_ref(&*NSNull::null())],
+        )));
+
         // The color space we're using. Initialize it here to reduce work later on.
         // TODO: Allow setting this to something else?
         let color_space = CGColorSpace::new_device_rgb().unwrap();
@@ -407,11 +418,9 @@ impl BufferInterface for BufferImpl<'_> {
         }
         .unwrap();
 
-        // The CALayer has a default action associated with a change in the layer contents, causing
-        // a quarter second fade transition to happen every time a new buffer is applied. This can
-        // be avoided by wrapping the operation in a transaction and disabling all actions.
+        // Wrap layer modifications in a transaction. Unclear if we should keep doing this, see
+        // <https://github.com/rust-windowing/softbuffer/pull/275> for discussion about this.
         CATransaction::begin();
-        CATransaction::setDisableActions(true);
 
         // SAFETY: The contents is `CGImage`, which is a valid class for `contents`.
         unsafe { layer.setContents(Some(image.as_ref())) };
