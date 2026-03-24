@@ -18,7 +18,7 @@ use objc2_foundation::{
 };
 use objc2_quartz_core::{kCAGravityTopLeft, CALayer, CATransaction};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawWindowHandle};
-use tracing::warn;
+use tracing::{trace, warn};
 
 use std::cell::UnsafeCell;
 use std::ffi::c_void;
@@ -109,7 +109,7 @@ pub struct CGImpl<D, W> {
     root_layer: SendCALayer,
     observer: Retained<Observer>,
     color_space: CFRetained<CGColorSpace>,
-    /// The buffers that we may render into.
+    /// The buffer that we will render into.
     ///
     /// We use single-buffering because QuartzCore copies internally before sending the buffer to
     /// the compositor (so we wouldn't gain anything by double-buffering).
@@ -301,6 +301,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
+        // Unlocked in `present_with_damage` or the buffer's `Drop`.
         self.buffer.info().lock();
 
         Ok(BufferImpl {
@@ -321,7 +322,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 }
 
-/// The implementation used for presenting the back buffer to the surface.
+/// The implementation used for presenting the buffer to the surface.
 #[derive(Debug)]
 pub struct BufferImpl<'surface> {
     buffer: &'surface mut Buffer,
@@ -362,7 +363,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
-        // Unlock the buffer now.
+        // Unlock the buffer now (and not in `Drop`).
         let Self {
             buffer,
             width,
@@ -373,7 +374,7 @@ impl BufferInterface for BufferImpl<'_> {
         } = &mut *ManuallyDrop::new(self);
         buffer.info().unlock();
 
-        // The buffer's contents has been set by the user.
+        // The buffer's contents have now been set by the user.
         buffer.age = 1;
 
         // `CGBitmapInfo` consists of a combination of `CGImageAlphaInfo`, `CGImageComponentInfo`
@@ -421,7 +422,7 @@ impl BufferInterface for BufferImpl<'_> {
     }
 }
 
-/// A single buffer in Softbuffer.
+/// A single buffer.
 #[derive(Debug)]
 struct Buffer {
     data_provider: CFRetained<CGDataProvider>,
@@ -429,21 +430,24 @@ struct Buffer {
 }
 
 // SAFETY: We only mutate the `CGDataProvider`'s info when we know it's not referenced by anything
-// else, and only then behind `&mut`.
+// else (which we know by locking), and only then behind `&mut`.
 unsafe impl Send for Buffer {}
 // SAFETY: Same as above.
 unsafe impl Sync for Buffer {}
 
 impl Buffer {
     fn new(width: u32, height: u32) -> Self {
+        trace!("Buffer::new");
         let num_bytes = util::byte_stride(width) as usize * (height as usize);
         let data = vec![Pixel::INIT; num_bytes / size_of::<Pixel>()].into_boxed_slice();
 
         unsafe extern "C-unwind" fn get_byte_pointer(info: *mut c_void) -> *const c_void {
+            trace!("get_byte_pointer");
             // SAFETY: The `info` pointer was set to `BufferInfo` on creation.
             let info: &BufferInfo = unsafe { &*info.cast() };
+            // CG is about to use the pointer, so lock it.
             info.lock();
-            // SAFETY: The buffer is not being accessed elsewhere (because we just locked it).
+            // SAFETY: The buffer is not being accessed elsewhere (we just acquired the lock).
             let buffer = unsafe { &*info.data.get() };
             buffer.as_ptr().cast()
         }
@@ -452,6 +456,7 @@ impl Buffer {
             info: *mut c_void,
             _data_ptr: NonNull<c_void>,
         ) {
+            trace!("release_byte_pointer");
             // SAFETY: The `info` pointer was set to `BufferInfo` on creation.
             let info: &BufferInfo = unsafe { &*info.cast() };
             // CG will no longer access the pointer, so we can safely unlock it.
@@ -459,6 +464,7 @@ impl Buffer {
         }
 
         unsafe extern "C-unwind" fn release_info(info: *mut c_void) {
+            trace!("release_info");
             // SAFETY: This is the same pointer that we passed to `Box::into_raw` on creation.
             drop(unsafe { Box::from_raw(info.cast::<BufferInfo>()) });
         }
@@ -472,8 +478,8 @@ impl Buffer {
             version: 0,
             getBytePointer: Some(get_byte_pointer),
             releaseBytePointer: Some(release_byte_pointer),
-            // We could provide this instead of `getBytePointer`/`releaseBytePointer`, but the
-            // former are likely to be more performant.
+            // We could provide this instead of `getBytePointer`/`releaseBytePointer`, but those two
+            // are likely to be more performant.
             getBytesAtPosition: None,
             releaseInfo: Some(release_info),
         };
@@ -518,8 +524,10 @@ struct BufferInfo {
     ///
     /// In practice, option 4 seems to be what happens (when rendering off-thread, usually you'll
     /// see option 3, because most off-thread rendering doesn't have a runloop running, so the
-    /// `CATransaction::commit()` will do the actual commit).
+    /// `CATransaction::commit()` will do the actual commit), which means we need to lock the data
+    /// somehow, see below.
     data: UnsafeCell<Box<[Pixel]>>,
+
     /// Whether the data above is currently locked.
     ///
     /// Needs to be thread-safe because the user may:
