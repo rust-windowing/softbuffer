@@ -306,8 +306,8 @@ impl BufferInterface for BufferImpl<'_> {
                 // https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_surface
                 let x = util::to_i32_saturating(rect.x);
                 let y = util::to_i32_saturating(rect.y);
-                let width = util::to_i32_saturating(rect.width.get());
-                let height = util::to_i32_saturating(rect.height.get());
+                let width = util::to_i32_saturating(rect.width);
+                let height = util::to_i32_saturating(rect.height);
 
                 // Introduced in version 4, it is an error to use this request in version 3 or lower.
                 self.surface.damage_buffer(x, y, width, height);
