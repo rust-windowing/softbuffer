@@ -11,7 +11,7 @@ use std::{
 use wayland_client::{
     backend::{Backend, ObjectId},
     globals::{registry_queue_init, GlobalListContents},
-    protocol::{wl_fixes, wl_registry, wl_shm, wl_surface},
+    protocol::{wl_registry, wl_shm, wl_surface},
     Connection, Dispatch, EventQueue, Proxy, QueueHandle,
 };
 
@@ -61,13 +61,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<WaylandDisplayImp
 
         // If `wl_fixes` is supported, destroy registry using it.
         // We don't need the registry anymore.
-        if let Ok(fixes) = globals.bind::<wl_fixes::WlFixes, _, ()>(&qh, 1..=1, ()) {
-            fixes.destroy_registry(globals.registry());
-            conn.backend()
-                .destroy_object(&globals.registry().id())
-                .unwrap();
-            fixes.destroy();
-        }
+        globals.destroy();
 
         Ok(Arc::new(WaylandDisplayImpl {
             conn: Some(conn),
@@ -344,18 +338,6 @@ impl Dispatch<wl_shm::WlShm, ()> for State {
         _: &mut State,
         _: &wl_shm::WlShm,
         _: wl_shm::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<State>,
-    ) {
-    }
-}
-
-impl Dispatch<wl_fixes::WlFixes, ()> for State {
-    fn event(
-        _: &mut State,
-        _: &wl_fixes::WlFixes,
-        _: wl_fixes::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<State>,
