@@ -1,5 +1,0 @@
-[alias]
-run-wasm = ["run", "--release", "--package", "run-wasm", "--"]
-
-[target.wasm32-unknown-unknown]
-runner = "wasm-bindgen-test-runner"
