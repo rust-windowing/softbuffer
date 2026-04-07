@@ -1,6 +1,6 @@
 use crate::error::InitError;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, OrbitalWindowHandle, RawWindowHandle};
-use std::{cmp, marker::PhantomData, num::NonZeroU32, slice, str};
+use std::{marker::PhantomData, num::NonZeroU32, slice, str};
 
 use crate::backend_interface::*;
 use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
@@ -190,7 +190,7 @@ impl BufferInterface for BufferImpl<'_> {
         }
     }
 
-    fn present_with_damage(self, _damage: &[Rect]) -> Result<(), SoftBufferError> {
+    fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         match self.pixels {
             Pixels::Mapping(mapping) => {
                 drop(mapping);
@@ -198,7 +198,7 @@ impl BufferInterface for BufferImpl<'_> {
                 *self.presented = true;
             }
             Pixels::Buffer(buffer) => {
-                set_buffer(self.window_fd, &buffer, self.width, self.height);
+                set_buffer(self.window_fd, &buffer, self.width, self.height, damage);
             }
         }
 
@@ -226,9 +226,20 @@ fn window_size(window_fd: usize) -> (usize, usize) {
     (window_width, window_height)
 }
 
-fn set_buffer(window_fd: usize, buffer: &[Pixel], width_u32: u32, height_u32: u32) {
+fn set_buffer(
+    window_fd: usize,
+    buffer: &[Pixel],
+    width_u32: u32,
+    _height_u32: u32,
+    damage: &[Rect],
+) {
     // Read the current width and size
     let (window_width, window_height) = window_size(window_fd);
+
+    let Some(urect) = util::union_damage(damage) else {
+        syscall::fsync(window_fd).expect("failed to sync orbital window");
+        return;
+    };
 
     {
         // Map window buffer
@@ -240,16 +251,20 @@ fn set_buffer(window_fd: usize, buffer: &[Pixel], width_u32: u32, height_u32: u3
         // https://docs.rs/orbclient/0.3.48/src/orbclient/color.rs.html#25-29
         let window_data = unsafe { window_map.data_mut() };
 
-        // Copy each line, cropping to fit
         let width = width_u32 as usize;
-        let height = height_u32 as usize;
-        let min_width = cmp::min(width, window_width);
-        let min_height = cmp::min(height, window_height);
-        for y in 0..min_height {
-            let offset_buffer = y * width;
-            let offset_data = y * window_width;
-            window_data[offset_data..offset_data + min_width]
-                .copy_from_slice(&buffer[offset_buffer..offset_buffer + min_width]);
+
+        let x = urect.x as usize;
+        let y = urect.y as usize;
+        let w = (urect.width.get() as usize).min(window_width.saturating_sub(x));
+        let h = (urect.height.get() as usize).min(window_height.saturating_sub(y));
+
+        for (src_row, dst_row) in buffer
+            .chunks_exact(width)
+            .zip(window_data.chunks_exact_mut(window_width))
+            .skip(y)
+            .take(h)
+        {
+            dst_row[x..x + w].copy_from_slice(&src_row[x..x + w]);
         }
 
         // Window buffer map is dropped here
