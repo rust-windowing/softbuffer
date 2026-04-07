@@ -17,7 +17,7 @@
 /src/backends/web.rs         @daxpedda
 
 # Windows (no maintainer)
-/src/win32.rs
+/src/backends/win32.rs
 
 # X11 (no maintainer)
-/src/x11.rs
+/src/backends/x11.rs
