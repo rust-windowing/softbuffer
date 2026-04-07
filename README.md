@@ -64,27 +64,6 @@ Beware that big endian targets are much less tested, and may behave incorrectly.
 
 Pull requests to add support for new platforms are welcome!
 
-## WebAssembly
-
-To run an example with the web backend, add the following to `.cargo/config.toml`:
-```toml
-[target.'cfg(target_family = "wasm")']
-runner = "wasm-server-runner"
-```
-
-And then run:
-
-```sh
-cargo install wasm-server-runner
-cargo run --target wasm32-unknown-unknown --example winit
-```
-
-And open the link to view the result in the browser.
-
-## Android
-
-To run the Android-specific example on an Android phone: `cargo apk r --example winit_android` or `cargo apk r --example winit_multithread_android`.
-
 ## Example
 
 ```rust,no_run
@@ -213,6 +192,32 @@ impl ApplicationHandler for App {
         }
     }
 }
+```
+
+## Test on WebAssembly
+
+To run an example with the web backend, add the following to `.cargo/config.toml`:
+```toml
+[target.'cfg(target_family = "wasm")']
+runner = "wasm-server-runner"
+```
+
+And then run:
+
+```sh
+cargo install wasm-server-runner
+cargo run --target wasm32-unknown-unknown --example winit
+```
+
+And open the link to view the result in the browser.
+
+## Test on Android
+
+To run the Android-specific example on an Android phone:
+```sh
+cargo apk r --example winit_android
+# or
+cargo apk r --example winit_multithread_android
 ```
 
 ## MSRV Policy
