@@ -66,7 +66,20 @@ Pull requests to add support for new platforms are welcome!
 
 ## WebAssembly
 
-To run an example with the web backend: `cargo run-wasm --example winit`
+To run an example with the web backend, add the following to `.cargo/config.toml`:
+```toml
+[target.'cfg(target_family = "wasm")']
+runner = "wasm-server-runner"
+```
+
+And then run:
+
+```sh
+cargo install wasm-server-runner
+cargo run --target wasm32-unknown-unknown --example winit
+```
+
+And open the link to view the result in the browser.
 
 ## Android
 
