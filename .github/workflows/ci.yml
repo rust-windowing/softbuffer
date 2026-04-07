@@ -129,6 +129,8 @@ jobs:
       FEATURES: ${{ format(',{0}', matrix.platform.features ) }}
       CMD: ${{ matrix.platform.cmd }}
       RUSTDOCFLAGS: -Dwarnings
+      # Use `wasm-bindgen-cli` tooling when running wasm-bindgen tests.
+      CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
 
     runs-on: ${{ matrix.platform.os }}
     steps:
