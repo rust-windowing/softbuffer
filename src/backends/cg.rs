@@ -131,6 +131,9 @@ impl<D, W> Drop for CGImpl<D, W> {
             self.root_layer
                 .removeObserver_forKeyPath(&self.observer, ns_string!("bounds"));
         }
+
+        // Remove the layer we created from the root layer.
+        self.layer.removeFromSuperlayer();
     }
 }
 
@@ -179,6 +182,8 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
 
         // Add a sublayer, to avoid interfering with the root layer, since setting the contents of
         // e.g. a view-controlled layer is brittle.
+        //
+        // This layer is removed from the root layer when the surface is `Drop`ped.
         let layer = CALayer::new();
         root_layer.addSublayer(&layer);
 
