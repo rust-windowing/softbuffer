@@ -2,3 +2,6 @@
 Cargo.lock
 /.idea
 /.vscode
+
+# Allow people to customize this for their own checkouts.
+.cargo/config.toml
