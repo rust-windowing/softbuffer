@@ -241,7 +241,7 @@ fn set_buffer(
         return;
     };
 
-    {
+    let damage_buf = {
         // Map window buffer
         let mut window_map =
             unsafe { OrbitalMap::new(window_fd, window_width * window_height * 4) }
@@ -267,9 +267,10 @@ fn set_buffer(
             dst_row[x..x + w].copy_from_slice(&src_row[x..x + w]);
         }
 
+        format!("Y,{},{},{},{}", x, y, w, h)
         // Window buffer map is dropped here
-    }
+    };
 
     // Tell orbital to show the latest window data
-    syscall::fsync(window_fd).expect("failed to sync orbital window");
+    syscall::write(window_fd, damage_buf.as_bytes()).expect("failed to sync orbital window");
 }
