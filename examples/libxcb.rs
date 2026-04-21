@@ -130,10 +130,8 @@ mod example {
                     width = configure_notify.width;
                     height = configure_notify.height;
                 }
-                Event::ClientMessage(cm) => {
-                    if cm.data.as_data32()[0] == delete_window_atom {
-                        break;
-                    }
+                Event::ClientMessage(cm) if cm.data.as_data32()[0] == delete_window_atom => {
+                    break;
                 }
                 _ => {}
             }
