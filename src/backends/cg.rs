@@ -284,8 +284,12 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     }
 
     #[inline]
-    fn supports_alpha_mode(&self, _alpha_mode: AlphaMode) -> bool {
-        true
+    fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
+        // Premultiplied doesn't seem to work, at least not with transparent windows.
+        matches!(
+            alpha_mode,
+            AlphaMode::Ignored | AlphaMode::Opaque | AlphaMode::Postmultiplied
+        )
     }
 
     fn configure(

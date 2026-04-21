@@ -641,11 +641,10 @@ pub enum AlphaMode {
     /// ## Platform Dependent Behavior
     ///
     /// - Wayland and DRM/KMS: Supported.
-    /// - macOS/iOS: Supported, but currently doesn't work with additive values (maybe only as the
-    ///   root layer?). Will be fixed by <https://github.com/rust-windowing/softbuffer/pull/329>.
     /// - Web: Not yet supported (TODO `ImageBitmap`).
     /// - Android, Orbital, Windows and X11: Not supported (yet unknown if they can be, feel
     ///   free to open an issue about it).
+    /// - macOS/iOS: Not supported (doesn't seem to work with additive values).
     #[doc(alias = "Associated")]
     Premultiplied,
     /// The non-alpha channels are not expected to already be multiplied by the alpha channel;
