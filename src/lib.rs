@@ -412,69 +412,6 @@ impl Buffer<'_> {
     /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
     /// buffer.data_u8().fill(0x00);
     /// ```
-    #[inline]
-    pub fn data_u8(&mut self) -> &mut [u8] {
-        let data = self.buffer_impl.pixels_mut();
-        // SAFETY: `u32` can be reinterpreted as 4 `u8`s.
-        unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr().cast::<u8>(), data.len() * 4) }
-    }
-
-    /// Iterate over each row of the buffer's data as `u8` subslices.
-    ///
-    /// Each slice returned from the iterator has a length of `buffer.byte_stride()` and alignment
-    /// of at least 4.
-    ///
-    /// # Examples
-    ///
-    /// Work with the data as individual `u8` components:
-    ///
-    /// ```no_run
-    /// use softbuffer::PixelFormat;
-    ///
-    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
-    /// for row in buffer.rows_u8() {
-    ///     // Ignore remaining pixels, each row should have at least `4` elements.
-    ///     let (row, _remainder) = row.as_chunks_mut::<4>();
-    ///
-    ///     for [b0, b1, b2, b3] in row {
-    ///         let [r, g, b, a] = match PixelFormat::default() {
-    ///             PixelFormat::Bgra8 => [b2, b1, b0, b3],
-    ///             PixelFormat::Rgba8 => [b0, b1, b2, b3],
-    ///             format => unimplemented!("unknown default pixel format: {format:?}"),
-    ///         };
-    ///         // Write a red pixel.
-    ///         *r = 0xff;
-    ///         *b = 0x00;
-    ///         *g = 0x00;
-    ///         *a = 0x00;
-    ///     }
-    /// }
-    /// ```
-    #[inline]
-    pub fn rows_u8(&mut self) -> impl DoubleEndedIterator<Item = &mut [u8]> + ExactSizeIterator {
-        let byte_stride = self.byte_stride().get() as usize;
-        let data = self.data_u8();
-        assert_eq!(data.len() % byte_stride, 0, "must be multiple of stride");
-        // NOTE: This won't panic because `byte_stride` came from `NonZeroU32`
-        data.chunks_mut(byte_stride)
-    }
-}
-
-/// Helper methods for writing to the buffer as RGBA pixel data.
-impl Buffer<'_> {
-    /// Get a mutable reference to the buffer's pixels.
-    ///
-    /// The size of the returned slice is `buffer.byte_stride() * buffer.height() / 4`.
-    ///
-    /// # Examples
-    ///
-    /// Clear the buffer with red.
-    ///
-    /// ```no_run
-    /// # use softbuffer::{Buffer, Pixel};
-    /// # let buffer: Buffer<'_> = unimplemented!();
-    /// buffer.pixels().fill(Pixel::new_rgb(0xff, 0x00, 0x00));
-    /// ```
     ///
     /// Render to a slice of `[u8; 4]`s. This might be useful for library authors that want to
     /// provide a simple API that provides RGBX rendering.
@@ -545,6 +482,69 @@ impl Buffer<'_> {
     /// }
     ///
     /// buffer.present();
+    /// ```
+    #[inline]
+    pub fn data_u8(&mut self) -> &mut [u8] {
+        let data = self.buffer_impl.pixels_mut();
+        // SAFETY: `u32` can be reinterpreted as 4 `u8`s.
+        unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr().cast::<u8>(), data.len() * 4) }
+    }
+
+    /// Iterate over each row of the buffer's data as `u8` subslices.
+    ///
+    /// Each slice returned from the iterator has a length of `buffer.byte_stride()` and alignment
+    /// of at least 4.
+    ///
+    /// # Examples
+    ///
+    /// Work with the data as individual `u8` components:
+    ///
+    /// ```no_run
+    /// use softbuffer::PixelFormat;
+    ///
+    /// # let buffer: softbuffer::Buffer<'_> = unimplemented!();
+    /// for row in buffer.rows_u8() {
+    ///     // Ignore remaining pixels, each row should have at least `4` elements.
+    ///     let (row, _remainder) = row.as_chunks_mut::<4>();
+    ///
+    ///     for [b0, b1, b2, b3] in row {
+    ///         let [r, g, b, a] = match PixelFormat::default() {
+    ///             PixelFormat::Bgra8 => [b2, b1, b0, b3],
+    ///             PixelFormat::Rgba8 => [b0, b1, b2, b3],
+    ///             format => unimplemented!("unknown default pixel format: {format:?}"),
+    ///         };
+    ///         // Write a red pixel.
+    ///         *r = 0xff;
+    ///         *b = 0x00;
+    ///         *g = 0x00;
+    ///         *a = 0x00;
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    pub fn rows_u8(&mut self) -> impl DoubleEndedIterator<Item = &mut [u8]> + ExactSizeIterator {
+        let byte_stride = self.byte_stride().get() as usize;
+        let data = self.data_u8();
+        assert_eq!(data.len() % byte_stride, 0, "must be multiple of stride");
+        // NOTE: This won't panic because `byte_stride` came from `NonZeroU32`
+        data.chunks_mut(byte_stride)
+    }
+}
+
+/// Helper methods for writing to the buffer as RGBA pixel data.
+impl Buffer<'_> {
+    /// Get a mutable reference to the buffer's pixels.
+    ///
+    /// The size of the returned slice is `buffer.byte_stride() * buffer.height() / 4`.
+    ///
+    /// # Examples
+    ///
+    /// Clear the buffer with red.
+    ///
+    /// ```no_run
+    /// # use softbuffer::{Buffer, Pixel};
+    /// # let buffer: Buffer<'_> = unimplemented!();
+    /// buffer.pixels().fill(Pixel::new_rgb(0xff, 0x00, 0x00));
     /// ```
     pub fn pixels(&mut self) -> &mut [Pixel] {
         self.buffer_impl.pixels_mut()
