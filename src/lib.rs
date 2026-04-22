@@ -481,7 +481,7 @@ impl Buffer<'_> {
     ///     }
     /// }
     ///
-    /// buffer.present();
+    /// buffer.present().unwrap();
     /// ```
     pub fn pixels(&mut self) -> &mut [Pixel] {
         self.buffer_impl.pixels_mut()
@@ -635,6 +635,50 @@ pub enum AlphaMode {
     ///
     /// - Android, macOS/iOS, DRM/KMS, Orbital, Wayland, Windows, X11: Supported.
     /// - Web: Cannot be supported in a zero-copy manner.
+    ///
+    /// # Example
+    ///
+    /// Write to the buffer as-if it had [`AlphaMode::Ignored`], and convert afterwards if
+    /// necessary (in case the buffer only supports `AlphaMode::Opaque`).
+    ///
+    /// ```no_run
+    /// use softbuffer::{AlphaMode, Pixel};
+    ///
+    /// # let surface: softbuffer::Surface<
+    /// #     std::sync::Arc<dyn raw_window_handle::HasDisplayHandle>,
+    /// #     std::sync::Arc<dyn raw_window_handle::HasWindowHandle>,
+    /// # > = todo!();
+    /// # let width = std::num::NonZero::new(1).unwrap();
+    /// # let height = std::num::NonZero::new(1).unwrap();
+    ///
+    /// // At startup:
+    /// if surface.supports_alpha_mode(AlphaMode::Ignored) {
+    ///     surface.configure(width, height, AlphaMode::Ignored).unwrap();
+    /// } else {
+    ///     surface.configure(width, height, AlphaMode::Opaque).unwrap();
+    /// }
+    ///
+    /// // Each draw:
+    /// let buffer = surface.next_buffer().unwrap();
+    ///
+    /// for row in buffer.pixel_rows() {
+    ///     for pixel in row {
+    ///         // Write red pixels with an arbitrary alpha value.
+    ///         *pixel = Pixel::new_rgba(0xff, 0x00, 0x00, 0x7f);
+    ///     }
+    /// }
+    ///
+    /// // Convert the alpha mode of the buffer in place.
+    /// if buffer.alpha_mode() == AlphaMode::Opaque {
+    ///     for pixel in buffer.pixels() {
+    ///         // TODO: SIMD-optimize this somehow? Or maybe autovectorization is good enough?
+    ///         pixel.a = 0xff;
+    ///     }
+    /// }
+    ///
+    /// // Alpha value is ignored, either by compositor or by us above.
+    /// buffer.present().unwrap();
+    /// ```
     Ignored,
     /// The non-alpha channels are expected to already have been multiplied by the alpha channel.
     ///
