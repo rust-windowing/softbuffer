@@ -43,8 +43,9 @@
 /// let red = unsafe { core::mem::transmute::<Pixel, [u8; 4]>(red) };
 ///
 /// match PixelFormat::default() {
-///     PixelFormat::Bgra => assert_eq!(red[2], 255),
-///     PixelFormat::Rgba => assert_eq!(red[0], 255),
+///     PixelFormat::Bgra8 => assert_eq!(red[2], 255),
+///     PixelFormat::Rgba8 => assert_eq!(red[0], 255),
+///     format => unimplemented!("unknown default pixel format: {format:?}"),
 /// }
 /// ```
 ///
@@ -58,8 +59,9 @@
 /// let red = unsafe { core::mem::transmute::<Pixel, u32>(red) };
 ///
 /// match PixelFormat::default() {
-///     PixelFormat::Bgra => assert_eq!(red, u32::from_ne_bytes([0x00, 0x00, 0xff, 0xff])),
-///     PixelFormat::Rgba => assert_eq!(red, u32::from_ne_bytes([0xff, 0x00, 0x00, 0xff])),
+///     PixelFormat::Bgra8 => assert_eq!(red, u32::from_ne_bytes([0x00, 0x00, 0xff, 0xff])),
+///     PixelFormat::Rgba8 => assert_eq!(red, u32::from_ne_bytes([0xff, 0x00, 0x00, 0xff])),
+///     format => unimplemented!("unknown default pixel format: {format:?}"),
 /// }
 /// ```
 #[repr(C)]

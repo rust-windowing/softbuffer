@@ -447,7 +447,7 @@ impl Buffer<'_> {
     /// let width = buffer.width().get();
     /// let height = buffer.height().get();
     ///
-    /// if PixelFormat::Rgba.is_default()
+    /// if PixelFormat::Rgba8.is_default()
     ///     && buffer.byte_stride().get() == width * 4
     ///     && buffer.alpha_mode() == AlphaMode::Ignored
     /// {
