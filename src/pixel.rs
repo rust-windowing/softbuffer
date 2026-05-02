@@ -64,6 +64,56 @@
 ///     format => unimplemented!("unknown default pixel format: {format:?}"),
 /// }
 /// ```
+///
+/// Premultiply a pixel. Useful when rendering to buffers with [`AlphaMode::Premultiplied`].
+///
+/// [`AlphaMode::Premultiplied`]: crate::AlphaMode::Premultiplied
+///
+/// ```
+/// use softbuffer::Pixel;
+///
+/// #[inline]
+/// fn premultiply(val: u8, alpha: u8) -> u8 {
+///     ((val as u16 * alpha as u16) / 0xff) as u8
+/// }
+///
+/// let pixel = Pixel::new_rgba(0, 128, 255, 50);
+/// let premultiplied_pixe = Pixel {
+///     r: premultiply(pixel.r, pixel.a),
+///     g: premultiply(pixel.g, pixel.a),
+///     b: premultiply(pixel.b, pixel.a),
+///     a: pixel.a,
+/// };
+/// assert_eq!(premultiplied_pixe, Pixel::new_rgba(0, 25, 50, 50));
+/// ```
+///
+/// Un-premultiply a pixel.
+///
+/// ```
+/// use softbuffer::Pixel;
+///
+/// #[inline]
+/// fn unpremultiply(val: u8, alpha: u8) -> u8 {
+///     // Avoid division by 0.
+///     if alpha == 0 {
+///         return 0; // Or 255 depending on how you want to handle transparent pixels.
+///     }
+///
+///     let x = (val as u16 * u8::MAX as u16) + (alpha as u16 / 2); // Rounding.
+///
+///     // NOTE: Would possibly be faster with a lookup table for `alpha` reciprocals.
+///     (x / alpha as u16).min(u8::MAX as u16) as u8
+/// }
+///
+/// let pixel = Pixel::new_rgba(25, 50, 100, 50);
+/// let unpremultiplied_pixe = Pixel {
+///     r: unpremultiply(pixel.r, pixel.a),
+///     g: unpremultiply(pixel.g, pixel.a),
+///     b: unpremultiply(pixel.b, pixel.a),
+///     a: pixel.a,
+/// };
+/// assert_eq!(unpremultiplied_pixe, Pixel::new_rgba(128, 255, 255, 50));
+/// ```
 #[repr(C)]
 #[repr(align(4))] // Help the compiler to see that this is a u32
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
