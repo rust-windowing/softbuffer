@@ -511,8 +511,8 @@ impl BufferInterface for BufferImpl<'_> {
                             let src_y = util::to_u16_saturating(rect.y);
                             let dst_x = util::to_i16_saturating(rect.x);
                             let dst_y = util::to_i16_saturating(rect.y);
-                            let width = util::to_u16_saturating(rect.width.get());
-                            let height = util::to_u16_saturating(rect.height.get());
+                            let width = util::to_u16_saturating(rect.width);
+                            let height = util::to_u16_saturating(rect.height);
 
                             self.connection
                                 .shm_put_image(
