@@ -267,29 +267,31 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             height,
             kCVPixelFormatType_32BGRA,
             4,
-            &color_space,
             write_combine_cache,
         );
+        // This is triple-buffered because that's what QuartzCore / the compositor seems to require:
+        // - The front buffer is what's currently assigned to `CALayer.contents`, and was submitted
+        //   to the compositor in the previous iteration of the run loop.
+        // - The middle buffer is what the compositor is currently drawing from (assuming a 1 frame
+        //   delay).
+        // - The back buffer is what we'll be drawing into.
+        //
+        // TODO: Would it ever make sense to control this so it's just double-buffered?
+        let buffers = vec![
+            Buffer::new(&properties),
+            Buffer::new(&properties),
+            Buffer::new(&properties),
+        ];
+        for buffer in &buffers {
+            buffer.set_color_space(&color_space);
+        }
 
         Ok(Self {
             layer: SendCALayer(layer),
             root_layer: SendCALayer(root_layer),
             observer,
             color_space,
-            // This is triple-buffered because that's what QuartzCore / the compositor seems to
-            // require:
-            // - The front buffer is what's currently assigned to `CALayer.contents`, and was
-            //   submitted to the compositor in the previous iteration of the run loop.
-            // - The middle buffer is what the compositor is currently drawing from (assuming a 1
-            //   frame delay).
-            // - The back buffer is what we'll be drawing into.
-            //
-            // TODO: Would it ever make sense to control this so it's just double-buffered?
-            buffers: vec![
-                Buffer::new(&properties),
-                Buffer::new(&properties),
-                Buffer::new(&properties),
-            ],
+            buffers,
             width,
             height,
             _display: PhantomData,
@@ -340,7 +342,6 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             height,
             kCVPixelFormatType_32BGRA,
             4,
-            &self.color_space,
             false, // write_combine_cache
         );
         self.buffers = vec![
@@ -348,6 +349,9 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             Buffer::new(&properties),
             Buffer::new(&properties),
         ];
+        for buffer in &self.buffers {
+            buffer.set_color_space(&self.color_space);
+        }
         self.width = width;
         self.height = height;
 
@@ -375,10 +379,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
                 self.height,
                 kCVPixelFormatType_32BGRA,
                 4,
-                &self.color_space,
                 write_combine_cache,
             );
-            self.buffers.push(Buffer::new(&properties));
+            let buffer = Buffer::new(&properties);
+            buffer.set_color_space(&self.color_space);
+            self.buffers.push(buffer);
             // This should have no effect on latency, but it will affect the `buffer.age()` that
             // users see, and unbounded allocation is undesirable too, so we should try to avoid it.
             tracing::warn!("had to allocate extra buffer in `next_buffer`, you might be rendering faster than the display rate?");
@@ -516,12 +521,15 @@ impl Buffer {
         Self { surface, age: 0 }
     }
 
+    /// Get properties used when creating the buffer.
+    ///
+    /// NOTE: "Properties" are distinct from "values"; the former is immutable and can only be set
+    /// upon creation, while the latter can be changed (with `IOSurfaceSetValue`).
     fn properties(
         width: u32,
         height: u32,
         pixel_format: u32,
         bytes_per_pixel: u32,
-        color_space: &CGColorSpace,
         write_combine_cache: bool,
     ) -> CFRetained<CFMutableDictionary<CFString, CFType>> {
         let properties = CFMutableDictionary::<CFString, CFType>::empty();
@@ -553,15 +561,6 @@ impl Buffer {
             &CFNumber::new_i32(bytes_per_pixel as i32),
         );
 
-        // TODO: Doesn't seem to do anything?
-        properties.add(
-            unsafe { kIOSurfaceColorSpace },
-            &*color_space.property_list().unwrap(),
-        );
-
-        // We probably don't need to set `kIOSurfaceICCProfile`, the color space information set
-        // above should contain this.
-
         // Be a bit more strict about usage of the surface in debug mode.
         #[cfg(debug_assertions)]
         properties.add(
@@ -578,6 +577,29 @@ impl Buffer {
 
         properties
     }
+
+    /// Change the color space of the buffer.
+    ///
+    /// Defaults to the color space that the layer is currently on (so usually not what you want).
+    fn set_color_space(&self, color_space: &CGColorSpace) {
+        // This is a "value" we can change at runtime, not a "property" that is fixed at creation.
+        unsafe {
+            self.surface
+                .set_value(kIOSurfaceColorSpace, &*color_space.property_list().unwrap())
+        }
+
+        // Other valid values are:
+        // - `kIOSurfaceName`
+        // - `kIOSurfaceICCProfile`
+        // - `kIOSurfaceContentHeadroom`
+        //
+        // We probably don't need to ever set `kIOSurfaceICCProfile`, the color space information
+        // set above should contain this.
+        //
+        // But the other two could be interesting.
+    }
+
+    // Another
 
     // The compositor shouldn't be writing to our surface, let's ensure that with this flag.
     const LOCK_OPTIONS: IOSurfaceLockOptions = IOSurfaceLockOptions::AvoidSync;
