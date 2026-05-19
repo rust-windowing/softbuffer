@@ -40,7 +40,7 @@ use x11rb::xcb_ffi::XCBConnection;
 #[derive(Debug)]
 pub struct X11DisplayImpl<D: ?Sized> {
     /// The handle to the XCB connection.
-    connection: Option<XCBConnection>,
+    connection: XCBConnection,
 
     /// SHM extension is available.
     is_shm_available: bool,
@@ -53,7 +53,11 @@ pub struct X11DisplayImpl<D: ?Sized> {
     /// Without `&mut`, the underlying connection cannot be closed without other unsafe behavior.
     /// With `&mut`, the connection can be dropped without us knowing about it. Therefore, we
     /// cannot provide `&mut` access to this field.
+    ///
+    /// This has to be dropped *after* the `conn` field. This is done by placing this field last:
+    /// <https://doc.rust-lang.org/std/ops/trait.Drop.html#drop-order>
     _display: D,
+    // NO FIELDS AFTER THIS!
 }
 
 impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<X11DisplayImpl<D>> {
@@ -110,7 +114,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<X11DisplayImpl<D>
         let supported_visuals = supported_visuals(&connection);
 
         Ok(Arc::new(X11DisplayImpl {
-            connection: Some(connection),
+            connection,
             is_shm_available,
             supported_visuals,
             _display: display,
@@ -118,20 +122,9 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<X11DisplayImpl<D>
     }
 }
 
-impl<D: ?Sized> X11DisplayImpl<D> {
-    fn connection(&self) -> &XCBConnection {
-        self.connection
-            .as_ref()
-            .expect("X11DisplayImpl::connection() called after X11DisplayImpl::drop()")
-    }
-}
-
 /// The handle to an X11 drawing context.
 #[derive(Debug)]
-pub struct X11Impl<D: ?Sized, W: ?Sized> {
-    /// X display this window belongs to.
-    display: Arc<X11DisplayImpl<D>>,
-
+pub struct X11Impl<D: ?Sized, W> {
     /// The window to draw to.
     window: xproto::Window,
 
@@ -154,7 +147,13 @@ pub struct X11Impl<D: ?Sized, W: ?Sized> {
     size: Option<(NonZeroU16, NonZeroU16)>,
 
     /// Keep the window alive.
+    /// NOTE: Drop this second-to-last!
     window_handle: W,
+
+    /// X display this window belongs to.
+    /// NOTE: Drop this last!
+    display: Arc<X11DisplayImpl<D>>,
+    // NO FIELDS AFTER THIS!
 }
 
 /// The buffer that is being drawn to.
@@ -219,13 +218,13 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         let display2 = display.clone();
         let tokens = {
             let geometry_token = display2
-                .connection()
+                .connection
                 .get_geometry(window)
                 .swbuf_err("Failed to send geometry request")?;
             let window_attrs_token = if window_handle.visual_id.is_none() {
                 Some(
                     display2
-                        .connection()
+                        .connection
                         .get_window_attributes(window)
                         .swbuf_err("Failed to send window attributes request")?,
                 )
@@ -238,11 +237,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
 
         // Create a new graphics context to draw to.
         let gc = display
-            .connection()
+            .connection
             .generate_id()
             .swbuf_err("Failed to generate GC ID")?;
         display
-            .connection()
+            .connection
             .create_gc(
                 gc,
                 window,
@@ -344,7 +343,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         if self.size != Some((width, height)) {
             self.buffer_presented = false;
             self.buffer
-                .resize(self.display.connection(), num_bytes)
+                .resize(&self.display.connection, num_bytes)
                 .swbuf_err("Failed to resize X11 buffer")?;
 
             // We successfully resized the buffer.
@@ -358,11 +357,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         tracing::trace!("next_buffer: window={:X}", self.window);
 
         // Finish waiting on the previous `shm::PutImage` request, if any.
-        self.buffer.finish_wait(self.display.connection())?;
+        self.buffer.finish_wait(&self.display.connection)?;
 
         // We can now safely call `next_buffer` on the buffer.
         Ok(BufferImpl {
-            connection: self.display.connection(),
+            connection: &self.display.connection,
             window: self.window,
             gc: self.gc,
             depth: self.depth,
@@ -382,7 +381,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         // TODO: Is it worth it to do SHM here? Probably not.
         let reply = self
             .display
-            .connection()
+            .connection
             .get_image(
                 xproto::ImageFormat::Z_PIXMAP,
                 self.window,
@@ -775,14 +774,7 @@ impl Drop for ShmSegment {
     }
 }
 
-impl<D: ?Sized> Drop for X11DisplayImpl<D> {
-    fn drop(&mut self) {
-        // Make sure that the x11rb connection is dropped before its source is.
-        self.connection = None;
-    }
-}
-
-impl<D: ?Sized, W: ?Sized> Drop for X11Impl<D, W> {
+impl<D: ?Sized, W> Drop for X11Impl<D, W> {
     fn drop(&mut self) {
         // If we used SHM, make sure it's detached from the server.
         if let Buffer::Shm(mut shm) = mem::replace(
@@ -790,10 +782,10 @@ impl<D: ?Sized, W: ?Sized> Drop for X11Impl<D, W> {
             Buffer::Wire(util::PixelBuffer(Vec::new())),
         ) {
             // If we were in the middle of processing a buffer, wait for it to finish.
-            shm.finish_wait(self.display.connection()).ok();
+            shm.finish_wait(&self.display.connection).ok();
 
             if let Some((segment, seg_id)) = shm.seg.take() {
-                if let Ok(token) = self.display.connection().shm_detach(seg_id) {
+                if let Ok(token) = self.display.connection.shm_detach(seg_id) {
                     token.ignore_error();
                 }
 
@@ -803,7 +795,7 @@ impl<D: ?Sized, W: ?Sized> Drop for X11Impl<D, W> {
         }
 
         // Close the graphics context that we created.
-        if let Ok(token) = self.display.connection().free_gc(self.gc) {
+        if let Ok(token) = self.display.connection.free_gc(self.gc) {
             token.ignore_error();
         }
     }
