@@ -368,8 +368,8 @@ impl BufferInterface for BufferImpl<'_> {
                     0.0,
                     rect.x.into(),
                     rect.y.into(),
-                    rect.width.get().into(),
-                    rect.height.get().into(),
+                    rect.width.into(),
+                    rect.height.into(),
                 )
                 .unwrap();
         }
