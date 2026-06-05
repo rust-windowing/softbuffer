@@ -110,7 +110,9 @@ impl WaylandBuffer {
             util::byte_stride(width as u32) as i32,
             format,
             qh,
-            released.clone(),
+            WlBufferData {
+                released: released.clone(),
+            },
         );
 
         Self {
@@ -151,7 +153,9 @@ impl WaylandBuffer {
                 util::byte_stride(width as u32) as i32,
                 format,
                 &self.qh,
-                self.released.clone(),
+                WlBufferData {
+                    released: self.released.clone(),
+                },
             );
             self.width = width;
             self.height = height;
@@ -189,29 +193,33 @@ impl Drop for WaylandBuffer {
     }
 }
 
-impl Dispatch<wl_shm_pool::WlShmPool, ()> for State {
+impl Dispatch<wl_shm_pool::WlShmPool, State> for () {
     fn event(
+        &self,
         _: &mut State,
         _: &wl_shm_pool::WlShmPool,
         _: wl_shm_pool::Event,
-        _: &(),
         _: &Connection,
         _: &QueueHandle<State>,
     ) {
     }
 }
 
-impl Dispatch<wl_buffer::WlBuffer, Arc<AtomicBool>> for State {
+struct WlBufferData {
+    released: Arc<AtomicBool>,
+}
+
+impl Dispatch<wl_buffer::WlBuffer, State> for WlBufferData {
     fn event(
+        &self,
         _: &mut State,
         _: &wl_buffer::WlBuffer,
         event: wl_buffer::Event,
-        released: &Arc<AtomicBool>,
         _: &Connection,
         _: &QueueHandle<State>,
     ) {
         if let wl_buffer::Event::Release = event {
-            released.store(true, Ordering::SeqCst);
+            self.released.store(true, Ordering::SeqCst);
         }
     }
 }

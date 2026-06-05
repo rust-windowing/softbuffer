@@ -10,8 +10,8 @@ use std::{
 };
 use wayland_client::{
     backend::{Backend, ObjectId},
-    globals::{registry_queue_init, GlobalListContents},
-    protocol::{wl_registry, wl_shm, wl_surface},
+    globals::{registry_queue_init, GlobalListHandler},
+    protocol::{wl_shm, wl_surface},
     Connection, Dispatch, EventQueue, Proxy, QueueHandle,
 };
 
@@ -310,25 +310,16 @@ impl BufferInterface for BufferImpl<'_> {
     }
 }
 
-impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
-    fn event(
-        _: &mut State,
-        _: &wl_registry::WlRegistry,
-        _: wl_registry::Event,
-        _: &GlobalListContents,
-        _: &Connection,
-        _: &QueueHandle<State>,
-    ) {
-        // Ignore globals added after initialization
-    }
+impl GlobalListHandler for State {
+    // Ignore globals added after initialization
 }
 
-impl Dispatch<wl_shm::WlShm, ()> for State {
+impl Dispatch<wl_shm::WlShm, State> for () {
     fn event(
+        &self,
         _: &mut State,
         _: &wl_shm::WlShm,
         _: wl_shm::Event,
-        _: &(),
         _: &Connection,
         _: &QueueHandle<State>,
     ) {
