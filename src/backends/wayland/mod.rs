@@ -52,7 +52,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<WaylandDisplayImp
             registry_queue_init(&conn).swbuf_err("Failed to make round trip to server")?;
         let qh = event_queue.handle();
         let shm: wl_shm::WlShm = globals
-            .bind(&qh, 1..=1, ())
+            .bind_singleton(&qh, 1..=1, ())
             .swbuf_err("Failed to instantiate Wayland Shm")?;
 
         // If `wl_fixes` is supported, destroy registry using it.
