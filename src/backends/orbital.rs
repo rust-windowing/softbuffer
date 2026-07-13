@@ -194,7 +194,7 @@ impl BufferInterface for BufferImpl<'_> {
         match self.pixels {
             Pixels::Mapping(mapping) => {
                 drop(mapping);
-                syscall::fsync(self.window_fd).expect("failed to sync orbital window");
+                libredox::call::fsync(self.window_fd).expect("failed to sync orbital window");
                 *self.presented = true;
             }
             Pixels::Buffer(buffer) => {
@@ -212,7 +212,7 @@ fn window_size(window_fd: usize) -> (usize, usize) {
     let mut window_height = 0;
 
     let mut buf: [u8; 4096] = [0; 4096];
-    let count = syscall::fpath(window_fd, &mut buf).unwrap();
+    let count = libredox::call::fpath(window_fd, &mut buf).unwrap();
     let path = str::from_utf8(&buf[..count]).unwrap();
     // orbital:/x/y/w/h/t
     let mut parts = path.split('/').skip(3);
@@ -237,7 +237,7 @@ fn set_buffer(
     let (window_width, window_height) = window_size(window_fd);
 
     let Some(urect) = util::union_damage(damage) else {
-        syscall::fsync(window_fd).expect("failed to sync orbital window");
+        libredox::call::fsync(window_fd).expect("failed to sync orbital window");
         return;
     };
 
@@ -272,5 +272,5 @@ fn set_buffer(
     };
 
     // Tell orbital to show the latest window data
-    syscall::write(window_fd, damage_buf.as_bytes()).expect("failed to sync orbital window");
+    libredox::call::write(window_fd, damage_buf.as_bytes()).expect("failed to sync orbital window");
 }
