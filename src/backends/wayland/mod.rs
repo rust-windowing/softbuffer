@@ -46,7 +46,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<WaylandDisplayImp
             return Err(InitError::Unsupported(display));
         };
 
-        let backend = unsafe { Backend::from_foreign_display(w.display.as_ptr().cast()) };
+        let backend = unsafe { Backend::from_foreign_display(w.display.cast()) };
         let conn = Connection::from_backend(backend);
         let (globals, event_queue) =
             registry_queue_init(&conn).swbuf_err("Failed to make round trip to server")?;
@@ -113,7 +113,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         let surface_id = unsafe {
             ObjectId::from_ptr(
                 wl_surface::WlSurface::interface(),
-                w.surface.as_ptr().cast(),
+                w.surface.cast(),
             )
         }
         .swbuf_err("Failed to create proxy for surface ID.")?;
