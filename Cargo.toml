@@ -140,7 +140,6 @@ web-sys = { version = "0.3.55", features = [
 
 # Orbital dependencies.
 [target.'cfg(target_os = "redox")'.dependencies]
-redox_syscall = "0.9"
 libredox = "0.1.18"
 
 [package.metadata.docs.rs]

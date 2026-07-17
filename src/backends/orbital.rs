@@ -13,22 +13,24 @@ struct OrbitalMap {
 }
 
 impl OrbitalMap {
-    unsafe fn new(fd: usize, size_unaligned: usize) -> syscall::Result<Self> {
+    unsafe fn new(fd: usize, size_unaligned: usize) -> std::io::Result<Self> {
+        // from redox_syscall
+        const PAGE_SIZE: usize = 4096;
         // Page align size
-        let pages = (size_unaligned + syscall::PAGE_SIZE - 1) / syscall::PAGE_SIZE;
-        let size = pages * syscall::PAGE_SIZE;
+        let pages = (size_unaligned + PAGE_SIZE - 1) / PAGE_SIZE;
+        let size = pages * PAGE_SIZE;
 
         // Map window buffer
         let address = unsafe {
-            syscall::fmap(
+            libredox::call::mmap(libredox::call::MmapArgs {
+                addr: core::ptr::null_mut(),
+                length: size,
+                prot: libredox::flag::PROT_READ | libredox::flag::PROT_WRITE,
+                flags: libredox::flag::MAP_SHARED,
                 fd,
-                &syscall::Map {
-                    offset: 0,
-                    size,
-                    flags: syscall::PROT_READ | syscall::PROT_WRITE | syscall::MAP_SHARED,
-                    address: 0,
-                },
-            )?
+                offset: 0,
+            })?
+            .addr()
         };
 
         Ok(Self {
@@ -47,7 +49,8 @@ impl Drop for OrbitalMap {
     fn drop(&mut self) {
         unsafe {
             // Unmap window buffer on drop
-            syscall::funmap(self.address, self.size).expect("failed to unmap orbital window");
+            libredox::call::munmap(self.address as _, self.size)
+                .expect("failed to unmap orbital window");
         }
     }
 }
