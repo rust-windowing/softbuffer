@@ -10,8 +10,8 @@ use std::{
 };
 use wayland_client::{
     backend::{Backend, ObjectId},
-    globals::{registry_queue_init, GlobalListContents},
-    protocol::{wl_registry, wl_shm, wl_surface},
+    globals::{registry_queue_init, GlobalListHandler},
+    protocol::{wl_shm, wl_surface},
     Connection, Dispatch, EventQueue, Proxy, QueueHandle,
 };
 
@@ -46,13 +46,13 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<WaylandDisplayImp
             return Err(InitError::Unsupported(display));
         };
 
-        let backend = unsafe { Backend::from_foreign_display(w.display.as_ptr().cast()) };
+        let backend = unsafe { Backend::from_foreign_display(w.display.cast()) };
         let conn = Connection::from_backend(backend);
         let (globals, event_queue) =
             registry_queue_init(&conn).swbuf_err("Failed to make round trip to server")?;
         let qh = event_queue.handle();
         let shm: wl_shm::WlShm = globals
-            .bind(&qh, 1..=1, ())
+            .bind_singleton(&qh, 1..=1, ())
             .swbuf_err("Failed to instantiate Wayland Shm")?;
 
         // If `wl_fixes` is supported, destroy registry using it.
@@ -113,7 +113,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W>
         let surface_id = unsafe {
             ObjectId::from_ptr(
                 wl_surface::WlSurface::interface(),
-                w.surface.as_ptr().cast(),
+                w.surface.cast(),
             )
         }
         .swbuf_err("Failed to create proxy for surface ID.")?;
@@ -310,25 +310,16 @@ impl BufferInterface for BufferImpl<'_> {
     }
 }
 
-impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
-    fn event(
-        _: &mut State,
-        _: &wl_registry::WlRegistry,
-        _: wl_registry::Event,
-        _: &GlobalListContents,
-        _: &Connection,
-        _: &QueueHandle<State>,
-    ) {
-        // Ignore globals added after initialization
-    }
+impl GlobalListHandler for State {
+    // Ignore globals added after initialization
 }
 
-impl Dispatch<wl_shm::WlShm, ()> for State {
+impl Dispatch<wl_shm::WlShm, State> for () {
     fn event(
+        &self,
         _: &mut State,
         _: &wl_shm::WlShm,
         _: wl_shm::Event,
-        _: &(),
         _: &Connection,
         _: &QueueHandle<State>,
     ) {
