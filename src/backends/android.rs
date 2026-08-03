@@ -134,9 +134,6 @@ pub struct BufferImpl<'surface> {
     buffer: util::PixelBuffer,
 }
 
-// TODO: Move to NativeWindowBufferLockGuard?
-unsafe impl Send for BufferImpl<'_> {}
-
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
         NonZeroU32::new(self.native_window_buffer.stride() as u32 * 4).unwrap()

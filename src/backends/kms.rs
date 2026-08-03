@@ -429,7 +429,7 @@ impl SharedBuffer {
         let (width, height) = self.db.size();
 
         NonZeroU32::new(width)
-            .and_then(|width| NonZeroU32::new(height).map(|height| (width, height)))
+            .zip(NonZeroU32::new(height))
             .expect("buffer size is zero")
     }
 }

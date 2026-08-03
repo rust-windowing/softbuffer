@@ -17,6 +17,7 @@ mod util;
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
@@ -294,7 +295,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> HasWindowHandle for Surface<D, W> 
 pub struct Buffer<'surface> {
     buffer_impl: BufferDispatch<'surface>,
     alpha_mode: AlphaMode,
-    _marker: PhantomData<Cell<()>>,
+    _marker: PhantomData<Rc<()>>,
 }
 
 impl Buffer<'_> {
@@ -840,7 +841,6 @@ fn __assert_send() {
     is_send::<Context<()>>();
     is_sync::<Context<()>>();
     is_send::<Surface<(), ()>>();
-    is_send::<Buffer<'static>>();
 
     /// ```compile_fail
     /// use softbuffer::Surface;
@@ -852,8 +852,8 @@ fn __assert_send() {
     /// ```compile_fail
     /// use softbuffer::Buffer;
     ///
-    /// fn __is_sync<T: Sync>() {}
-    /// __is_sync::<Buffer<'static>>();
+    /// fn __is_send<T: Send>() {}
+    /// __is_send::<Buffer<'static>>();
     /// ```
-    fn __buffer_not_sync() {}
+    fn __buffer_not_send() {}
 }
