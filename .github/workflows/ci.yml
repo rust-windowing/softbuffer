@@ -17,7 +17,7 @@ jobs:
         components: rustfmt
     - name: Check Formatting
       run: cargo +stable fmt --all -- --check
-    - uses: taiki-e/install-action@v2
+    - uses: taiki-e/install-action@v2.85.5
       with:
         tool: typos-cli
     - name: Check Formatting
@@ -136,7 +136,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - uses: taiki-e/install-action@v2
+    - uses: taiki-e/install-action@v2.85.5
       if: matrix.platform.target == 'wasm32-unknown-unknown'
       with:
         tool: wasm-bindgen-cli
