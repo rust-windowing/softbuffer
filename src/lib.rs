@@ -376,6 +376,13 @@ impl Buffer<'_> {
     /// - Web
     ///
     /// Otherwise this is equivalent to [`Self::present`].
+    ///
+    /// ## Win32
+    ///
+    /// Parts of the window that the system asked to repaint, for example after the window was
+    /// restored from minimized, are presented from the buffer along with `damage` while that
+    /// request is still pending. To have them repainted when nothing else changed, present with
+    /// empty `damage` while handling the request (winit's `RedrawRequested`).
     pub fn present_with_damage(mut self, damage: &[Rect]) -> Result<(), SoftBufferError> {
         // Verify that pixels are set as opaque if the alpha mode requires it.
         if cfg!(debug_assertions) && self.alpha_mode == AlphaMode::Opaque {
