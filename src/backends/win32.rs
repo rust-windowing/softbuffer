@@ -15,7 +15,7 @@ use std::slice;
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
 
-use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Foundation::{HWND, RECT};
 use windows_sys::Win32::Graphics::Gdi;
 use windows_sys::Win32::UI::ColorSystem::LCS_WINDOWS_COLOR_SPACE;
 
@@ -320,8 +320,9 @@ impl BufferInterface for BufferImpl<'_> {
     }
 
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
+        let invalidated = self.invalidated_rect();
         unsafe {
-            for rect in damage {
+            for rect in damage.iter().chain(&invalidated) {
                 let rect = util::clamp_rect(
                     *rect,
                     self.buffer.width.try_into().unwrap(),
@@ -353,6 +354,40 @@ impl BufferInterface for BufferImpl<'_> {
 
         Ok(())
     }
+}
+
+impl BufferImpl<'_> {
+    /// The part of the window that the system asked to repaint, within the buffer.
+    ///
+    /// Windows discards what a window shows when it is restored from minimized or moved to a
+    /// screen with another scale factor. The buffer still holds the last frame there, so it is
+    /// presented along with the damage instead of being validated away unpainted.
+    fn invalidated_rect(&self) -> Option<Rect> {
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if unsafe { Gdi::GetUpdateRect(self.window.0, &mut rect, false.into()) } == 0 {
+            return None;
+        }
+        clip_to_buffer(rect, self.buffer.width, self.buffer.height)
+    }
+}
+
+/// The part of `rect` that lies within a buffer of the given size, if any.
+fn clip_to_buffer(rect: RECT, width: NonZeroI32, height: NonZeroI32) -> Option<Rect> {
+    let left = rect.left.max(0);
+    let top = rect.top.max(0);
+    let right = rect.right.min(width.get());
+    let bottom = rect.bottom.min(height.get());
+    Some(Rect {
+        x: u32::try_from(left).ok()?,
+        y: u32::try_from(top).ok()?,
+        width: NonZeroU32::new(u32::try_from(right.saturating_sub(left)).ok()?)?,
+        height: NonZeroU32::new(u32::try_from(bottom.saturating_sub(top)).ok()?)?,
+    })
 }
 
 /// Allocator for device contexts.
@@ -512,4 +547,83 @@ fn byte_stride(width: u32, bit_count: u32) -> u32 {
     // <https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader#calculating-surface-stride>
     // When `bit_count == 32`, this is always just equal to `width * 4`.
     ((width * bit_count + 31) & !31) >> 3
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WIDTH: i32 = 800;
+    const HEIGHT: i32 = 600;
+
+    fn clip(left: i32, top: i32, right: i32, bottom: i32) -> Option<(u32, u32, u32, u32)> {
+        let rect = RECT {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        let width = NonZeroI32::new(WIDTH).unwrap();
+        let height = NonZeroI32::new(HEIGHT).unwrap();
+        clip_to_buffer(rect, width, height)
+            .map(|rect| (rect.x, rect.y, rect.width.get(), rect.height.get()))
+    }
+
+    #[test]
+    fn rect_inside_the_buffer_is_kept() {
+        assert_eq!(clip(10, 20, 110, 70), Some((10, 20, 100, 50)));
+    }
+
+    #[test]
+    fn rect_covering_exactly_the_buffer_is_kept() {
+        assert_eq!(clip(0, 0, WIDTH, HEIGHT), Some((0, 0, 800, 600)));
+    }
+
+    #[test]
+    fn one_pixel_rects_in_the_corners_are_kept() {
+        assert_eq!(clip(0, 0, 1, 1), Some((0, 0, 1, 1)));
+        assert_eq!(
+            clip(WIDTH - 1, HEIGHT - 1, WIDTH, HEIGHT),
+            Some((799, 599, 1, 1))
+        );
+    }
+
+    #[test]
+    fn rect_larger_than_the_buffer_is_clipped_to_it() {
+        assert_eq!(clip(0, 0, 1000, 900), Some((0, 0, 800, 600)));
+        assert_eq!(clip(-50, -50, 1000, 900), Some((0, 0, 800, 600)));
+    }
+
+    #[test]
+    fn rect_crossing_an_edge_is_clipped_to_the_buffer() {
+        assert_eq!(clip(700, 500, 900, 700), Some((700, 500, 100, 100)));
+        assert_eq!(clip(-10, -20, 30, 40), Some((0, 0, 30, 40)));
+    }
+
+    #[test]
+    fn rect_outside_the_buffer_is_dropped() {
+        assert_eq!(clip(WIDTH, 0, WIDTH + 10, 10), None);
+        assert_eq!(clip(0, HEIGHT, 10, HEIGHT + 10), None);
+        assert_eq!(clip(-20, 0, 0, 10), None);
+        assert_eq!(clip(0, -20, 10, 0), None);
+        assert_eq!(clip(900, 700, 1000, 800), None);
+    }
+
+    #[test]
+    fn empty_or_inverted_rect_is_dropped() {
+        assert_eq!(clip(10, 10, 10, 50), None);
+        assert_eq!(clip(10, 10, 50, 10), None);
+        assert_eq!(clip(50, 50, 10, 10), None);
+    }
+
+    #[test]
+    fn extreme_coordinates_do_not_overflow() {
+        assert_eq!(
+            clip(i32::MIN, i32::MIN, i32::MAX, i32::MAX),
+            Some((0, 0, 800, 600))
+        );
+        assert_eq!(clip(i32::MAX, i32::MAX, i32::MIN, i32::MIN), None);
+        assert_eq!(clip(i32::MIN, i32::MIN, i32::MIN, i32::MIN), None);
+        assert_eq!(clip(i32::MAX, i32::MAX, i32::MAX, i32::MAX), None);
+    }
 }
