@@ -140,7 +140,7 @@ web-sys = { version = "0.3.55", features = [
 
 # Orbital dependencies.
 [target.'cfg(target_os = "redox")'.dependencies]
-libredox = "0.1.18"
+libredox = "0.2.0"
 
 [package.metadata.docs.rs]
 all-features = true
