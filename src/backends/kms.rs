@@ -70,7 +70,7 @@ impl<D: HasDisplayHandle + ?Sized> ContextInterface<D> for Arc<KmsDisplayImpl<D>
 
 /// All the necessary types for the Drm/Kms backend.
 #[derive(Debug)]
-pub(crate) struct KmsImpl<D: ?Sized, W: ?Sized> {
+struct KmsResources<D: ?Sized> {
     /// The display implementation.
     display: Arc<KmsDisplayImpl<D>>,
 
@@ -82,6 +82,13 @@ pub(crate) struct KmsImpl<D: ?Sized, W: ?Sized> {
 
     /// The dumb buffer we're using as a buffer.
     buffer: Option<Buffers>,
+}
+
+/// Drm/Kms backend resources and the window handle.
+#[derive(Debug)]
+pub(crate) struct KmsImpl<D: ?Sized, W: ?Sized> {
+    /// Resources necessary for the Drm/Kms backend.
+    resources: KmsResources<D>,
 
     /// Window handle that we are keeping around.
     window_handle: W,
@@ -211,11 +218,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             .map(|info| info.handle())
             .collect::<Vec<_>>();
 
-        Ok(Self {
+        let resources = KmsResources {
             crtc,
             connectors,
             display: display.clone(),
             buffer: None,
+        };
+
+        Ok(Self {
+            resources,
             window_handle: window,
         })
     }
@@ -223,6 +234,11 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     #[inline]
     fn window(&self) -> &W {
         &self.window_handle
+    }
+
+    #[inline]
+    fn into_window(self) -> W {
+        self.window_handle
     }
 
     #[inline]
@@ -240,7 +256,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         alpha_mode: AlphaMode,
     ) -> Result<(), SoftBufferError> {
         // Don't resize if we don't have to.
-        if let Some(buffer) = &self.buffer {
+        if let Some(buffer) = &self.resources.buffer {
             let (buffer_width, buffer_height) = buffer.size();
             if buffer_width == width && buffer_height == height {
                 return Ok(());
@@ -254,10 +270,10 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         };
 
         // Create a new buffer set.
-        let front_buffer = SharedBuffer::new(&self.display, width, height, format)?;
-        let back_buffer = SharedBuffer::new(&self.display, width, height, format)?;
+        let front_buffer = SharedBuffer::new(&self.resources.display, width, height, format)?;
+        let back_buffer = SharedBuffer::new(&self.resources.display, width, height, format)?;
 
-        self.buffer = Some(Buffers {
+        self.resources.buffer = Some(Buffers {
             first_is_front: true,
             buffers: [front_buffer, back_buffer],
         });
@@ -274,6 +290,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
     fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         // Map the dumb buffer.
         let set = self
+            .resources
             .buffer
             .as_mut()
             .expect("Must set size of surface before calling `next_buffer()`");
@@ -292,6 +309,7 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
         let back_age = &mut back_buffer.age;
 
         let mapping = self
+            .resources
             .display
             .device
             .map_dumb_buffer(&mut front_buffer.db)
@@ -302,15 +320,15 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             size,
             first_is_front: &mut set.first_is_front,
             front_fb,
-            crtc_handle: self.crtc.handle(),
-            device: self.display.device.clone(),
+            crtc_handle: self.resources.crtc.handle(),
+            device: self.resources.display.device.clone(),
             front_age,
             back_age,
         })
     }
 }
 
-impl<D: ?Sized, W: ?Sized> Drop for KmsImpl<D, W> {
+impl<D: ?Sized> Drop for KmsResources<D> {
     fn drop(&mut self) {
         // Map the CRTC to the information that was there before.
         self.display

@@ -167,6 +167,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for WebImpl
     }
 
     #[inline]
+    fn into_window(self) -> W {
+        self.window_handle
+    }
+
+    #[inline]
     fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
         matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Postmultiplied)
     }

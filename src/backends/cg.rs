@@ -100,7 +100,7 @@ impl Observer {
 }
 
 #[derive(Debug)]
-pub struct CGImpl<D, W> {
+struct CGResources<D> {
     /// Our layer.
     layer: SendCALayer,
     /// The layer that our layer was created from.
@@ -118,11 +118,18 @@ pub struct CGImpl<D, W> {
     width: u32,
     /// The height of the buffer.
     height: u32,
-    window_handle: W,
     _display: PhantomData<D>,
 }
 
-impl<D, W> Drop for CGImpl<D, W> {
+#[derive(Debug)]
+pub struct CGImpl<D, W> {
+    /// Resources needed for the surface.
+    resources: CGResources<D>,
+    /// The window associated with the surface.
+    window_handle: W,
+}
+
+impl<D> Drop for CGResources<D> {
     fn drop(&mut self) {
         // SAFETY: Registered in `new`, must be removed before the observer is deallocated.
         unsafe {
@@ -265,7 +272,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         let width = (size.width * scale_factor) as u32;
         let height = (size.height * scale_factor) as u32;
 
-        Ok(Self {
+        let resources = CGResources {
             layer: SendCALayer(layer),
             root_layer: SendCALayer(root_layer),
             observer,
@@ -274,6 +281,10 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
             width,
             height,
             _display: PhantomData,
+        };
+
+        Ok(Self {
+            resources,
             window_handle: window_src,
         })
     }
@@ -281,6 +292,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
     #[inline]
     fn window(&self) -> &W {
         &self.window_handle
+    }
+
+    #[inline]
+    fn into_window(self) -> W {
+        self.window_handle
     }
 
     #[inline]
@@ -299,36 +315,36 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
         alpha_mode: AlphaMode,
     ) -> Result<(), SoftBufferError> {
         let opaque = matches!(alpha_mode, AlphaMode::Opaque | AlphaMode::Ignored);
-        self.layer.setOpaque(opaque);
+        self.resources.layer.setOpaque(opaque);
         // TODO: Set opaque-ness on root layer too? Is that our responsibility, or Winit's?
-        // self.root_layer.setOpaque(opaque);
+        // self.resources.root_layer.setOpaque(opaque);
 
         let width = width.get();
         let height = height.get();
 
         // TODO: Is this check desirable?
-        if self.width == width && self.height == height {
+        if self.resources.width == width && self.resources.height == height {
             return Ok(());
         }
 
         // Recreate buffer. It's fine to release the old one, `CALayer.contents` is going to keep
         // a reference to it around as long as it's still in use.
-        self.buffer = Buffer::new(width, height);
-        self.width = width;
-        self.height = height;
+        self.resources.buffer = Buffer::new(width, height);
+        self.resources.width = width;
+        self.resources.height = height;
 
         Ok(())
     }
 
     fn next_buffer(&mut self, alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         // Unlocked in `present_with_damage` or the buffer's `Drop`.
-        self.buffer.info().lock();
+        self.resources.buffer.info().lock();
 
         Ok(BufferImpl {
-            buffer: &mut self.buffer,
-            width: self.width,
-            height: self.height,
-            color_space: &self.color_space,
+            buffer: &mut self.resources.buffer,
+            width: self.resources.width,
+            height: self.resources.height,
+            color_space: &self.resources.color_space,
             alpha_info: match (alpha_mode, cfg!(target_endian = "little")) {
                 (AlphaMode::Opaque | AlphaMode::Ignored, true) => CGImageAlphaInfo::NoneSkipFirst,
                 (AlphaMode::Opaque | AlphaMode::Ignored, false) => CGImageAlphaInfo::NoneSkipLast,
@@ -337,7 +353,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for CGImpl<
                 (AlphaMode::Postmultiplied, true) => CGImageAlphaInfo::First,
                 (AlphaMode::Postmultiplied, false) => CGImageAlphaInfo::Last,
             },
-            layer: &mut self.layer,
+            layer: &mut self.resources.layer,
         })
     }
 }

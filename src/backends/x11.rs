@@ -148,7 +148,7 @@ pub struct X11Impl<D: ?Sized, W> {
 
     /// Keep the window alive.
     /// NOTE: Drop this second-to-last!
-    window_handle: W,
+    window_handle: Option<W>,
 
     /// X display this window belongs to.
     /// NOTE: Drop this last!
@@ -301,13 +301,18 @@ impl<D: HasDisplayHandle + ?Sized, W: HasWindowHandle> SurfaceInterface<D, W> fo
             buffer,
             buffer_presented: false,
             size: None,
-            window_handle: window_src,
+            window_handle: Some(window_src),
         })
     }
 
     #[inline]
     fn window(&self) -> &W {
-        &self.window_handle
+        self.window_handle.as_ref().unwrap()
+    }
+
+    #[inline]
+    fn into_window(mut self) -> W {
+        self.window_handle.take().unwrap()
     }
 
     #[inline]
