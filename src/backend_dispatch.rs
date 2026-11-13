@@ -99,6 +99,15 @@ macro_rules! make_dispatch {
                 }
             }
 
+            fn into_window(self) -> W {
+                match self {
+                    $(
+                        $(#[$attr])*
+                        Self::$name(inner) => inner.into_window(),
+                    )*
+                }
+            }
+
             #[inline]
             fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool {
                 match self {

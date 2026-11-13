@@ -26,6 +26,9 @@ pub(crate) trait SurfaceInterface<D: HasDisplayHandle + ?Sized, W: HasWindowHand
     /// Get the inner window handle.
     fn window(&self) -> &W;
 
+    /// Get the inner window handle and drop the surface.
+    fn into_window(self) -> W;
+
     fn supports_alpha_mode(&self, alpha_mode: AlphaMode) -> bool;
 
     /// Reconfigure the internal buffer(s).

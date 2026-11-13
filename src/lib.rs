@@ -118,6 +118,11 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> Surface<D, W> {
         self.surface_impl.window()
     }
 
+    /// Get the underlying window handle and drop the surface.
+    pub fn into_window(self) -> W {
+        self.surface_impl.into_window()
+    }
+
     /// The current alpha mode of the surface.
     #[doc(alias = "transparency")]
     pub fn alpha_mode(&self) -> AlphaMode {

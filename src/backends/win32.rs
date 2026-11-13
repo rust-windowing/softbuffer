@@ -152,9 +152,9 @@ impl Buffer {
     }
 }
 
-/// The handle to a window for software buffering.
+/// Resources for a Win32 surface.
 #[derive(Debug)]
-pub struct Win32Impl<D: ?Sized, W> {
+pub struct Win32Resources<D: ?Sized> {
     /// The window handle.
     window: OnlyUsedFromOrigin<HWND>,
 
@@ -164,18 +164,25 @@ pub struct Win32Impl<D: ?Sized, W> {
     /// The buffer used to hold the image.
     buffer: Option<Buffer>,
 
-    /// The handle for the window.
-    ///
-    /// This should be kept alive in order to keep `window` valid.
-    handle: W,
-
     /// The display handle.
     ///
     /// We don't use this, but other code might.
     _display: PhantomData<D>,
 }
 
-impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
+/// The handle to a window for software buffering.
+#[derive(Debug)]
+pub struct Win32Impl<D: ?Sized, W> {
+    /// Resources needed for the surface Implementation.
+    resources: Win32Resources<D>,
+
+    /// The handle for the window.
+    ///
+    /// This should be kept alive in order to keep `window` valid.
+    window_handle: W,
+}
+
+impl<D: ?Sized> Drop for Win32Resources<D> {
     fn drop(&mut self) {
         // Release our resources.
         Allocator::get().release(self.window.0, self.dc.0);
@@ -217,18 +224,27 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             .into());
         }
 
-        Ok(Self {
+        let resources = Win32Resources {
             dc: dc.into(),
             window: hwnd.into(),
             buffer: None,
-            handle: window,
             _display: PhantomData,
+        };
+
+        Ok(Self {
+            resources,
+            window_handle: window,
         })
     }
 
     #[inline]
     fn window(&self) -> &W {
-        &self.handle
+        &self.window_handle
+    }
+
+    #[inline]
+    fn into_window(self) -> W {
+        self.window_handle
     }
 
     #[inline]
@@ -250,7 +266,7 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
 
-        if let Some(buffer) = self.buffer.as_ref() {
+        if let Some(buffer) = self.resources.buffer.as_ref() {
             if buffer.width == width && buffer.height == height {
                 return Ok(());
             }
@@ -261,20 +277,21 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             AlphaMode::Premultiplied => true,
             AlphaMode::Postmultiplied => unreachable!("unsupported alpha format"),
         };
-        self.buffer = Some(Buffer::new(self.dc.0, width, height, alpha));
+        self.resources.buffer = Some(Buffer::new(self.resources.dc.0, width, height, alpha));
 
         Ok(())
     }
 
     fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
         let buffer = self
+            .resources
             .buffer
             .as_mut()
             .expect("Must set size of surface before calling `next_buffer()`");
 
         Ok(BufferImpl {
-            window: &self.window,
-            dc: &self.dc,
+            window: &self.resources.window,
+            dc: &self.resources.dc,
             buffer,
         })
     }
