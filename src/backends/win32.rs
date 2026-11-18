@@ -1,6 +1,9 @@
 //! Implementation of software buffering for Windows.
 //!
-//! This module converts the input buffer into a bitmap and then stretches it to the window.
+//! Frames are presented through a DXGI swap chain. Where that isn't available, the buffer is a
+//! bitmap that GDI blits to the window.
+
+mod dxgi;
 
 use crate::backend_interface::*;
 use crate::{util, AlphaMode, Pixel, Rect, SoftBufferError};
@@ -158,11 +161,8 @@ pub struct Win32Impl<D: ?Sized, W> {
     /// The window handle.
     window: OnlyUsedFromOrigin<HWND>,
 
-    /// The device context for the window.
-    dc: OnlyUsedFromOrigin<Gdi::HDC>,
-
-    /// The buffer used to hold the image.
-    buffer: Option<Buffer>,
+    /// What presents the frames.
+    presenter: Presenter,
 
     /// The handle for the window.
     ///
@@ -175,7 +175,50 @@ pub struct Win32Impl<D: ?Sized, W> {
     _display: PhantomData<D>,
 }
 
-impl<D: ?Sized, W> Drop for Win32Impl<D, W> {
+#[derive(Debug)]
+enum Presenter {
+    /// A DXGI flip model swap chain, which hands DWM whole frames.
+    Dxgi(dxgi::Presenter),
+
+    /// GDI, where DXGI isn't available.
+    Gdi(GdiPresenter),
+}
+
+#[derive(Debug)]
+struct GdiPresenter {
+    /// The window that the device context belongs to.
+    window: OnlyUsedFromOrigin<HWND>,
+
+    /// The device context for the window.
+    dc: OnlyUsedFromOrigin<Gdi::HDC>,
+
+    /// The buffer used to hold the image.
+    buffer: Option<Buffer>,
+}
+
+impl GdiPresenter {
+    fn new(window: HWND) -> Result<Self, SoftBufferError> {
+        // Get the handle to the device context.
+        // SAFETY: We have confirmed that the window handle is valid.
+        let dc = Allocator::get().get_dc(window);
+
+        // GetDC returns null if there is a platform error.
+        if dc.is_null() {
+            return Err(SoftBufferError::PlatformError(
+                Some("Device Context is null".into()),
+                Some(Box::new(io::Error::last_os_error())),
+            ));
+        }
+
+        Ok(Self {
+            window: window.into(),
+            dc: dc.into(),
+            buffer: None,
+        })
+    }
+}
+
+impl Drop for GdiPresenter {
     fn drop(&mut self) {
         // Release our resources.
         Allocator::get().release(self.window.0, self.dc.0);
@@ -203,24 +246,18 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             return Err(crate::InitError::Unsupported(window));
         };
 
-        // Get the handle to the device context.
-        // SAFETY: We have confirmed that the window handle is valid.
         let hwnd = handle.hwnd.get() as HWND;
-        let dc = Allocator::get().get_dc(hwnd);
-
-        // GetDC returns null if there is a platform error.
-        if dc.is_null() {
-            return Err(SoftBufferError::PlatformError(
-                Some("Device Context is null".into()),
-                Some(Box::new(io::Error::last_os_error())),
-            )
-            .into());
-        }
+        let presenter = match dxgi::Presenter::new(hwnd) {
+            Ok(presenter) => Presenter::Dxgi(presenter),
+            Err(error) => {
+                tracing::warn!("DXGI is not available, presenting with GDI: {error}");
+                Presenter::Gdi(GdiPresenter::new(hwnd)?)
+            }
+        };
 
         Ok(Self {
-            dc: dc.into(),
             window: hwnd.into(),
-            buffer: None,
+            presenter,
             handle: window,
             _display: PhantomData,
         })
@@ -250,7 +287,22 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
         })()
         .ok_or(SoftBufferError::SizeOutOfRange { width, height })?;
 
-        if let Some(buffer) = self.buffer.as_ref() {
+        if let Presenter::Dxgi(presenter) = &mut self.presenter {
+            match presenter.configure(width.try_into().unwrap(), height.try_into().unwrap()) {
+                Ok(()) => return Ok(()),
+                // GDI no longer draws into a window that a flip model swap chain presented to.
+                Err(error) if presenter.presented() => return Err(error),
+                Err(error) => {
+                    tracing::warn!("DXGI failed, presenting with GDI: {error}");
+                    self.presenter = Presenter::Gdi(GdiPresenter::new(self.window.0)?);
+                }
+            }
+        }
+        let Presenter::Gdi(gdi) = &mut self.presenter else {
+            unreachable!("the presenter is GDI")
+        };
+
+        if let Some(buffer) = gdi.buffer.as_ref() {
             if buffer.width == width && buffer.height == height {
                 return Ok(());
             }
@@ -261,21 +313,29 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
             AlphaMode::Premultiplied => true,
             AlphaMode::Postmultiplied => unreachable!("unsupported alpha format"),
         };
-        self.buffer = Some(Buffer::new(self.dc.0, width, height, alpha));
+        gdi.buffer = Some(Buffer::new(gdi.dc.0, width, height, alpha));
 
         Ok(())
     }
 
     fn next_buffer(&mut self, _alpha_mode: AlphaMode) -> Result<BufferImpl<'_>, SoftBufferError> {
-        let buffer = self
-            .buffer
-            .as_mut()
-            .expect("Must set size of surface before calling `next_buffer()`");
+        let target = match &mut self.presenter {
+            Presenter::Dxgi(presenter) => {
+                presenter.map()?;
+                Target::Dxgi(presenter)
+            }
+            Presenter::Gdi(gdi) => Target::Gdi {
+                dc: &gdi.dc,
+                buffer: gdi
+                    .buffer
+                    .as_mut()
+                    .expect("Must set size of surface before calling `next_buffer()`"),
+            },
+        };
 
         Ok(BufferImpl {
             window: &self.window,
-            dc: &self.dc,
-            buffer,
+            target,
         })
     }
 
@@ -288,68 +348,90 @@ impl<D: HasDisplayHandle, W: HasWindowHandle> SurfaceInterface<D, W> for Win32Im
 #[derive(Debug)]
 pub struct BufferImpl<'surface> {
     window: &'surface OnlyUsedFromOrigin<HWND>,
-    dc: &'surface OnlyUsedFromOrigin<Gdi::HDC>,
-    buffer: &'surface mut Buffer,
+    target: Target<'surface>,
+}
+
+#[derive(Debug)]
+enum Target<'surface> {
+    Dxgi(&'surface mut dxgi::Presenter),
+    Gdi {
+        dc: &'surface OnlyUsedFromOrigin<Gdi::HDC>,
+        buffer: &'surface mut Buffer,
+    },
 }
 
 impl BufferInterface for BufferImpl<'_> {
     fn byte_stride(&self) -> NonZeroU32 {
-        let width = self.buffer.width.get() as u32;
-        NonZeroU32::new(byte_stride(width, 32)).unwrap()
+        match &self.target {
+            Target::Dxgi(presenter) => presenter.byte_stride(),
+            Target::Gdi { buffer, .. } => {
+                let width = buffer.width.get() as u32;
+                NonZeroU32::new(byte_stride(width, 32)).unwrap()
+            }
+        }
     }
 
     fn width(&self) -> NonZeroU32 {
-        self.buffer.width.try_into().unwrap()
+        match &self.target {
+            Target::Dxgi(presenter) => presenter.width(),
+            Target::Gdi { buffer, .. } => buffer.width.try_into().unwrap(),
+        }
     }
 
     fn height(&self) -> NonZeroU32 {
-        self.buffer.height.try_into().unwrap()
+        match &self.target {
+            Target::Dxgi(presenter) => presenter.height(),
+            Target::Gdi { buffer, .. } => buffer.height.try_into().unwrap(),
+        }
     }
 
     #[inline]
     fn pixels_mut(&mut self) -> &mut [Pixel] {
-        self.buffer.pixels_mut()
+        match &mut self.target {
+            Target::Dxgi(presenter) => presenter.pixels_mut(),
+            Target::Gdi { buffer, .. } => buffer.pixels_mut(),
+        }
     }
 
     fn age(&self) -> u8 {
-        if self.buffer.presented {
-            1
-        } else {
-            0
+        match &self.target {
+            Target::Dxgi(presenter) => presenter.age(),
+            Target::Gdi { buffer, .. } => {
+                if buffer.presented {
+                    1
+                } else {
+                    0
+                }
+            }
         }
     }
 
     fn present_with_damage(self, damage: &[Rect]) -> Result<(), SoftBufferError> {
-        unsafe {
-            for rect in damage {
-                let rect = util::clamp_rect(
-                    *rect,
-                    self.buffer.width.try_into().unwrap(),
-                    self.buffer.height.try_into().unwrap(),
-                );
-                let x = util::to_i32_saturating(rect.x);
-                let y = util::to_i32_saturating(rect.y);
-                let width = util::to_i32_saturating(rect.width.get());
-                let height = util::to_i32_saturating(rect.height.get());
+        match self.target {
+            Target::Dxgi(presenter) => presenter.present(damage)?,
+            Target::Gdi { dc, buffer } => {
+                for rect in damage {
+                    let rect = util::clamp_rect(
+                        *rect,
+                        buffer.width.try_into().unwrap(),
+                        buffer.height.try_into().unwrap(),
+                    );
+                    let x = util::to_i32_saturating(rect.x);
+                    let y = util::to_i32_saturating(rect.y);
+                    let width = util::to_i32_saturating(rect.width.get());
+                    let height = util::to_i32_saturating(rect.height.get());
 
-                // TODO: Draw with something else to make transparency work.
-                Gdi::BitBlt(
-                    self.dc.0,
-                    x,
-                    y,
-                    width,
-                    height,
-                    self.buffer.dc,
-                    x,
-                    y,
-                    Gdi::SRCCOPY,
-                );
+                    // TODO: Draw with something else to make transparency work.
+                    unsafe {
+                        Gdi::BitBlt(dc.0, x, y, width, height, buffer.dc, x, y, Gdi::SRCCOPY)
+                    };
+                }
+                buffer.presented = true;
             }
-
-            // Validate the window.
-            Gdi::ValidateRect(self.window.0, ptr::null_mut());
         }
-        self.buffer.presented = true;
+
+        // Validate the window.
+        unsafe { Gdi::ValidateRect(self.window.0, ptr::null_mut()) };
 
         Ok(())
     }
@@ -495,6 +577,9 @@ impl Command {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 struct OnlyUsedFromOrigin<T>(T);

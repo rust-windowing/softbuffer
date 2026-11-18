@@ -83,6 +83,7 @@ drm = { version = "0.15.0", default-features = false, optional = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
     "Win32_UI_ColorSystem",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
@@ -188,6 +189,10 @@ rayon = "1.5.1"
 criterion = { version = "0.8.1", default-features = false, features = [
     "cargo_bench_support",
 ] }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+# Read back what a window shows in tests.
+windows-sys = { version = "0.61.2", features = ["Win32_Storage_Xps"] }
 
 [target.'cfg(target_os = "android")'.dev-dependencies]
 # Use NativeActivity on Android.
